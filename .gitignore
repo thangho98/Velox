@@ -1,0 +1,38 @@
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Editors ===
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# === Go Backend ===
+backend/bin/
+backend/data/
+backend/*.db
+backend/*.db-wal
+backend/*.db-shm
+
+# === Node ===
+node_modules/
+webapp/dist/
+webapp/dist-ssr/
+*.local
+
+# === Logs ===
+*.log
+
+# === Env ===
+.env
+.env.local
+.env.*.local
+
+# === Brain (local session state) ===
+.brain/session.json
+
+# === Transcode temp ===
+backend/data/transcode/

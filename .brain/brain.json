@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "schema_version": "1.1.0",
+    "updated_at": "2026-03-11"
+  },
+  "project": {
+    "name": "Velox",
+    "type": "Home Media Server",
+    "status": "development",
+    "description": "Self-hosted media server like Jellyfin/Emby but lighter. Go backend + React frontend."
+  },
+  "tech_stack": {
+    "backend": {
+      "language": "Go 1.26",
+      "framework": "stdlib net/http (Go 1.22+ routing)",
+      "database": "SQLite (WAL mode, foreign_keys=on, MaxOpenConns=1)",
+      "driver": "mattn/go-sqlite3 v1.14.34",
+      "transcoding": "FFmpeg 8.0 / FFprobe"
+    },
+    "frontend": {
+      "framework": "React 19",
+      "language": "TypeScript 5.9",
+      "bundler": "Vite 8",
+      "styling": "TailwindCSS 4",
+      "compiler": "React Compiler (babel-plugin-react-compiler)"
+    },
+    "tooling": {
+      "backend_linter": "golangci-lint (errcheck, staticcheck, sqlclosecheck, misspell, bodyclose)",
+      "backend_formatter": "gofmt",
+      "frontend_linter": "ESLint flat config (TS + React Hooks + React Refresh)",
+      "frontend_formatter": "Prettier (no semi, single quotes, 100 chars)",
+      "git_hooks": "Husky + lint-staged (root package.json)",
+      "path_alias": "@/ → src/"
+    }
+  },
+  "database_schema": {
+    "summary": "22 tables across 11 migrations. Media server stores: libraries, movies/episodes (logical), video files (physical), series/seasons, genres, people/credits, subtitles, audio tracks, users, watch progress, favorites, sessions.",
+    "design_doc": "docs/database-design.md",
+    "tables_by_migration": {
+      "001_initial": ["libraries", "media (old)", "progress (old)"],
+      "002_core_media": ["libraries (ALTER +type)", "media (RECREATE +imdb_id)", "media_files"],
+      "003_series": ["series (+imdb_id)", "seasons", "episodes"],
+      "004_genres_people": ["genres", "media_genres", "people", "credits"],
+      "005_scan_jobs": ["scan_jobs"],
+      "006_subtitles_audio": ["subtitles", "audio_tracks"],
+      "007_users": ["users", "user_preferences", "user_library_access"],
+      "008_auth": ["refresh_tokens", "sessions"],
+      "009_user_state": ["user_data", "user_series_data"],
+      "010_activity": ["activity_log", "task_history", "webhooks"],
+      "011_external_ids": ["external_ids"]
+    },
+    "key_patterns": [
+      "Logical vs Physical: media (content) ↔ media_files (file on disk)",
+      "Multi-version: 1 media → N media_files (720p, 1080p, 4K)",
+      "Series chain: series → seasons → episodes → media → media_files",
+      "Unified user_data: progress + favorites + rating in 1 table (Emby pattern)",
+      "Fingerprint: {file_size}:{xxhash64_first_64KB} for rename detection",
+      "XOR polymorphic: media_genres/credits CHECK exactly one of media_id/series_id",
+      "Provider IDs: tmdb_id + imdb_id indexed directly, external_ids table for others"
+    ]
+  },
+  "architecture": {
+    "layers": [
+      "handler (HTTP) → service (business logic) → repository (SQL) → model (structs)",
+      "Migrations via internal/database/migrate/registry.go"
+    ],
+    "playback_strategy": "Direct Play first → Direct Stream (remux) → Transcode Audio → Full Transcode",
+    "auth": "JWT (15min access + 7-day refresh), bcrypt cost 12, first-run setup wizard",
+    "metadata": "TMDb primary, NFO/local files override, external_ids for TVDB/AniDB/etc"
+  },
+  "plans": {
+    "A": "Core Domain & Ingestion (5 phases)",
+    "B": "Auth & Sessions (3 phases)",
+    "C": "Web App MVP (4 phases)",
+    "D": "Playback Decision Engine (3 phases)",
+    "E": "Streaming Enhancement (3 phases)",
+    "F": "Admin Operations (3 phases)",
+    "G": "Nice-to-have (3 phases)"
+  },
+  "conventions": {
+    "language": "Vietnamese in plans, English in code/commits",
+    "api_response": "{\"data\": ...} for success, {\"error\": \"message\"} for errors",
+    "timestamps": "ISO 8601",
+    "file_paths_in_db": "Always absolute paths"
+  }
+}
