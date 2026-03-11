@@ -2,18 +2,29 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 )
 
 func respondJSON(w http.ResponseWriter, status int, data any) {
+	if status == http.StatusNoContent {
+		w.WriteHeader(status)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(map[string]any{"data": data}); err != nil {
+		log.Printf("json encode error: %v", err)
+	}
 }
 
 func respondError(w http.ResponseWriter, status int, msg string) {
-	respondJSON(w, status, map[string]string{"error": msg})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": msg}); err != nil {
+		log.Printf("json encode error: %v", err)
+	}
 }
 
 func parseID(r *http.Request, param string) (int64, error) {
@@ -30,4 +41,8 @@ func parseIntQuery(r *http.Request, key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func parseJSON(r *http.Request, v any) error {
+	return json.NewDecoder(r.Body).Decode(v)
 }

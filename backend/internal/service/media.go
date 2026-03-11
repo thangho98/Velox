@@ -1,25 +1,64 @@
 package service
 
 import (
+	"context"
+	"database/sql"
+	"errors"
+
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
 )
 
 type MediaService struct {
-	repo *repository.MediaRepo
+	repo          *repository.MediaRepo
+	mediaFileRepo *repository.MediaFileRepo
 }
 
-func NewMediaService(repo *repository.MediaRepo) *MediaService {
-	return &MediaService{repo: repo}
+func NewMediaService(repo *repository.MediaRepo, mediaFileRepo *repository.MediaFileRepo) *MediaService {
+	return &MediaService{
+		repo:          repo,
+		mediaFileRepo: mediaFileRepo,
+	}
 }
 
-func (s *MediaService) List(libraryID int64, search string, limit, offset int) ([]model.Media, error) {
+func (s *MediaService) List(ctx context.Context, libraryID int64, mediaType string, limit, offset int) ([]model.Media, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	return s.repo.List(libraryID, search, limit, offset)
+	return s.repo.List(ctx, libraryID, mediaType, limit, offset)
 }
 
-func (s *MediaService) Get(id int64) (*model.Media, error) {
-	return s.repo.GetByID(id)
+func (s *MediaService) Get(ctx context.Context, id int64) (*model.Media, error) {
+	media, err := s.repo.GetByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return media, err
+}
+
+func (s *MediaService) GetWithFiles(ctx context.Context, id int64) (*model.MediaWithFiles, error) {
+	media, err := s.repo.GetByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := s.mediaFileRepo.ListByMediaID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.MediaWithFiles{
+		Media: *media,
+		Files: files,
+	}, nil
+}
+
+func (s *MediaService) Search(ctx context.Context, query string, limit int) ([]model.Media, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	return s.repo.Search(ctx, query, limit)
 }

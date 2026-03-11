@@ -275,8 +275,14 @@ func TestRealMigrations_FreshDB(t *testing.T) {
 		t.Fatalf("real migrations Up() error: %v", err)
 	}
 
-	// Verify core tables exist
-	for _, table := range []string{"libraries", "media", "progress"} {
+	// Verify core tables exist after all migrations
+	coreTables := []string{
+		"libraries", "media", "media_files",
+		"series", "seasons", "episodes",
+		"genres", "media_genres", "people", "credits",
+		"scan_jobs", "subtitles", "audio_tracks",
+	}
+	for _, table := range coreTables {
 		var name string
 		err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&name)
 		if err != nil {
@@ -305,14 +311,34 @@ func TestRealMigrations_Rollback(t *testing.T) {
 		t.Fatalf("Up() error: %v", err)
 	}
 
-	if err := runner.Rollback(); err != nil {
-		t.Fatalf("Rollback() error: %v", err)
+	// Rollback migrations 009, 008, 007, 006, 005, and 004 to test rollback of 004
+	for i := 0; i < 6; i++ {
+		if err := runner.Rollback(); err != nil {
+			t.Fatalf("Rollback() error at iteration %d: %v", i, err)
+		}
 	}
 
-	// After rollback of 001, tables should be gone
+	// After rollback of 004 (genres_people), genres/people tables should be gone
+	// but libraries/media should still exist
 	var name string
-	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='libraries'").Scan(&name)
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='credits'").Scan(&name)
 	if err == nil {
-		t.Error("libraries table still exists after rollback")
+		t.Error("credits table still exists after rollback of 004")
+	}
+
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='genres'").Scan(&name)
+	if err == nil {
+		t.Error("genres table still exists after rollback of 004")
+	}
+
+	// Core tables from earlier migrations should still exist
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='libraries'").Scan(&name)
+	if err != nil {
+		t.Error("libraries table was dropped by rollback of 004 (should only drop 004 tables)")
+	}
+
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='media'").Scan(&name)
+	if err != nil {
+		t.Error("media table was dropped by rollback of 004")
 	}
 }

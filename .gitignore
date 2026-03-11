@@ -11,6 +11,7 @@ Thumbs.db
 *~
 
 # === Go Backend ===
+backend/server
 backend/bin/
 backend/data/
 backend/*.db

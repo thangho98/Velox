@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thawng/velox/internal/auth"
 	"github.com/thawng/velox/internal/config"
 	"github.com/thawng/velox/internal/database"
 	"github.com/thawng/velox/internal/handler"
@@ -98,48 +99,137 @@ func runServer() {
 		log.Fatalf("failed to migrate database: %v", err)
 	}
 
+	// JWT Manager
+	jwtSecret, err := auth.LoadOrCreateSecret(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("failed to initialize JWT: %v", err)
+	}
+	jwtManager := auth.NewJWTManager(jwtSecret)
+
 	// Repositories
 	libraryRepo := repository.NewLibraryRepo(db)
 	mediaRepo := repository.NewMediaRepo(db)
-	progressRepo := repository.NewProgressRepo(db)
+	mediaFileRepo := repository.NewMediaFileRepo(db)
+	userRepo := repository.NewUserRepo(db)
+	refreshTokenRepo := repository.NewRefreshTokenRepo(db)
+	sessionRepo := repository.NewSessionRepo(db)
+	prefsRepo := repository.NewUserPreferencesRepo(db)
+	userDataRepo := repository.NewUserDataRepo(db)
 
 	// Services
-	scannerSvc := scanner.New(mediaRepo, libraryRepo)
+	scannerSvc := scanner.New(db, mediaRepo, mediaFileRepo, libraryRepo)
 	transcoderSvc := transcoder.New(cfg.TranscodePath)
 	librarySvc := service.NewLibraryService(libraryRepo, scannerSvc)
-	mediaSvc := service.NewMediaService(mediaRepo)
-	streamSvc := service.NewStreamService(mediaRepo, transcoderSvc)
-	progressSvc := service.NewProgressService(progressRepo)
+	mediaSvc := service.NewMediaService(mediaRepo, mediaFileRepo)
+	streamSvc := service.NewStreamService(mediaRepo, mediaFileRepo, transcoderSvc)
+	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, sessionRepo, jwtManager, db)
+	userDataSvc := service.NewUserDataService(userDataRepo)
+
+	// Handlers
+	libraryHandler := handler.NewLibraryHandler(librarySvc)
+	mediaHandler := handler.NewMediaHandler(mediaSvc)
+	streamHandler := handler.NewStreamHandler(streamSvc)
+	setupHandler := handler.NewSetupHandler(authSvc)
+	authHandler := handler.NewAuthHandler(authSvc)
+	userHandler := handler.NewUserHandler(authSvc)
+	profileHandler := handler.NewProfileHandler(authSvc, prefsRepo, userDataSvc)
 
 	// Router
 	mux := http.NewServeMux()
 
-	libraryHandler := handler.NewLibraryHandler(librarySvc)
-	mediaHandler := handler.NewMediaHandler(mediaSvc)
-	streamHandler := handler.NewStreamHandler(streamSvc)
-	progressHandler := handler.NewProgressHandler(progressSvc)
+	// Setup routes (public, only works before configured)
+	mux.HandleFunc("GET /api/setup/status", setupHandler.Status)
+	mux.HandleFunc("POST /api/setup", setupHandler.Setup)
 
-	// API routes
+	// Auth routes (public)
+	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
+	mux.HandleFunc("POST /api/auth/refresh", authHandler.Refresh)
+	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
+
+	// Protected auth routes
+	mux.HandleFunc("POST /api/auth/change-password", authHandler.ChangePassword)
+	mux.HandleFunc("GET /api/auth/me", authHandler.Me)
+	mux.HandleFunc("GET /api/auth/sessions", authHandler.ListSessions)
+	mux.HandleFunc("DELETE /api/auth/sessions/{id}", authHandler.RevokeSession)
+
+	// User management routes (admin only)
+	mux.Handle("GET /api/users", middleware.RequireAdmin(http.HandlerFunc(userHandler.List)))
+	mux.Handle("POST /api/users", middleware.RequireAdmin(http.HandlerFunc(userHandler.Create)))
+	mux.Handle("PATCH /api/users/{id}", middleware.RequireAdmin(http.HandlerFunc(userHandler.Update)))
+	mux.Handle("DELETE /api/users/{id}", middleware.RequireAdmin(http.HandlerFunc(userHandler.Delete)))
+	mux.Handle("PUT /api/users/{id}/library-access", middleware.RequireAdmin(http.HandlerFunc(userHandler.SetLibraryAccess)))
+
+	// Library admin routes
+	mux.Handle("POST /api/libraries", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.Create)))
+	mux.Handle("DELETE /api/libraries/{id}", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.Delete)))
+	mux.Handle("POST /api/libraries/{id}/scan", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.Scan)))
+
+	// Profile routes (authenticated)
+	mux.HandleFunc("GET /api/profile", profileHandler.GetProfile)      // GET current user profile
+	mux.HandleFunc("PATCH /api/profile", profileHandler.UpdateProfile) // Update display_name
+	mux.HandleFunc("GET /api/profile/preferences", profileHandler.GetPreferences)
+	mux.HandleFunc("PUT /api/profile/preferences", profileHandler.UpdatePreferences)
+
+	// User data routes (progress, favorites)
+	mux.HandleFunc("GET /api/profile/progress/{mediaId}", profileHandler.GetProgress)
+	mux.HandleFunc("PUT /api/profile/progress/{mediaId}", profileHandler.UpdateProgress)
+	mux.HandleFunc("GET /api/profile/favorites", profileHandler.ListFavorites)
+	mux.HandleFunc("POST /api/profile/favorites/{mediaId}", profileHandler.ToggleFavorite)
+	mux.HandleFunc("GET /api/profile/recently-watched", profileHandler.ListRecentlyWatched)
+
+	// API routes - Libraries (read = authenticated, write = admin above)
 	mux.HandleFunc("GET /api/libraries", libraryHandler.List)
-	mux.HandleFunc("POST /api/libraries", libraryHandler.Create)
-	mux.HandleFunc("DELETE /api/libraries/{id}", libraryHandler.Delete)
-	mux.HandleFunc("POST /api/libraries/{id}/scan", libraryHandler.Scan)
 
+	// API routes - Media
 	mux.HandleFunc("GET /api/media", mediaHandler.List)
 	mux.HandleFunc("GET /api/media/{id}", mediaHandler.Get)
+	mux.HandleFunc("GET /api/media/{id}/files", mediaHandler.GetWithFiles)
 
+	// API routes - Streaming
 	mux.HandleFunc("GET /api/stream/{id}", streamHandler.DirectPlay)
 	mux.HandleFunc("GET /api/stream/{id}/hls/master.m3u8", streamHandler.HLSMaster)
 	mux.HandleFunc("GET /api/stream/{id}/hls/{segment}", streamHandler.HLSSegment)
 
-	mux.HandleFunc("GET /api/progress/{mediaID}", progressHandler.Get)
-	mux.HandleFunc("PUT /api/progress/{mediaID}", progressHandler.Update)
+	// Auth middleware with paths that don't require auth
+	authMiddleware := middleware.RequireAuth(jwtManager,
+		"/api/setup/status",
+		"/api/setup",
+		"/api/auth/login",
+		"/api/auth/refresh",
+		"/api/auth/logout",
+	)
+
+	// Session tracker middleware
+	sessionTracker := middleware.SessionTracker(func(userID int64) {
+		// Update last_active_at asynchronously
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = sessionRepo.UpdateLastActiveByUserID(ctx, userID)
+	})
 
 	// Middleware stack
 	var h http.Handler = mux
+	h = sessionTracker(h) // innermost: track session AFTER auth sets context
+	h = authMiddleware(h) // auth: set user context
 	h = middleware.CORS(cfg.CORSOrigin)(h)
 	h = middleware.Logger(h)
-	h = middleware.Recovery(h)
+	h = middleware.Recovery(h) // outermost
+
+	// Cleanup expired tokens/sessions every hour
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			if err := refreshTokenRepo.DeleteExpired(ctx); err != nil {
+				log.Printf("cleanup expired tokens: %v", err)
+			}
+			if err := sessionRepo.DeleteExpired(ctx); err != nil {
+				log.Printf("cleanup expired sessions: %v", err)
+			}
+			cancel()
+		}
+	}()
 
 	server := &http.Server{
 		Addr:         cfg.Addr(),

@@ -62,7 +62,11 @@
   "architecture": {
     "layers": [
       "handler (HTTP) → service (business logic) → repository (SQL) → model (structs)",
-      "Migrations via internal/database/migrate/registry.go"
+      "Migrations via internal/database/migrate/registry.go",
+      "DBTX interface (repository/db.go) — repos accept *sql.DB or *sql.Tx",
+      "WithTx() on repos for transaction-scoped operations",
+      "service.ErrNotFound sentinel wrapping sql.ErrNoRows (service/errors.go)",
+      "respondJSON wraps success in {\"data\": ...}, logs encode errors"
     ],
     "playback_strategy": "Direct Play first → Direct Stream (remux) → Transcode Audio → Full Transcode",
     "auth": "JWT (15min access + 7-day refresh), bcrypt cost 12, first-run setup wizard",

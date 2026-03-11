@@ -1,21 +1,21 @@
 package repository
 
 import (
-	"database/sql"
+	"context"
 
 	"github.com/thawng/velox/internal/model"
 )
 
 type LibraryRepo struct {
-	db *sql.DB
+	db DBTX
 }
 
-func NewLibraryRepo(db *sql.DB) *LibraryRepo {
+func NewLibraryRepo(db DBTX) *LibraryRepo {
 	return &LibraryRepo{db: db}
 }
 
-func (r *LibraryRepo) List() ([]model.Library, error) {
-	rows, err := r.db.Query("SELECT id, name, path, created_at FROM libraries ORDER BY name")
+func (r *LibraryRepo) List(ctx context.Context) ([]model.Library, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT id, name, path, type, created_at FROM libraries ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +24,7 @@ func (r *LibraryRepo) List() ([]model.Library, error) {
 	var libs []model.Library
 	for rows.Next() {
 		var l model.Library
-		if err := rows.Scan(&l.ID, &l.Name, &l.Path, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.Name, &l.Path, &l.Type, &l.CreatedAt); err != nil {
 			return nil, err
 		}
 		libs = append(libs, l)
@@ -32,26 +32,26 @@ func (r *LibraryRepo) List() ([]model.Library, error) {
 	return libs, rows.Err()
 }
 
-func (r *LibraryRepo) GetByID(id int64) (*model.Library, error) {
+func (r *LibraryRepo) GetByID(ctx context.Context, id int64) (*model.Library, error) {
 	var l model.Library
-	err := r.db.QueryRow("SELECT id, name, path, created_at FROM libraries WHERE id = ?", id).
-		Scan(&l.ID, &l.Name, &l.Path, &l.CreatedAt)
+	err := r.db.QueryRowContext(ctx, "SELECT id, name, path, type, created_at FROM libraries WHERE id = ?", id).
+		Scan(&l.ID, &l.Name, &l.Path, &l.Type, &l.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &l, nil
 }
 
-func (r *LibraryRepo) Create(name, path string) (*model.Library, error) {
-	res, err := r.db.Exec("INSERT INTO libraries (name, path) VALUES (?, ?)", name, path)
+func (r *LibraryRepo) Create(ctx context.Context, name, path, libType string) (*model.Library, error) {
+	res, err := r.db.ExecContext(ctx, "INSERT INTO libraries (name, path, type) VALUES (?, ?, ?)", name, path, libType)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	return r.GetByID(id)
+	return r.GetByID(ctx, id)
 }
 
-func (r *LibraryRepo) Delete(id int64) error {
-	_, err := r.db.Exec("DELETE FROM libraries WHERE id = ?", id)
+func (r *LibraryRepo) Delete(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM libraries WHERE id = ?", id)
 	return err
 }

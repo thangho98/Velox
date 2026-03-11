@@ -1,0 +1,357 @@
+package handler
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/thawng/velox/internal/model"
+	"github.com/thawng/velox/internal/service"
+)
+
+// SubtitleHandler handles subtitle HTTP requests
+type SubtitleHandler struct {
+	svc *service.SubtitleService
+}
+
+func NewSubtitleHandler(svc *service.SubtitleService) *SubtitleHandler {
+	return &SubtitleHandler{svc: svc}
+}
+
+// ListByMediaFile returns all subtitles for a media file
+func (h *SubtitleHandler) ListByMediaFile(w http.ResponseWriter, r *http.Request) {
+	mediaFileID, err := parseID(r, "media_file_id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid media_file_id")
+		return
+	}
+
+	subtitles, err := h.svc.ListByMediaFile(r.Context(), mediaFileID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, subtitles)
+}
+
+// Get returns a subtitle by ID
+func (h *SubtitleHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	subtitle, err := h.svc.Get(r.Context(), id)
+	if errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "subtitle not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, subtitle)
+}
+
+// CreateRequest represents a subtitle creation request
+type CreateSubtitleRequest struct {
+	MediaFileID int64  `json:"media_file_id"`
+	Language    string `json:"language"`
+	Codec       string `json:"codec"`
+	Title       string `json:"title"`
+	IsEmbedded  bool   `json:"is_embedded"`
+	StreamIndex int    `json:"stream_index"`
+	FilePath    string `json:"file_path"`
+	IsForced    bool   `json:"is_forced"`
+	IsDefault   bool   `json:"is_default"`
+	IsSDH       bool   `json:"is_sdh"`
+}
+
+// Create creates a new subtitle
+func (h *SubtitleHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req CreateSubtitleRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	subtitle := &model.Subtitle{
+		MediaFileID: req.MediaFileID,
+		Language:    req.Language,
+		Codec:       req.Codec,
+		Title:       req.Title,
+		IsEmbedded:  req.IsEmbedded,
+		StreamIndex: req.StreamIndex,
+		FilePath:    req.FilePath,
+		IsForced:    req.IsForced,
+		IsDefault:   req.IsDefault,
+		IsSDH:       req.IsSDH,
+	}
+
+	if err := h.svc.Create(r.Context(), subtitle); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, subtitle)
+}
+
+// UpdateRequest represents a subtitle update request
+type UpdateSubtitleRequest struct {
+	Language    string `json:"language"`
+	Codec       string `json:"codec"`
+	Title       string `json:"title"`
+	IsEmbedded  bool   `json:"is_embedded"`
+	StreamIndex int    `json:"stream_index"`
+	FilePath    string `json:"file_path"`
+	IsForced    bool   `json:"is_forced"`
+	IsDefault   bool   `json:"is_default"`
+	IsSDH       bool   `json:"is_sdh"`
+}
+
+// Update updates a subtitle
+func (h *SubtitleHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	subtitle, err := h.svc.Get(r.Context(), id)
+	if errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "subtitle not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var req UpdateSubtitleRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	subtitle.Language = req.Language
+	subtitle.Codec = req.Codec
+	subtitle.Title = req.Title
+	subtitle.IsEmbedded = req.IsEmbedded
+	subtitle.StreamIndex = req.StreamIndex
+	subtitle.FilePath = req.FilePath
+	subtitle.IsForced = req.IsForced
+	subtitle.IsDefault = req.IsDefault
+	subtitle.IsSDH = req.IsSDH
+
+	if err := h.svc.Update(r.Context(), subtitle); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, subtitle)
+}
+
+// Delete deletes a subtitle
+func (h *SubtitleHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	if err := h.svc.Delete(r.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusNoContent, nil)
+}
+
+// SetDefault sets a subtitle as default
+func (h *SubtitleHandler) SetDefault(w http.ResponseWriter, r *http.Request) {
+	mediaFileID, err := parseID(r, "media_file_id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid media_file_id")
+		return
+	}
+
+	subtitleID, err := parseID(r, "subtitle_id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid subtitle_id")
+		return
+	}
+
+	if err := h.svc.SetDefault(r.Context(), mediaFileID, subtitleID); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "default set"})
+}
+
+// AudioTrackHandler handles audio track HTTP requests
+type AudioTrackHandler struct {
+	svc *service.AudioTrackService
+}
+
+func NewAudioTrackHandler(svc *service.AudioTrackService) *AudioTrackHandler {
+	return &AudioTrackHandler{svc: svc}
+}
+
+// ListByMediaFile returns all audio tracks for a media file
+func (h *AudioTrackHandler) ListByMediaFile(w http.ResponseWriter, r *http.Request) {
+	mediaFileID, err := parseID(r, "media_file_id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid media_file_id")
+		return
+	}
+
+	tracks, err := h.svc.ListByMediaFile(r.Context(), mediaFileID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, tracks)
+}
+
+// Get returns an audio track by ID
+func (h *AudioTrackHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	track, err := h.svc.Get(r.Context(), id)
+	if errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "audio track not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, track)
+}
+
+// CreateAudioTrackRequest represents an audio track creation request
+type CreateAudioTrackRequest struct {
+	MediaFileID   int64  `json:"media_file_id"`
+	StreamIndex   int    `json:"stream_index"`
+	Codec         string `json:"codec"`
+	Language      string `json:"language"`
+	Channels      int    `json:"channels"`
+	ChannelLayout string `json:"channel_layout"`
+	Bitrate       int    `json:"bitrate"`
+	Title         string `json:"title"`
+	IsDefault     bool   `json:"is_default"`
+}
+
+// Create creates a new audio track
+func (h *AudioTrackHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req CreateAudioTrackRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	track := &model.AudioTrack{
+		MediaFileID:   req.MediaFileID,
+		StreamIndex:   req.StreamIndex,
+		Codec:         req.Codec,
+		Language:      req.Language,
+		Channels:      req.Channels,
+		ChannelLayout: req.ChannelLayout,
+		Bitrate:       req.Bitrate,
+		Title:         req.Title,
+		IsDefault:     req.IsDefault,
+	}
+
+	if err := h.svc.Create(r.Context(), track); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, track)
+}
+
+// UpdateAudioTrackRequest represents an audio track update request
+type UpdateAudioTrackRequest struct {
+	Codec         string `json:"codec"`
+	Language      string `json:"language"`
+	Channels      int    `json:"channels"`
+	ChannelLayout string `json:"channel_layout"`
+	Bitrate       int    `json:"bitrate"`
+	Title         string `json:"title"`
+	IsDefault     bool   `json:"is_default"`
+}
+
+// Update updates an audio track
+func (h *AudioTrackHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	track, err := h.svc.Get(r.Context(), id)
+	if errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "audio track not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var req UpdateAudioTrackRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	track.Codec = req.Codec
+	track.Language = req.Language
+	track.Channels = req.Channels
+	track.ChannelLayout = req.ChannelLayout
+	track.Bitrate = req.Bitrate
+	track.Title = req.Title
+	track.IsDefault = req.IsDefault
+
+	if err := h.svc.Update(r.Context(), track); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, track)
+}
+
+// Delete deletes an audio track
+func (h *AudioTrackHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	if err := h.svc.Delete(r.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusNoContent, nil)
+}
+
+// SetDefault sets an audio track as default
+func (h *AudioTrackHandler) SetDefault(w http.ResponseWriter, r *http.Request) {
+	mediaFileID, err := parseID(r, "media_file_id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid media_file_id")
+		return
+	}
+
+	trackID, err := parseID(r, "track_id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid track_id")
+		return
+	}
+
+	if err := h.svc.SetDefault(r.Context(), mediaFileID, trackID); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "default set"})
+}

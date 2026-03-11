@@ -23,7 +23,7 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, err := h.svc.DirectPlayPath(id)
+	path, err := h.svc.DirectPlayPath(r.Context(), id)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "media not found")
 		return
@@ -36,7 +36,11 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
-	stat, _ := f.Stat()
+	stat, err := f.Stat()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "cannot stat file")
+		return
+	}
 
 	// ServeContent handles Range headers, Content-Type, etc.
 	http.ServeContent(w, r, stat.Name(), stat.ModTime(), f)
@@ -50,7 +54,7 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	playlistPath, err := h.svc.PrepareHLS(id)
+	playlistPath, err := h.svc.PrepareHLS(r.Context(), id)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "transcoding failed: "+err.Error())
 		return

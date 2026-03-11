@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Host          string
 	Port          string
+	DataDir       string
 	DatabasePath  string
 	TranscodePath string
 	CORSOrigin    string
@@ -20,6 +21,7 @@ func Load() *Config {
 	return &Config{
 		Host:          envOrDefault("VELOX_HOST", "0.0.0.0"),
 		Port:          envOrDefault("VELOX_PORT", "8080"),
+		DataDir:       dataDir,
 		DatabasePath:  filepath.Join(dataDir, "velox.db"),
 		TranscodePath: filepath.Join(dataDir, "transcode"),
 		CORSOrigin:    envOrDefault("VELOX_CORS_ORIGIN", "http://localhost:5173"),

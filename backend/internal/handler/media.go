@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/thawng/velox/internal/service"
@@ -17,11 +17,11 @@ func NewMediaHandler(svc *service.MediaService) *MediaHandler {
 
 func (h *MediaHandler) List(w http.ResponseWriter, r *http.Request) {
 	libraryID := int64(parseIntQuery(r, "library_id", 0))
-	search := r.URL.Query().Get("search")
+	mediaType := r.URL.Query().Get("type") // "movie" or "episode"
 	limit := parseIntQuery(r, "limit", 50)
 	offset := parseIntQuery(r, "offset", 0)
 
-	items, err := h.svc.List(libraryID, search, limit, offset)
+	items, err := h.svc.List(r.Context(), libraryID, mediaType, limit, offset)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -36,8 +36,27 @@ func (h *MediaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m, err := h.svc.Get(id)
-	if err == sql.ErrNoRows {
+	m, err := h.svc.Get(r.Context(), id)
+	if errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, m)
+}
+
+func (h *MediaHandler) GetWithFiles(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	m, err := h.svc.GetWithFiles(r.Context(), id)
+	if errors.Is(err, service.ErrNotFound) {
 		respondError(w, http.StatusNotFound, "media not found")
 		return
 	}
