@@ -2,19 +2,31 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/thawng/velox/internal/model"
+	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/service"
+	"github.com/thawng/velox/pkg/subtitle"
 )
 
 // SubtitleHandler handles subtitle HTTP requests
 type SubtitleHandler struct {
-	svc *service.SubtitleService
+	svc           *service.SubtitleService
+	mediaFileRepo *repository.MediaFileRepo // resolves video path for embedded sub extraction
+	subtitleCache string                    // base dir for extracted VTT files; e.g. ~/.velox/subtitles
 }
 
-func NewSubtitleHandler(svc *service.SubtitleService) *SubtitleHandler {
-	return &SubtitleHandler{svc: svc}
+func NewSubtitleHandler(svc *service.SubtitleService, mediaFileRepo *repository.MediaFileRepo, subtitleCache string) *SubtitleHandler {
+	return &SubtitleHandler{
+		svc:           svc,
+		mediaFileRepo: mediaFileRepo,
+		subtitleCache: subtitleCache,
+	}
 }
 
 // ListByMediaFile returns all subtitles for a media file
@@ -162,6 +174,72 @@ func (h *SubtitleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusNoContent, nil)
+}
+
+// Serve serves a subtitle file as WebVTT.
+// External .vtt → served directly; external .srt → converted to VTT on the fly.
+// Embedded subtitles return 501 until the Phase 03 extractor is implemented.
+func (h *SubtitleHandler) Serve(w http.ResponseWriter, r *http.Request) {
+	subtitleID, err := parseID(r, "subtitle_id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid subtitle_id")
+		return
+	}
+
+	sub, err := h.svc.Get(r.Context(), subtitleID)
+	if errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "subtitle not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+
+	if sub.IsEmbedded {
+		// Look up the video file to get its path, then extract the subtitle stream.
+		mf, err := h.mediaFileRepo.GetByID(r.Context(), sub.MediaFileID)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("looking up media file: %v", err))
+			return
+		}
+
+		cacheDir := filepath.Join(h.subtitleCache, fmt.Sprintf("%d", sub.MediaFileID))
+		vttPath, err := subtitle.ExtractSubtitle(mf.FilePath, sub.StreamIndex, cacheDir)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("extracting subtitle: %v", err))
+			return
+		}
+
+		data, err := os.ReadFile(vttPath)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "reading extracted subtitle")
+			return
+		}
+		_, _ = w.Write(data)
+		return
+	}
+
+	if sub.FilePath == "" {
+		respondError(w, http.StatusNotFound, "subtitle file path not set")
+		return
+	}
+
+	data, err := os.ReadFile(sub.FilePath)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "subtitle file not found on disk")
+		return
+	}
+
+	codec := strings.ToLower(sub.Codec)
+	if codec == "subrip" || codec == "srt" {
+		_, _ = w.Write(subtitle.SRTToVTT(data))
+		return
+	}
+	_, _ = w.Write(data)
 }
 
 // SetDefault sets a subtitle as default

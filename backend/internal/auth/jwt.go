@@ -19,8 +19,9 @@ const (
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID  int64 `json:"user_id"`
-	IsAdmin bool  `json:"is_admin"`
+	UserID    int64 `json:"user_id"`
+	IsAdmin   bool  `json:"is_admin"`
+	SessionID int64 `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -72,11 +73,12 @@ func LoadOrCreateSecret(dataDir string) ([]byte, error) {
 }
 
 // GenerateAccessToken creates a new access token
-func (m *JWTManager) GenerateAccessToken(userID int64, isAdmin bool) (string, error) {
+func (m *JWTManager) GenerateAccessToken(userID int64, isAdmin bool, sessionID int64) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		UserID:  userID,
-		IsAdmin: isAdmin,
+		UserID:    userID,
+		IsAdmin:   isAdmin,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(AccessTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -123,8 +125,8 @@ func (m *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
 }
 
 // GenerateTokenPair creates both access and refresh tokens
-func (m *JWTManager) GenerateTokenPair(userID int64, isAdmin bool) (*TokenPair, error) {
-	accessToken, err := m.GenerateAccessToken(userID, isAdmin)
+func (m *JWTManager) GenerateTokenPair(userID int64, isAdmin bool, sessionID int64) (*TokenPair, error) {
+	accessToken, err := m.GenerateAccessToken(userID, isAdmin, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("generating access token: %w", err)
 	}

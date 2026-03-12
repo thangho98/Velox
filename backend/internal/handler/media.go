@@ -66,3 +66,24 @@ func (h *MediaHandler) GetWithFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, m)
 }
+
+// GetVersions returns all physical files for a media item.
+// Used by the player to let the user switch between versions (e.g. 1080p vs 4K remux).
+func (h *MediaHandler) GetVersions(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	files, err := h.svc.ListVersions(r.Context(), id)
+	if errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, files)
+}

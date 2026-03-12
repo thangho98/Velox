@@ -62,3 +62,14 @@ func (s *MediaService) Search(ctx context.Context, query string, limit int) ([]m
 	}
 	return s.repo.Search(ctx, query, limit)
 }
+
+// ListVersions returns all physical files for the given media, ordered by is_primary DESC.
+// Returns ErrNotFound if the media ID does not exist.
+func (s *MediaService) ListVersions(ctx context.Context, mediaID int64) ([]model.MediaFile, error) {
+	if _, err := s.repo.GetByID(ctx, mediaID); errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	return s.mediaFileRepo.ListByMediaID(ctx, mediaID)
+}

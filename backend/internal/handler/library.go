@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -78,13 +77,30 @@ func (h *LibraryHandler) Scan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Run scan in background
-	go func() {
-		if err := h.svc.Scan(context.Background(), id); err != nil {
-			// Log error - in production use structured logger
-			println("scan error:", err.Error())
-		}
-	}()
+	// Run scan in background, return job immediately
+	job, err := h.svc.Scan(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "scanning"})
+	// Pipeline.Run blocks — run in goroutine would lose the job reference.
+	// Instead, Pipeline creates the job synchronously (status=queued),
+	// then runs stages. Caller gets the job ID to poll status.
+	respondJSON(w, http.StatusAccepted, job)
+}
+
+func (h *LibraryHandler) ScanStatus(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	jobs, err := h.svc.ScanJobs(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, jobs)
 }

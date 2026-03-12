@@ -13,6 +13,10 @@ import (
 
 const (
 	baseURL = "https://api.themoviedb.org/3"
+
+	// TMDb allows ~40 requests per 10 seconds
+	rateLimitBurst    = 40
+	rateLimitInterval = 10 * time.Second
 )
 
 // Client for TMDb API.
@@ -21,6 +25,7 @@ type Client struct {
 	apiKey     string // v4 read access token (not v3 API key)
 	httpClient *http.Client
 	config     *Configuration
+	limiter    chan struct{}
 }
 
 // Configuration for image URLs
@@ -36,21 +41,58 @@ type Configuration struct {
 	} `json:"images"`
 }
 
-// New creates a new TMDb client
+// New creates a new TMDb client with built-in rate limiting.
 func New(apiKey string) *Client {
-	return &Client{
+	c := &Client{
 		apiKey: apiKey,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		limiter: make(chan struct{}, rateLimitBurst),
 	}
+	c.startLimiter()
+	return c
 }
 
 // NewWithHTTPClient creates a client with custom HTTP client
 func NewWithHTTPClient(apiKey string, httpClient *http.Client) *Client {
-	return &Client{
+	c := &Client{
 		apiKey:     apiKey,
 		httpClient: httpClient,
+		limiter:    make(chan struct{}, rateLimitBurst),
+	}
+	c.startLimiter()
+	return c
+}
+
+// startLimiter fills the token bucket at a steady rate.
+// Bucket holds up to rateLimitBurst tokens; one token is consumed per request.
+func (c *Client) startLimiter() {
+	// Pre-fill bucket
+	for range rateLimitBurst {
+		c.limiter <- struct{}{}
+	}
+
+	// Refill at rateLimitBurst tokens per rateLimitInterval
+	go func() {
+		ticker := time.NewTicker(rateLimitInterval / time.Duration(rateLimitBurst))
+		defer ticker.Stop()
+		for range ticker.C {
+			select {
+			case c.limiter <- struct{}{}:
+			default: // bucket full
+			}
+		}
+	}()
+}
+
+// wait blocks until a rate limit token is available or ctx is cancelled.
+func (c *Client) wait(ctx context.Context) error {
+	select {
+	case <-c.limiter:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -229,8 +271,13 @@ func (c *Client) newRequest(ctx context.Context, method, path string, params url
 	return req, nil
 }
 
-// do executes the request and decodes the response
+// do executes the request and decodes the response.
+// Blocks until a rate limit token is available.
 func (c *Client) do(req *http.Request, v interface{}) error {
+	if err := c.wait(req.Context()); err != nil {
+		return fmt.Errorf("rate limit wait: %w", err)
+	}
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err

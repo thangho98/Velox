@@ -509,12 +509,11 @@ func (m *Matcher) convertEpisodeDetails(series *tmdb.TVDetails, season *tmdb.Sea
 
 // stringSimilarity calculates similarity between two strings (0.0 - 1.0)
 func stringSimilarity(a, b string) float64 {
-	// Simple implementation: exact match or contains
 	if a == b {
 		return 1.0
 	}
 
-	// Remove punctuation and normalize spaces
+	// Normalize: strip punctuation, collapse spaces, lowercase
 	a = normalizeString(a)
 	b = normalizeString(b)
 
@@ -526,8 +525,51 @@ func stringSimilarity(a, b string) float64 {
 		return 0.85
 	}
 
-	// Levenshtein distance could be used here for better matching
-	return 0.0
+	// Levenshtein-based similarity
+	maxLen := len(a)
+	if len(b) > maxLen {
+		maxLen = len(b)
+	}
+	if maxLen == 0 {
+		return 1.0
+	}
+
+	dist := levenshtein(a, b)
+	return 1.0 - float64(dist)/float64(maxLen)
+}
+
+// levenshtein computes the edit distance between two strings.
+func levenshtein(a, b string) int {
+	if len(a) == 0 {
+		return len(b)
+	}
+	if len(b) == 0 {
+		return len(a)
+	}
+
+	// Single-row DP
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+
+	for i := 1; i <= len(a); i++ {
+		curr := make([]int, len(b)+1)
+		curr[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			ins := curr[j-1] + 1
+			del := prev[j] + 1
+			sub := prev[j-1] + cost
+			curr[j] = min(ins, min(del, sub))
+		}
+		prev = curr
+	}
+
+	return prev[len(b)]
 }
 
 func normalizeString(s string) string {

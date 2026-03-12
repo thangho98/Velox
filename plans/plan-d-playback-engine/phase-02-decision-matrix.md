@@ -1,7 +1,7 @@
 # Phase 02: Playback Decision Matrix
-Status: ⬜ Pending
+Status: ✅ Done (7/7)
 Plan: D - Playback Decision Engine
-Dependencies: Phase 01
+Dependencies: Phase 01, Plan A Ph 03-05 (media_files/audio_tracks/subtitles tables)
 
 ## Mục tiêu
 Engine quyết định playback path tối ưu cho mỗi media + client combination.
@@ -28,65 +28,54 @@ Input: MediaFile + DeviceProfile + UserPrefs
 
 ## Tasks
 
-### 1. Playback Decision Engine
-- [ ] Func `Decide(mediaFile, profile, prefs) PlaybackDecision`
-- [ ] Return: `PlaybackDecision { Method, VideoAction, AudioAction, SubtitleAction, Container, EstimatedBitrate }`
-- [ ] Methods: `DirectPlay | DirectStream | TranscodeAudio | FullTranscode`
-- [ ] VideoAction: `Copy | Transcode(codec, quality)`
-- [ ] AudioAction: `Copy | Transcode(codec, channels)`
-- **File:** `internal/playback/engine.go` - NEW
+### 1. Playback Decision Engine ✅ Done
+- [x] `Decide(media MediaFileInfo, profile *DeviceProfile, prefs UserPreferences) PlaybackDecision`
+- [x] Methods: `DirectPlay | DirectStream | TranscodeAudio | FullTranscode`
+- [x] Priority order: resolution → codec → bitrate → container → audio → subtitles
+- **File:** `internal/playback/engine.go`
 
-### 2. FFmpeg Command Builder
-- [ ] Func `BuildFFmpegArgs(decision, inputPath, outputPath/pipe) []string`
-- [ ] Direct Stream: `-c:v copy -c:a copy` (just remux container)
-- [ ] Audio transcode: `-c:v copy -c:a aac -b:a 192k -ac 2`
-- [ ] Full transcode: `-c:v libx264 -preset fast -crf 22 -c:a aac`
-- [ ] Output: HLS segments or pipe to stdout (for direct stream)
-- **File:** `internal/playback/ffmpeg.go` - NEW
+### 2. FFmpeg Command Builder ✅ Done
+- [x] `BuildFFmpegArgs`, `BuildRemuxArgs`, `BuildExtractSubtitleArgs`, `BuildBurnSubtitleArgs`
+- [x] HLS args with keyframe alignment (`-force_key_frames`, `-sc_threshold 0`)
+- **File:** `internal/playback/ffmpeg.go`
 
-### 3. Playback Info API
-- [ ] `GET /api/playback/{mediaID}/info` - return playback decision for current user/client
-- [ ] Response: `{method: "DirectPlay|Transcode", stream_url, video_codec, audio_codec, subtitle_tracks, file_size, bitrate}`
-- [ ] Frontend uses this to decide how to load the video
-- **File:** `internal/handler/playback.go` - NEW
+### 3. Playback Info API ✅ Done
+- [x] `POST /api/playback/{id}/info` — returns decision + stream_url + audio/subtitle tracks
+- [x] Accepts client capability override in request body
+- [x] `GET /api/playback/capabilities` — UA-detected capabilities
+- **File:** `internal/handler/playback.go`
 
-### 4. Stream Router
-- [ ] Refactor stream handler to use playback engine
-- [ ] `GET /api/stream/{id}` → engine decides: serve file directly OR start transcode
-- [ ] `GET /api/stream/{id}?mediaFileId=X` → play specific version
-- [ ] Attach decision to response headers: `X-Playback-Method: DirectPlay`
-- **File:** `internal/handler/stream.go` - Refactor
+### 4. Transcode Session Lifecycle ✅ Done
+- [x] `SessionManager` with RWMutex, per-session progress, kill, cleanup goroutine
+- [x] Session ID uses `crypto/rand` (collision-proof)
+- **File:** `internal/playback/session.go`
 
-### 5. Multi-Audio Track Switching (HLS)
-- [ ] When media has multiple audio tracks (e.g., English + Vietnamese dub):
-  - Direct Play: browser only plays default audio track (limitation)
-  - HLS mode: generate `#EXT-X-MEDIA:TYPE=AUDIO` groups per language
-  - Each audio track = separate HLS audio stream, switchable without re-buffering
-- [ ] FFmpeg: `-map 0:v:0 -map 0:a:0 -map 0:a:1 ... -var_stream_map "a:0,agroup:audio,name:eng a:1,agroup:audio,name:vie v:0,agroup:audio"`
-- [ ] Playback decision: if user wants non-default audio → force HLS mode (even if video codec is direct-playable)
-- [ ] `GET /api/playback/{mediaID}/info` response includes `audio_tracks` with selectable options
-- [ ] Default audio = user preference language > file default > first track
+### 5. Decision Engine Tests ✅ Done
+- [x] Table-driven tests for all 10 matrix cases in plan.md
+- **File:** `internal/playback/engine_test.go`
 
-### 6. Multi-Version Selection
-- [ ] If media has multiple files (720p + 1080p + 4K):
-  - Pick version that can direct play if possible
-  - Otherwise pick closest to user's max quality preference
-- [ ] `GET /api/media/{id}/versions` - list available file versions
-- [ ] User can manually select version in player
+### 6. Stream Router Integration ✅ Done
+- [x] `GET /api/stream/{id}` calls `Decide()`:
+  - DirectPlay → `http.ServeContent` with HTTP range support
+  - DirectStream → `RemuxToWriter` pipe (MKV→fragmented MP4)
+  - TranscodeAudio / FullTranscode → 307 redirect to `/hls/master.m3u8`
+- **File:** `internal/handler/stream.go`
 
-### 7. Transcode Session Lifecycle
-- [ ] Track active transcode sessions: media_id, user_id, PID, started_at, progress
-- [ ] Kill FFmpeg process when: user stops, disconnects, or switches media
-- [ ] Cleanup stale sessions on server start
-- [ ] Limit concurrent transcode sessions (config: `VELOX_MAX_TRANSCODES=2`)
-- **File:** `internal/playback/session.go` - NEW
+### 7. Multi-Audio HLS ✅ Done
+- [x] Non-default audio track → forces HLS mode
+- [x] Separate per-audio-track transcode + manual `#EXT-X-MEDIA:TYPE=AUDIO` master playlist
+  - Approach: explicit `-map 0:N` per stream, manual `writeMasterPlaylistWithAudio()` — more debuggable than `-var_stream_map`
+- [x] `GenerateHLSWithAudio()` in transcoder handles fallback to simple HLS when ≤ 1 audio track
+- **File:** `internal/transcoder/transcoder.go`
 
-## Files to Create/Modify
-- `internal/playback/engine.go` - NEW
-- `internal/playback/ffmpeg.go` - NEW
-- `internal/playback/session.go` - NEW
-- `internal/handler/playback.go` - NEW
-- `internal/handler/stream.go` - Major refactor
+## Files
+- `internal/playback/engine.go` ✅
+- `internal/playback/ffmpeg.go` ✅
+- `internal/playback/session.go` ✅
+- `internal/handler/playback.go` ✅
+- `internal/playback/engine_test.go` ✅
+- `internal/handler/stream.go` ✅
+- `internal/transcoder/transcoder.go` ✅
 
 ---
 Next: phase-03-subtitle-serving.md

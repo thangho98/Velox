@@ -110,6 +110,12 @@ func runServer() {
 	libraryRepo := repository.NewLibraryRepo(db)
 	mediaRepo := repository.NewMediaRepo(db)
 	mediaFileRepo := repository.NewMediaFileRepo(db)
+	seriesRepo := repository.NewSeriesRepo(db)
+	seasonRepo := repository.NewSeasonRepo(db)
+	episodeRepo := repository.NewEpisodeRepo(db)
+	scanJobRepo := repository.NewScanJobRepo(db)
+	subtitleRepo := repository.NewSubtitleRepo(db)
+	audioTrackRepo := repository.NewAudioTrackRepo(db)
 	userRepo := repository.NewUserRepo(db)
 	refreshTokenRepo := repository.NewRefreshTokenRepo(db)
 	sessionRepo := repository.NewSessionRepo(db)
@@ -117,13 +123,19 @@ func runServer() {
 	userDataRepo := repository.NewUserDataRepo(db)
 
 	// Services
-	scannerSvc := scanner.New(db, mediaRepo, mediaFileRepo, libraryRepo)
+	pipeline := scanner.NewPipeline(
+		db, libraryRepo, mediaRepo, mediaFileRepo,
+		seriesRepo, seasonRepo, episodeRepo,
+		scanJobRepo, subtitleRepo, audioTrackRepo,
+	)
 	transcoderSvc := transcoder.New(cfg.TranscodePath)
-	librarySvc := service.NewLibraryService(libraryRepo, scannerSvc)
+	librarySvc := service.NewLibraryService(libraryRepo, scanJobRepo, pipeline)
 	mediaSvc := service.NewMediaService(mediaRepo, mediaFileRepo)
-	streamSvc := service.NewStreamService(mediaRepo, mediaFileRepo, transcoderSvc)
+	streamSvc := service.NewStreamService(mediaFileRepo, audioTrackRepo, transcoderSvc)
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, sessionRepo, jwtManager, db)
 	userDataSvc := service.NewUserDataService(userDataRepo)
+	subtitleSvc := service.NewSubtitleService(subtitleRepo)
+	audioTrackSvc := service.NewAudioTrackService(audioTrackRepo)
 
 	// Handlers
 	libraryHandler := handler.NewLibraryHandler(librarySvc)
@@ -133,6 +145,9 @@ func runServer() {
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(authSvc)
 	profileHandler := handler.NewProfileHandler(authSvc, prefsRepo, userDataSvc)
+	playbackHandler := handler.NewPlaybackHandler(mediaSvc, streamSvc, userDataSvc, subtitleSvc, audioTrackSvc, prefsRepo)
+	subtitleHandler := handler.NewSubtitleHandler(subtitleSvc, mediaFileRepo, cfg.SubtitleCachePath)
+	audioTrackHandler := handler.NewAudioTrackHandler(audioTrackSvc)
 
 	// Router
 	mux := http.NewServeMux()
@@ -163,6 +178,7 @@ func runServer() {
 	mux.Handle("POST /api/libraries", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.Create)))
 	mux.Handle("DELETE /api/libraries/{id}", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.Delete)))
 	mux.Handle("POST /api/libraries/{id}/scan", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.Scan)))
+	mux.Handle("GET /api/libraries/{id}/scan-status", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.ScanStatus)))
 
 	// Profile routes (authenticated)
 	mux.HandleFunc("GET /api/profile", profileHandler.GetProfile)      // GET current user profile
@@ -184,11 +200,31 @@ func runServer() {
 	mux.HandleFunc("GET /api/media", mediaHandler.List)
 	mux.HandleFunc("GET /api/media/{id}", mediaHandler.Get)
 	mux.HandleFunc("GET /api/media/{id}/files", mediaHandler.GetWithFiles)
+	mux.HandleFunc("GET /api/media/{id}/versions", mediaHandler.GetVersions)
 
 	// API routes - Streaming
 	mux.HandleFunc("GET /api/stream/{id}", streamHandler.DirectPlay)
 	mux.HandleFunc("GET /api/stream/{id}/hls/master.m3u8", streamHandler.HLSMaster)
 	mux.HandleFunc("GET /api/stream/{id}/hls/{segment}", streamHandler.HLSSegment)
+
+	// API routes - Playback Decision
+	mux.HandleFunc("POST /api/playback/{id}/info", playbackHandler.GetPlaybackInfo)
+	mux.HandleFunc("GET /api/playback/capabilities", playbackHandler.GetClientCapabilities)
+
+	// API routes - Subtitles (admin only for write, authenticated for read)
+	mux.HandleFunc("GET /api/media-files/{media_file_id}/subtitles", subtitleHandler.ListByMediaFile)
+	mux.HandleFunc("GET /api/media-files/{media_file_id}/subtitles/{subtitle_id}/serve", subtitleHandler.Serve)
+	mux.Handle("POST /api/subtitles", middleware.RequireAdmin(http.HandlerFunc(subtitleHandler.Create)))
+	mux.Handle("PATCH /api/subtitles/{id}", middleware.RequireAdmin(http.HandlerFunc(subtitleHandler.Update)))
+	mux.Handle("DELETE /api/subtitles/{id}", middleware.RequireAdmin(http.HandlerFunc(subtitleHandler.Delete)))
+	mux.Handle("POST /api/media-files/{media_file_id}/subtitles/{subtitle_id}/default", middleware.RequireAdmin(http.HandlerFunc(subtitleHandler.SetDefault)))
+
+	// API routes - Audio Tracks (admin only for write, authenticated for read)
+	mux.HandleFunc("GET /api/media-files/{media_file_id}/audio-tracks", audioTrackHandler.ListByMediaFile)
+	mux.Handle("POST /api/audio-tracks", middleware.RequireAdmin(http.HandlerFunc(audioTrackHandler.Create)))
+	mux.Handle("PATCH /api/audio-tracks/{id}", middleware.RequireAdmin(http.HandlerFunc(audioTrackHandler.Update)))
+	mux.Handle("DELETE /api/audio-tracks/{id}", middleware.RequireAdmin(http.HandlerFunc(audioTrackHandler.Delete)))
+	mux.Handle("POST /api/media-files/{media_file_id}/audio-tracks/{track_id}/default", middleware.RequireAdmin(http.HandlerFunc(audioTrackHandler.SetDefault)))
 
 	// Auth middleware with paths that don't require auth
 	authMiddleware := middleware.RequireAuth(jwtManager,
@@ -199,12 +235,11 @@ func runServer() {
 		"/api/auth/logout",
 	)
 
-	// Session tracker middleware
-	sessionTracker := middleware.SessionTracker(func(userID int64) {
-		// Update last_active_at asynchronously
+	// Session tracker middleware (per-session, not per-user)
+	sessionTracker := middleware.SessionTracker(func(sessionID int64) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = sessionRepo.UpdateLastActiveByUserID(ctx, userID)
+		_ = sessionRepo.UpdateLastActive(ctx, sessionID)
 	})
 
 	// Middleware stack

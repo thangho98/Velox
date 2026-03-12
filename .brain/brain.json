@@ -1,7 +1,7 @@
 {
   "meta": {
     "schema_version": "1.1.0",
-    "updated_at": "2026-03-11"
+    "updated_at": "2026-03-12"
   },
   "project": {
     "name": "Velox",
@@ -68,9 +68,10 @@
       "service.ErrNotFound sentinel wrapping sql.ErrNoRows (service/errors.go)",
       "respondJSON wraps success in {\"data\": ...}, logs encode errors"
     ],
+    "scan_pipeline": "Pipeline (scanner/pipeline.go) — CreateJob (sync) + RunJob (async goroutine). Stages: discover → fingerprint → probe → parse → persist. ScanJob tracks progress via scan_jobs table.",
     "playback_strategy": "Direct Play first → Direct Stream (remux) → Transcode Audio → Full Transcode",
-    "auth": "JWT (15min access + 7-day refresh), bcrypt cost 12, first-run setup wizard",
-    "metadata": "TMDb primary, NFO/local files override, external_ids for TVDB/AniDB/etc"
+    "auth": "JWT (15min access + 7-day refresh + session_id in claims), bcrypt cost 12, first-run setup wizard, atomic refresh token rotation (DELETE...RETURNING), per-session activity tracking",
+    "metadata": "TMDb primary (rate-limited 40req/10s token bucket), NFO/local files override, Levenshtein string similarity for fuzzy title matching, external_ids for TVDB/AniDB/etc"
   },
   "plans": {
     "A": "Core Domain & Ingestion (5 phases)",

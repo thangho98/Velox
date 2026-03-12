@@ -45,8 +45,8 @@ func RequireAuth(jwtManager *auth.JWTManager, skipPaths ...string) func(http.Han
 				return
 			}
 
-			// Add user info to context
-			ctx := auth.ContextWithUser(r.Context(), claims.UserID, claims.IsAdmin)
+			// Add user + session info to context
+			ctx := auth.ContextWithSession(r.Context(), claims.UserID, claims.IsAdmin, claims.SessionID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -81,28 +81,27 @@ func OptionalAuth(jwtManager *auth.JWTManager) func(http.Handler) http.Handler {
 	}
 }
 
-// SessionTracker tracks session activity (debounced to max 1 update/minute)
+// SessionTracker tracks per-session activity (debounced to max 1 update/minute)
 // Call this after RequireAuth to update last_active_at
-func SessionTracker(sessionUpdateFunc func(userID int64)) func(http.Handler) http.Handler {
-	// Simple debounce: track last update time per user
+func SessionTracker(sessionUpdateFunc func(sessionID int64)) func(http.Handler) http.Handler {
 	var mu sync.Mutex
 	lastUpdates := make(map[int64]time.Time)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID, _, ok := auth.UserFromContext(r.Context())
-			if ok {
+			sessionID := auth.SessionIDFromContext(r.Context())
+			if sessionID > 0 {
 				now := time.Now()
 				mu.Lock()
-				lastUpdate, exists := lastUpdates[userID]
+				lastUpdate, exists := lastUpdates[sessionID]
 				shouldUpdate := !exists || now.Sub(lastUpdate) > time.Minute
 				if shouldUpdate {
-					lastUpdates[userID] = now
+					lastUpdates[sessionID] = now
 				}
 				mu.Unlock()
 
 				if shouldUpdate && sessionUpdateFunc != nil {
-					go sessionUpdateFunc(userID)
+					go sessionUpdateFunc(sessionID)
 				}
 			}
 			next.ServeHTTP(w, r)

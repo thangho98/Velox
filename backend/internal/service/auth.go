@@ -142,24 +142,25 @@ func (s *AuthService) Login(ctx context.Context, username, password, deviceName,
 	return user, tokens, nil
 }
 
-// Refresh rotates refresh token and returns new token pair
+// Refresh rotates refresh token and returns new token pair.
+// Uses atomic DELETE...RETURNING to prevent concurrent replay attacks.
 func (s *AuthService) Refresh(ctx context.Context, refreshToken, deviceName, ipAddress, userAgent string) (*auth.TokenPair, error) {
-	// Hash the provided token
 	tokenHash := auth.HashToken(refreshToken)
 
-	// Look up the token
-	rt, err := s.refreshTokenRepo.GetByTokenHash(ctx, tokenHash)
+	// Atomically consume the token — only one concurrent request can succeed
+	rt, err := s.refreshTokenRepo.ConsumeByTokenHash(ctx, tokenHash)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrInvalidToken
 		}
-		return nil, fmt.Errorf("fetching refresh token: %w", err)
+		return nil, fmt.Errorf("consuming refresh token: %w", err)
 	}
 
-	// Check if expired
+	// Clean up associated session
+	_ = s.sessionRepo.DeleteByRefreshTokenID(ctx, rt.ID)
+
+	// Check if expired (token already consumed, just reject)
 	if time.Now().After(rt.ExpiresAt) {
-		// Delete expired token
-		_ = s.refreshTokenRepo.Delete(ctx, rt.ID)
 		return nil, ErrInvalidToken
 	}
 
@@ -167,14 +168,6 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken, deviceName, ipA
 	user, err := s.userRepo.GetByID(ctx, rt.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("fetching user: %w", err)
-	}
-
-	// Delete old session and token (rotation)
-	if err := s.sessionRepo.DeleteByRefreshTokenID(ctx, rt.ID); err != nil {
-		return nil, fmt.Errorf("deleting old session: %w", err)
-	}
-	if err := s.refreshTokenRepo.Delete(ctx, rt.ID); err != nil {
-		return nil, fmt.Errorf("deleting old token: %w", err)
 	}
 
 	// Create new session
@@ -224,14 +217,14 @@ func (s *AuthService) LogoutAll(ctx context.Context, userID int64) error {
 
 // createSession creates a new session with tokens
 func (s *AuthService) createSession(ctx context.Context, userID int64, isAdmin bool, deviceName, ipAddress, userAgent string) (*auth.TokenPair, error) {
-	// Generate tokens
-	tokens, err := s.jwtManager.GenerateTokenPair(userID, isAdmin)
+	// Generate refresh token first (opaque, no session ID needed)
+	refreshToken, err := s.jwtManager.GenerateRefreshToken()
 	if err != nil {
-		return nil, fmt.Errorf("generating tokens: %w", err)
+		return nil, fmt.Errorf("generating refresh token: %w", err)
 	}
 
-	// Hash and store refresh token
-	tokenHash := auth.HashToken(tokens.RefreshToken)
+	// Store refresh token
+	tokenHash := auth.HashToken(refreshToken)
 	expiresAt := time.Now().Add(auth.RefreshTokenExpiry)
 
 	rtID, err := s.refreshTokenRepo.Create(ctx, userID, tokenHash, deviceName, ipAddress, expiresAt)
@@ -239,14 +232,24 @@ func (s *AuthService) createSession(ctx context.Context, userID int64, isAdmin b
 		return nil, fmt.Errorf("storing refresh token: %w", err)
 	}
 
-	// Create session
+	// Create session — now we have the session ID
 	sessionExpires := time.Now().Add(auth.RefreshTokenExpiry)
-	_, err = s.sessionRepo.Create(ctx, userID, &rtID, deviceName, ipAddress, userAgent, sessionExpires)
+	sessionID, err := s.sessionRepo.Create(ctx, userID, &rtID, deviceName, ipAddress, userAgent, sessionExpires)
 	if err != nil {
 		return nil, fmt.Errorf("creating session: %w", err)
 	}
 
-	return tokens, nil
+	// Generate access token with session ID embedded
+	accessToken, err := s.jwtManager.GenerateAccessToken(userID, isAdmin, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("generating access token: %w", err)
+	}
+
+	return &auth.TokenPair{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresAt:    time.Now().Add(auth.AccessTokenExpiry),
+	}, nil
 }
 
 // ListSessions returns all active sessions for a user
@@ -282,7 +285,8 @@ func (s *AuthService) RevokeSession(ctx context.Context, sessionID, userID int64
 	return nil
 }
 
-// ChangePassword changes a user's password (requires current password)
+// ChangePassword changes a user's password (requires current password).
+// Password update and session invalidation are atomic — both succeed or neither does.
 func (s *AuthService) ChangePassword(ctx context.Context, userID int64, oldPass, newPass string) error {
 	if len(newPass) < 8 {
 		return ErrInvalidPassword
@@ -305,13 +309,25 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID int64, oldPass,
 		return fmt.Errorf("hashing password: %w", err)
 	}
 
-	if err := s.userRepo.UpdatePassword(ctx, userID, newHash); err != nil {
+	// Atomic: update password + invalidate all sessions in one transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := s.userRepo.WithTx(tx).UpdatePassword(ctx, userID, newHash); err != nil {
 		return fmt.Errorf("updating password: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM refresh_tokens WHERE user_id = ?", userID); err != nil {
+		return fmt.Errorf("deleting refresh tokens: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", userID); err != nil {
+		return fmt.Errorf("deleting sessions: %w", err)
+	}
 
-	// Invalidate all sessions (force re-login)
-	if err := s.LogoutAll(ctx, userID); err != nil {
-		log.Printf("warning: invalidating sessions after password change for user %d: %v", userID, err)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
 	}
 
 	return nil

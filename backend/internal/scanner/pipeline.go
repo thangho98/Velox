@@ -64,9 +64,9 @@ type ScanContext struct {
 	ctx       context.Context
 }
 
-// Run executes a full scan of a library
-func (p *Pipeline) Run(ctx context.Context, libraryID int64) (*model.ScanJob, error) {
-	// Create scan job
+// CreateJob creates a queued scan job for a library.
+// This is synchronous and fast — safe to call from an HTTP handler.
+func (p *Pipeline) CreateJob(ctx context.Context, libraryID int64) (*model.ScanJob, error) {
 	job := &model.ScanJob{
 		LibraryID: libraryID,
 		Status:    "queued",
@@ -74,14 +74,18 @@ func (p *Pipeline) Run(ctx context.Context, libraryID int64) (*model.ScanJob, er
 	if err := p.scanJobRepo.Create(ctx, job); err != nil {
 		return nil, fmt.Errorf("creating scan job: %w", err)
 	}
+	return job, nil
+}
 
-	// Start the job
+// RunJob executes a scan for an already-created job. This is blocking
+// and should be called from a goroutine for async operation.
+func (p *Pipeline) RunJob(ctx context.Context, job *model.ScanJob) error {
 	if err := p.scanJobRepo.Start(ctx, job.ID); err != nil {
-		return nil, fmt.Errorf("starting scan job: %w", err)
+		return fmt.Errorf("starting scan job: %w", err)
 	}
 
 	scanCtx := &ScanContext{
-		LibraryID: libraryID,
+		LibraryID: job.LibraryID,
 		JobID:     job.ID,
 		ctx:       ctx,
 	}
@@ -90,10 +94,9 @@ func (p *Pipeline) Run(ctx context.Context, libraryID int64) (*model.ScanJob, er
 	files, err := p.discover(scanCtx)
 	if err != nil {
 		p.scanJobRepo.Fail(ctx, job.ID, err.Error())
-		return job, err
+		return err
 	}
 
-	// Update total files
 	job.TotalFiles = len(files)
 
 	var newFiles, errors int
@@ -119,11 +122,23 @@ func (p *Pipeline) Run(ctx context.Context, libraryID int64) (*model.ScanJob, er
 		}
 	}
 
-	// Complete the job
 	if err := p.scanJobRepo.Complete(ctx, job.ID, job.TotalFiles, newFiles, errors, errorLog); err != nil {
-		return job, fmt.Errorf("completing scan job: %w", err)
+		return fmt.Errorf("completing scan job: %w", err)
 	}
 
+	return nil
+}
+
+// Run creates and executes a scan job synchronously (blocking).
+// Prefer CreateJob + RunJob for async usage.
+func (p *Pipeline) Run(ctx context.Context, libraryID int64) (*model.ScanJob, error) {
+	job, err := p.CreateJob(ctx, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.RunJob(ctx, job); err != nil {
+		return job, err
+	}
 	return job, nil
 }
 

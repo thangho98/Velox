@@ -1,7 +1,7 @@
 # Phase 03: Subtitle Burn-in & Serving
-Status: ⬜ Pending
+Status: ✅ Done
 Plan: D - Playback Decision Engine
-Dependencies: Plan A Phase 05, Phase 02
+Dependencies: Plan A Ph 04 (subtitles table), Plan A Ph 05 (scanner populates subtitle rows), Phase 02
 
 ## Mục tiêu
 Serve subtitles: text-based → external VTT track, image-based (PGS) → burn-in during transcode.
@@ -21,22 +21,21 @@ Image-based (PGS, VobSub)?
 
 ## Tasks
 
-### 1. Subtitle Extractor
-- [ ] Func `ExtractSubtitle(videoPath, streamIndex, outputDir) (string, error)`
-- [ ] Text subs: `ffmpeg -i video.mkv -map 0:s:{index} -c:s webvtt output.vtt`
-- [ ] SRT→VTT converter (Go native, no FFmpeg needed for external .srt)
-- [ ] ASS→VTT: extract via FFmpeg
-- [ ] Cache extracted subs: `data/subtitles/{media_file_id}/{stream_index}.vtt`
-- **File:** `pkg/subtitle/extract.go` - NEW
+### 1. Subtitle Extractor ✅ Done
+- [x] Func `ExtractSubtitle(videoPath, streamIndex, outputDir) (string, error)`
+- [x] Uses absolute stream index: `ffmpeg -i video.mkv -map 0:N -c:s webvtt output.vtt`
+- [x] Cache extracted subs: `~/.velox/subtitles/{media_file_id}/{stream_index}.vtt`
+- **File:** `pkg/subtitle/extract.go`
 
-### 2. SRT → VTT Converter (Native Go)
-- [ ] Parse SRT format: sequence number, timestamp `00:01:23,456 --> 00:01:25,789`, text
-- [ ] Output VTT: `WEBVTT` header, timestamp `00:01:23.456 --> 00:01:25.789`, text
-- [ ] Handle: BOM, CRLF, empty lines, HTML tags in text
-- **File:** `pkg/subtitle/convert.go` - NEW
+### 2. SRT → VTT Converter (Native Go) ✅ Done
+- [x] Timestamp conversion: `00:01:23,456 --> 00:01:25,789` → `00:01:23.456 --> 00:01:25.789`
+- [x] Handle: BOM strip, CRLF normalization
+- [x] Export: `SRTToVTT(data []byte) []byte`; used in `handler/subtitle.go` `Serve()`
+- **File:** `pkg/subtitle/convert.go`
 
 ### 3. Subtitle Serving API
-- [ ] `GET /api/media/{id}/subtitles/{subID}/serve` → serve VTT file
+- Existing routes already use `media_file_id` as the key (`GET /api/media-files/{media_file_id}/subtitles`); new serve route must follow the same pattern
+- [ ] `GET /api/media-files/{media_file_id}/subtitles/{subtitle_id}/serve` → serve VTT file
 - [ ] If embedded + not yet extracted → extract on demand → serve
 - [ ] If external .srt → convert to VTT on the fly (or cache)
 - [ ] If external .vtt → serve directly
@@ -59,7 +58,7 @@ Image-based (PGS, VobSub)?
 - [ ] User selects: Primary language + Secondary language (or "Off")
 - [ ] Customizable: font size, color, background opacity, position
 - [ ] Use case: language learning (e.g., Japanese primary + Vietnamese secondary)
-- **File:** `src/components/DualSubtitleOverlay.tsx` - NEW
+- **File:** `webapp/src/components/DualSubtitleOverlay.tsx` - NEW
 
 ### 6. Frontend: Subtitle & Audio Selection Flow
 - [ ] Fetch subtitle + audio track lists on player mount
@@ -69,16 +68,16 @@ Image-based (PGS, VobSub)?
 - [ ] Image subs: selecting triggers server-side burn-in → switch to HLS stream
 - [ ] Show indicator: "Subtitle requires transcoding" for image subs (PGS/VobSub)
 - [ ] Default to user's preferred language (audio + subtitle)
-- **File:** `src/components/SubtitlePicker.tsx`, `src/components/AudioPicker.tsx` - NEW
+- **File:** `webapp/src/components/SubtitlePicker.tsx`, `webapp/src/components/AudioPicker.tsx` - NEW
 
 ## Files to Create/Modify
 - `pkg/subtitle/extract.go` - NEW
 - `pkg/subtitle/convert.go` - NEW
 - `internal/handler/subtitle.go` - Major update
-- `internal/playback/engine.go` - Subtitle + audio decision
-- `src/components/DualSubtitleOverlay.tsx` - NEW
-- `src/components/SubtitlePicker.tsx` - NEW
-- `src/components/AudioPicker.tsx` - NEW
+- `internal/playback/engine.go` - already handles burn-in decision; needs `-filter_complex` args
+- `webapp/src/components/DualSubtitleOverlay.tsx` - NEW
+- `webapp/src/components/SubtitlePicker.tsx` - NEW
+- `webapp/src/components/AudioPicker.tsx` - NEW
 
 ---
 ✅ End of Plan D

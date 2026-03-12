@@ -43,6 +43,21 @@ func (r *RefreshTokenRepo) GetByTokenHash(ctx context.Context, tokenHash string)
 	return &rt, nil
 }
 
+// ConsumeByTokenHash atomically deletes and returns a refresh token.
+// Prevents race conditions where concurrent requests could both read the same token.
+func (r *RefreshTokenRepo) ConsumeByTokenHash(ctx context.Context, tokenHash string) (*model.RefreshToken, error) {
+	var rt model.RefreshToken
+	err := r.db.QueryRowContext(ctx,
+		`DELETE FROM refresh_tokens WHERE token_hash = ?
+		RETURNING id, user_id, token_hash, device_name, ip_address, expires_at, created_at`,
+		tokenHash).
+		Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.DeviceName, &rt.IPAddress, &rt.ExpiresAt, &rt.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &rt, nil
+}
+
 // Delete removes a refresh token by ID
 func (r *RefreshTokenRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM refresh_tokens WHERE id = ?", id)
