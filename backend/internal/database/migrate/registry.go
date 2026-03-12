@@ -60,6 +60,12 @@ func All() []Migration {
 			Up:      up009,
 			Down:    down009,
 		},
+		{
+			Version: 10,
+			Name:    "library_paths",
+			Up:      up010,
+			Down:    down010,
+		},
 	}
 }
 
@@ -553,5 +559,28 @@ func down009(tx *sql.Tx) error {
 		DROP TABLE IF EXISTS user_series_data;
 		DROP TABLE IF EXISTS user_data;
 	`)
+	return err
+}
+
+// 010: Library paths — support multiple folders per library
+func up010(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE library_paths (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+			path       TEXT NOT NULL UNIQUE
+		);
+
+		CREATE INDEX idx_library_paths ON library_paths(library_id);
+
+		-- Migrate existing single-path libraries
+		INSERT INTO library_paths (library_id, path)
+		SELECT id, path FROM libraries WHERE path != '';
+	`)
+	return err
+}
+
+func down010(tx *sql.Tx) error {
+	_, err := tx.Exec(`DROP TABLE IF EXISTS library_paths;`)
 	return err
 }

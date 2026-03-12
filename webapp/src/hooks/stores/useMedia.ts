@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/fetch'
 import type {
+  FsBrowseResponse,
   Library,
   CreateLibraryRequest,
   Media,
@@ -20,6 +21,15 @@ import type {
   FavoritesListParams,
   RecentlyWatchedParams,
 } from '@/types/api'
+
+// Filesystem browser API (admin only)
+export function useFsBrowse(path: string) {
+  return useQuery({
+    queryKey: ['fs-browse', path],
+    queryFn: () => api.get<FsBrowseResponse>(`/admin/fs/browse?path=${encodeURIComponent(path)}`),
+    staleTime: 0, // always fresh — filesystem can change
+  })
+}
 
 // Library API Functions
 const libraryApi = {
@@ -251,6 +261,7 @@ export function useStreamUrls(mediaId: number, request: PlaybackInfoRequest = {}
       return {
         direct: info.stream_url,
         hls: isHLS ? info.stream_url : undefined,
+        abr: info.abr_url || undefined,
         primary_file_id: info.primary_file_id,
       }
     },

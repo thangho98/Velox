@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 type Config struct {
@@ -13,7 +14,16 @@ type Config struct {
 	DatabasePath      string
 	TranscodePath     string
 	SubtitleCachePath string
+	TrickplayPath     string
 	CORSOrigin        string
+
+	// Hardware transcoding (Plan E Phase 01)
+	HWAccel       string // auto|videotoolbox|vaapi|nvenc|qsv|none
+	MaxTranscodes int    // max concurrent FFmpeg jobs
+
+	// Trickplay thumbnails (Plan E Phase 03)
+	TrickplayEnabled  bool
+	TrickplayInterval int // seconds between thumbnail frames
 }
 
 func Load() *Config {
@@ -26,7 +36,13 @@ func Load() *Config {
 		DatabasePath:      filepath.Join(dataDir, "velox.db"),
 		TranscodePath:     filepath.Join(dataDir, "transcode"),
 		SubtitleCachePath: filepath.Join(dataDir, "subtitles"),
+		TrickplayPath:     filepath.Join(dataDir, "trickplay"),
 		CORSOrigin:        envOrDefault("VELOX_CORS_ORIGIN", "http://localhost:5173"),
+
+		HWAccel:           envOrDefault("VELOX_HW_ACCEL", "auto"),
+		MaxTranscodes:     envOrDefaultInt("VELOX_MAX_TRANSCODES", 2),
+		TrickplayEnabled:  envOrDefaultBool("VELOX_TRICKPLAY_ENABLED", false),
+		TrickplayInterval: envOrDefaultInt("VELOX_TRICKPLAY_INTERVAL", 10),
 	}
 }
 
@@ -37,6 +53,32 @@ func (c *Config) Addr() string {
 func envOrDefault(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func envOrDefaultInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
+
+func envOrDefaultBool(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	switch v {
+	case "1", "true", "yes":
+		return true
+	case "0", "false", "no":
+		return false
 	}
 	return fallback
 }

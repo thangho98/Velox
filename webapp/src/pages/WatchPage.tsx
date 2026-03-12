@@ -14,6 +14,9 @@ import { getCapabilities } from '@/lib/capabilities'
 import { DualSubtitleOverlay } from '@/components/DualSubtitleOverlay'
 import { SubtitlePicker } from '@/components/SubtitlePicker'
 import { AudioPicker } from '@/components/AudioPicker'
+import { QualityPicker } from '@/components/QualityPicker'
+import { TrickplayPreview } from '@/components/TrickplayPreview'
+import { useToast } from '@/components/Toast'
 import type { PlaybackSubtitleTrack } from '@/types/api'
 
 // Keyboard shortcut constants
@@ -31,6 +34,7 @@ export function WatchPage() {
   const { data: media, isLoading: mediaLoading } = useMediaWithFiles(mediaId)
   const { mutate: updateProgress } = useUpdateProgress()
   const { accessToken } = useAuthStore()
+  const { info: showToastInfo } = useToast()
 
   const {
     volume,
@@ -97,6 +101,15 @@ export function WatchPage() {
   const [isBuffering, setIsBuffering] = useState(false)
   const [availableLevels, setAvailableLevels] = useState<{ level: number; height: number }[]>([])
   const [currentLevel, setCurrentLevel] = useState(-1) // -1 = auto
+  const [bandwidth, setBandwidth] = useState<number | null>(null)
+  const [showQualityIndicator, setShowQualityIndicator] = useState(false)
+  const qualityIndicatorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Trickplay preview state
+  const [isHoveringTimeline, setIsHoveringTimeline] = useState(false)
+  const [hoverTime, setHoverTime] = useState(0)
+  const [hoverPositionX, setHoverPositionX] = useState(0)
+  const progressBarRef = useRef<HTMLDivElement>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false)
   const [showAudioMenu, setShowAudioMenu] = useState(false)
@@ -158,17 +171,29 @@ export function WatchPage() {
       hlsRef.current = null
     }
 
-    const streamUrl = streamUrls.hls || streamUrls.direct
-    if (!streamUrl) {
+    // Prefer ABR (multi-quality) over single-quality HLS over direct play
+    const rawUrl = streamUrls.abr || streamUrls.hls || streamUrls.direct
+    if (!rawUrl) {
       return
     }
+    // Append access token — browser cannot send Authorization header for video src / HLS fetches.
+    const streamUrl = accessToken
+      ? rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(accessToken)
+      : rawUrl
 
-    if (streamUrls.hls && Hls.isSupported()) {
+    if ((streamUrls.abr || streamUrls.hls) && Hls.isSupported()) {
       // HLS playback with hls.js
+      const token = accessToken
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 600,
         enableWorker: true,
+        // Attach Bearer token to every XHR hls.js makes (master, variant, segments).
+        xhrSetup: (xhr) => {
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+          }
+        },
       })
       hlsRef.current = hls
 
@@ -195,6 +220,31 @@ export function WatchPage() {
 
       hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
         setCurrentLevel(data.level)
+        // Show quality indicator when level switches
+        setShowQualityIndicator(true)
+        if (qualityIndicatorTimeoutRef.current) {
+          clearTimeout(qualityIndicatorTimeoutRef.current)
+        }
+        qualityIndicatorTimeoutRef.current = setTimeout(() => {
+          setShowQualityIndicator(false)
+        }, 3000)
+      })
+
+      hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+        // Calculate bandwidth from fragment stats
+        const stats = data.frag.stats
+        if (stats && stats.loaded && stats.loading) {
+          const duration = stats.loading.end - stats.loading.start
+          if (duration > 0) {
+            const bitsLoaded = stats.loaded * 8
+            const bitrateMbps = bitsLoaded / duration / 1000 / 1000
+            setBandwidth(bitrateMbps)
+            // Show warning if bandwidth is low (< 1.5 Mbps)
+            if (bitrateMbps < 1.5 && bitrateMbps > 0) {
+              showToastInfo('Kết nối yếu, chất lượng video có thể giảm')
+            }
+          }
+        }
       })
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -520,6 +570,24 @@ export function WatchPage() {
         </div>
       )}
 
+      {/* Quality & Bandwidth indicator */}
+      {showQualityIndicator && availableLevels.length > 0 && (
+        <div className="absolute right-4 top-4 rounded bg-black/60 px-3 py-1.5 text-sm text-white backdrop-blur-sm transition-opacity">
+          {(() => {
+            const height =
+              currentLevel === -1
+                ? availableLevels.find((l) => l.level === hlsRef.current?.currentLevel)?.height
+                : availableLevels.find((l) => l.level === currentLevel)?.height
+            return (
+              <span>
+                {height ? `${height}p` : 'Auto'}
+                {bandwidth !== null && ` · ${bandwidth.toFixed(1)} Mbps`}
+              </span>
+            )
+          })()}
+        </div>
+      )}
+
       {/* Controls Overlay */}
       <div
         className={`absolute inset-0 flex flex-col justify-between bg-gradient-to-t from-black/80 via-transparent to-black/40 p-6 transition-opacity ${
@@ -565,8 +633,29 @@ export function WatchPage() {
 
         {/* Bottom controls */}
         <div className="space-y-3">
-          {/* Progress bar with buffer indicator */}
-          <div className="group relative">
+          {/* Progress bar with buffer indicator and trickplay */}
+          <div
+            ref={progressBarRef}
+            className="group relative"
+            onMouseEnter={() => setIsHoveringTimeline(true)}
+            onMouseLeave={() => setIsHoveringTimeline(false)}
+            onMouseMove={(e) => {
+              if (!progressBarRef.current || !duration) return
+              const rect = progressBarRef.current.getBoundingClientRect()
+              const x = e.clientX - rect.left
+              const percentage = Math.max(0, Math.min(1, x / rect.width))
+              setHoverTime(percentage * duration)
+              setHoverPositionX(x)
+            }}
+          >
+            {/* Trickplay preview */}
+            <TrickplayPreview
+              mediaId={mediaId}
+              currentHoverTime={hoverTime}
+              visible={isHoveringTimeline && duration > 0}
+              positionX={hoverPositionX}
+            />
+
             {/* Buffered bar */}
             <div className="absolute h-1 w-full rounded-full bg-white/20">
               <div
@@ -728,6 +817,16 @@ export function WatchPage() {
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* Quality picker (HLS only) */}
+              {availableLevels.length > 0 && (
+                <QualityPicker
+                  levels={availableLevels}
+                  currentLevel={currentLevel}
+                  onChange={changeQualityLevel}
+                  currentHeight={availableLevels.find((l) => l.level === currentLevel)?.height}
+                />
               )}
 
               {/* Settings (Quality & Speed) */}

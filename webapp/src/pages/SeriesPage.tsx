@@ -41,12 +41,12 @@ export function SeriesPage() {
   })
 
   // Get unique genres and years for filters
-  const genres = [...new Set(series?.flatMap((s) => s.genres) || [])].sort()
+  const genres = [...new Set(series?.flatMap((s) => s.genres ?? []) || [])].filter(Boolean).sort()
   const years = [
     ...new Set(
       series
         ?.map((s) => (s.release_date ? new Date(s.release_date).getFullYear() : null))
-        .filter((y): y is number => y !== null) || [],
+        .filter((y): y is number => y !== null && !Number.isNaN(y)) || [],
     ),
   ].sort((a, b) => b - a)
 

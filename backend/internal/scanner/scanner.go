@@ -50,7 +50,10 @@ func (s *Scanner) ScanLibrary(ctx context.Context, libraryID int64) error {
 		return err
 	}
 
-	return filepath.WalkDir(lib.Path, func(path string, d os.DirEntry, err error) error {
+	if len(lib.Paths) == 0 {
+		return fmt.Errorf("library %d has no configured paths", libraryID)
+	}
+	return filepath.WalkDir(lib.Paths[0], func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil // skip inaccessible paths
 		}

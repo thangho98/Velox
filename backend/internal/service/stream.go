@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"io"
+	"log"
 
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
@@ -50,7 +51,7 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID in
 	// Check for multiple audio tracks
 	audioTracks, err := s.audioTrackRepo.ListByMediaFileID(ctx, mf.ID)
 	if err != nil {
-		// Fall back to simple HLS if can't get audio tracks
+		log.Printf("stream: list audio tracks for file %d: %v — falling back to simple HLS", mf.ID, err)
 		audioTracks = nil
 	}
 
@@ -91,6 +92,35 @@ func (s *StreamService) GetPrimaryFile(ctx context.Context, mediaID, fileID int6
 		return nil, ErrNotFound
 	}
 	return mf, err
+}
+
+// PrepareABRHLS triggers multi-quality adaptive bitrate HLS transcoding and
+// returns the ABR master playlist path.
+// If fileID > 0, uses that specific file (verified to belong to mediaID).
+func (s *StreamService) PrepareABRHLS(ctx context.Context, mediaID, fileID int64) (string, error) {
+	mf, err := s.GetPrimaryFile(ctx, mediaID, fileID)
+	if err != nil {
+		return "", err
+	}
+	if err := s.transcoder.GenerateABRHLS(mediaID, mf.FilePath, mf.Height, mf.ID); err != nil {
+		return "", err
+	}
+	return s.transcoder.ABRMasterPath(mediaID, mf.ID), nil
+}
+
+// ABRCached reports whether the ABR master playlist for (mediaID, fileID) already exists on disk.
+func (s *StreamService) ABRCached(mediaID, fileID int64) bool {
+	return s.transcoder.ABRCached(mediaID, fileID)
+}
+
+// StartABRBackground triggers ABR HLS generation for the given media file
+// asynchronously. The caller does not wait for completion.
+func (s *StreamService) StartABRBackground(mediaID, fileID int64, inputPath string, sourceHeight int) {
+	go func() {
+		if err := s.transcoder.GenerateABRHLS(mediaID, inputPath, sourceHeight, fileID); err != nil {
+			log.Printf("stream: background ABR generation for media %d file %d: %v", mediaID, fileID, err)
+		}
+	}()
 }
 
 // RemuxToWriter remuxes the file to fragmented MP4 and writes to w.

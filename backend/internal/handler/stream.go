@@ -2,9 +2,11 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/thawng/velox/internal/playback"
 	"github.com/thawng/velox/internal/service"
@@ -101,6 +103,7 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "video/mp4")
 		if err := h.svc.RemuxToWriter(mf.FilePath, w); err != nil {
 			// Headers already sent; cannot write an error response.
+			log.Printf("stream: directstream remux failed for media %d (%s): %v", id, mf.FilePath, err)
 			return
 		}
 
@@ -146,6 +149,37 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, playlistPath)
 }
 
+// HLSABRMaster serves the adaptive bitrate HLS master playlist.
+// Triggers multi-quality transcoding (480p/720p/1080p) if not yet cached.
+// The FE quality picker (hls.js levels API) uses the resulting variant streams.
+func (h *StreamHandler) HLSABRMaster(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var fileID int64
+	if fid := r.URL.Query().Get("fid"); fid != "" {
+		if n, err := strconv.ParseInt(fid, 10, 64); err == nil {
+			fileID = n
+		}
+	}
+
+	playlistPath, err := h.svc.PrepareABRHLS(r.Context(), id, fileID)
+	if errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "abr transcoding failed: "+err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	http.ServeFile(w, r, playlistPath)
+}
+
 // HLSSegment serves individual HLS .ts segments.
 func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
@@ -155,6 +189,10 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	segment := r.PathValue("segment")
+	if !isValidSegmentName(segment) {
+		respondError(w, http.StatusBadRequest, "invalid segment name")
+		return
+	}
 	path := h.svc.SegmentPath(id, segment)
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -164,4 +202,22 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "video/mp2t")
 	http.ServeFile(w, r, path)
+}
+
+// isValidSegmentName validates that a segment filename is safe to serve.
+// Only alphanumeric, underscore, hyphen, and dot are allowed; no path separators.
+// Accepts .ts (video/audio segments) and .m3u8 (audio sub-playlists).
+func isValidSegmentName(name string) bool {
+	if name == "" {
+		return false
+	}
+	if !strings.HasSuffix(name, ".ts") && !strings.HasSuffix(name, ".m3u8") {
+		return false
+	}
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.') {
+			return false
+		}
+	}
+	return true
 }

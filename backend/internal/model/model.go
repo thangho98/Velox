@@ -1,12 +1,12 @@
 package model
 
-// Library represents a media library (folder on disk)
+// Library represents a media library (one or more folders on disk)
 type Library struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Type      string `json:"type"` // "movies" | "tvshows" | "mixed"
-	CreatedAt string `json:"created_at"`
+	ID        int64    `json:"id"`
+	Name      string   `json:"name"`
+	Type      string   `json:"type"`  // "movies" | "tvshows" | "mixed"
+	Paths     []string `json:"paths"` // all root folders; at least one required
+	CreatedAt string   `json:"created_at"`
 }
 
 // Genre represents a media genre

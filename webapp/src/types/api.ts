@@ -1,5 +1,17 @@
 // API Response Types - matches backend JSON structure
 
+// Filesystem browser (used by Add Library UI)
+export interface FsDirEntry {
+  name: string
+  path: string
+}
+
+export interface FsBrowseResponse {
+  current: string
+  parent?: string
+  dirs: FsDirEntry[]
+}
+
 // Generic API responses
 export interface ApiResponse<T> {
   data: T
@@ -84,16 +96,15 @@ export interface Session {
 export interface Library {
   id: number
   name: string
-  path: string
   type: string
+  paths: string[]
   created_at: string
-  updated_at: string
 }
 
 export interface CreateLibraryRequest {
   name: string
-  path: string
   type: string
+  paths: string[]
 }
 
 // Media Types
@@ -230,6 +241,7 @@ export interface RecentlyWatchedParams {
 export interface StreamUrls {
   direct: string
   hls?: string
+  abr?: string // adaptive bitrate HLS (multi-quality variants)
   primary_file_id?: number
 }
 
@@ -290,6 +302,7 @@ export interface PlaybackInfo {
   primary_file_id: number
   method: string // DirectPlay, DirectStream, TranscodeAudio, FullTranscode
   stream_url: string
+  abr_url?: string // adaptive bitrate HLS master playlist (populated when transcoding)
   video_codec: string
   audio_codec: string
   container: string

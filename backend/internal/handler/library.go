@@ -26,9 +26,9 @@ func (h *LibraryHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 type createLibraryReq struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Type string `json:"type"`
+	Name  string   `json:"name"`
+	Paths []string `json:"paths"`
+	Type  string   `json:"type"`
 }
 
 func (h *LibraryHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -37,19 +37,25 @@ func (h *LibraryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Name == "" || req.Path == "" {
-		respondError(w, http.StatusBadRequest, "name and path are required")
+	if req.Name == "" {
+		respondError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if len(req.Paths) == 0 {
+		respondError(w, http.StatusBadRequest, "at least one path is required")
 		return
 	}
 
-	// Verify the path exists
-	info, err := os.Stat(req.Path)
-	if err != nil || !info.IsDir() {
-		respondError(w, http.StatusBadRequest, "path does not exist or is not a directory")
-		return
+	// Verify every path exists and is a directory
+	for _, p := range req.Paths {
+		info, err := os.Stat(p)
+		if err != nil || !info.IsDir() {
+			respondError(w, http.StatusBadRequest, "path does not exist or is not a directory: "+p)
+			return
+		}
 	}
 
-	lib, err := h.svc.Create(r.Context(), req.Name, req.Path, req.Type)
+	lib, err := h.svc.Create(r.Context(), req.Name, req.Type, req.Paths)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

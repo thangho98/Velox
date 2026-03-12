@@ -142,7 +142,7 @@ func (p *Pipeline) Run(ctx context.Context, libraryID int64) (*model.ScanJob, er
 	return job, nil
 }
 
-// discover finds all video files in the library
+// discover finds all video files in the library (across all configured paths).
 func (p *Pipeline) discover(scanCtx *ScanContext) ([]string, error) {
 	lib, err := p.libraryRepo.GetByID(scanCtx.ctx, scanCtx.LibraryID)
 	if err != nil {
@@ -150,21 +150,24 @@ func (p *Pipeline) discover(scanCtx *ScanContext) ([]string, error) {
 	}
 
 	var files []string
-	err = filepath.WalkDir(lib.Path, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip inaccessible paths
-		}
-		if d.IsDir() {
+	for _, root := range lib.Paths {
+		if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil // skip inaccessible paths
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if isVideoFile(path) {
+				files = append(files, path)
+			}
 			return nil
+		}); err != nil {
+			return nil, fmt.Errorf("walking %q: %w", root, err)
 		}
+	}
 
-		if isVideoFile(path) {
-			files = append(files, path)
-		}
-		return nil
-	})
-
-	return files, err
+	return files, nil
 }
 
 // processFile processes a single video file through the pipeline.

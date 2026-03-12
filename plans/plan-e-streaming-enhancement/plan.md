@@ -14,3 +14,4 @@ Chỉ làm SAU KHI playback decision engine hoạt động đúng.
 | 01 | Hardware Transcoding | 5 tasks | ⬜ |
 | 02 | Adaptive Bitrate HLS | 5 tasks | ⬜ |
 | 03 | Trickplay Thumbnails | 4 tasks | ⬜ |
+    

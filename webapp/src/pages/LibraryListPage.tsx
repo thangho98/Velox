@@ -69,7 +69,7 @@ export function LibraryListPage() {
                   />
                 </svg>
               </div>
-              <p className="mt-2 truncate text-xs text-gray-500">{lib.path}</p>
+              <p className="mt-2 truncate text-xs text-gray-500">{lib.paths?.[0]}</p>
             </button>
           ))}
           {libraries?.length === 0 && (
@@ -270,7 +270,7 @@ function CreateLibraryModal({ onClose }: { onClose: () => void }) {
     }
 
     createLibrary(
-      { name, path, type },
+      { name, paths: [path], type },
       {
         onSuccess: () => {
           onClose()

@@ -23,8 +23,8 @@ func (s *LibraryService) List(ctx context.Context) ([]model.Library, error) {
 	return s.repo.List(ctx)
 }
 
-func (s *LibraryService) Create(ctx context.Context, name, path, libType string) (*model.Library, error) {
-	return s.repo.Create(ctx, name, path, libType)
+func (s *LibraryService) Create(ctx context.Context, name, libType string, paths []string) (*model.Library, error) {
+	return s.repo.Create(ctx, name, libType, paths)
 }
 
 func (s *LibraryService) Delete(ctx context.Context, id int64) error {

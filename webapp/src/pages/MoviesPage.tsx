@@ -41,12 +41,12 @@ export function MoviesPage() {
   })
 
   // Get unique genres and years for filters
-  const genres = [...new Set(movies?.flatMap((m) => m.genres) || [])].sort()
+  const genres = [...new Set(movies?.flatMap((m) => m.genres ?? []) || [])].filter(Boolean).sort()
   const years = [
     ...new Set(
       movies
         ?.map((m) => (m.release_date ? new Date(m.release_date).getFullYear() : null))
-        .filter((y): y is number => y !== null) || [],
+        .filter((y): y is number => y !== null && !Number.isNaN(y)) || [],
     ),
   ].sort((a, b) => b - a)
 

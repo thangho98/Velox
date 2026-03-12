@@ -58,6 +58,7 @@ type PlaybackInfoResponse struct {
 	PrimaryFileID    int64               `json:"primary_file_id,omitempty"` // file ID used for this decision
 	Method           string              `json:"method"`                    // DirectPlay, DirectStream, TranscodeAudio, FullTranscode
 	StreamURL        string              `json:"stream_url"`
+	AbrURL           string              `json:"abr_url,omitempty"` // adaptive bitrate HLS (multi-quality); only set when transcoding
 	VideoCodec       string              `json:"video_codec"`
 	AudioCodec       string              `json:"audio_codec"`
 	Container        string              `json:"container"`
@@ -274,6 +275,18 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		}
 	case playback.MethodTranscodeAudio, playback.MethodFullTranscode:
 		resp.StreamURL = baseURL + "/hls/master.m3u8?fid=" + fid
+		// ABR pipeline encodes audio once (default track only) and has no subtitle filter.
+		// Only offer ABR when neither subtitle burn-in nor a non-default audio track is needed.
+		if subtitleStreamIndex < 0 && prefs.SelectedAudioTrack == 0 {
+			if h.streamSvc.ABRCached(mediaID, primaryFile.ID) {
+				// Already transcoded — serve it immediately.
+				resp.AbrURL = baseURL + "/hls/abr.m3u8?fid=" + fid
+			} else {
+				// Not cached yet: kick off background generation; client will use
+				// regular HLS this time and get ABR on the next visit.
+				h.streamSvc.StartABRBackground(mediaID, primaryFile.ID, primaryFile.FilePath, primaryFile.Height)
+			}
+		}
 		if subtitleStreamIndex >= 0 {
 			resp.StreamURL += "&si=" + strconv.Itoa(subtitleStreamIndex)
 		}

@@ -15,10 +15,12 @@ import (
 	"github.com/thawng/velox/internal/database"
 	"github.com/thawng/velox/internal/handler"
 	"github.com/thawng/velox/internal/middleware"
+	"github.com/thawng/velox/internal/playback"
 	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/service"
 	"github.com/thawng/velox/internal/transcoder"
+	"github.com/thawng/velox/internal/trickplay"
 )
 
 func main() {
@@ -128,7 +130,23 @@ func runServer() {
 		seriesRepo, seasonRepo, episodeRepo,
 		scanJobRepo, subtitleRepo, audioTrackRepo,
 	)
-	transcoderSvc := transcoder.New(cfg.TranscodePath)
+	// Resolve hardware accelerator
+	hwAccel := cfg.HWAccel
+	switch hwAccel {
+	case "auto":
+		hwAccel = playback.DetectHWAccel()
+		if hwAccel != "" {
+			log.Printf("hardware acceleration: %s", hwAccel)
+		} else {
+			log.Printf("hardware acceleration: none detected, using software encoder")
+		}
+	case "none":
+		hwAccel = ""
+	default:
+		log.Printf("hardware acceleration: %s (configured)", hwAccel)
+	}
+
+	transcoderSvc := transcoder.New(cfg.TranscodePath, hwAccel, cfg.MaxTranscodes)
 	librarySvc := service.NewLibraryService(libraryRepo, scanJobRepo, pipeline)
 	mediaSvc := service.NewMediaService(mediaRepo, mediaFileRepo)
 	streamSvc := service.NewStreamService(mediaFileRepo, audioTrackRepo, transcoderSvc)
@@ -148,6 +166,17 @@ func runServer() {
 	playbackHandler := handler.NewPlaybackHandler(mediaSvc, streamSvc, userDataSvc, subtitleSvc, audioTrackSvc, prefsRepo)
 	subtitleHandler := handler.NewSubtitleHandler(subtitleSvc, mediaFileRepo, cfg.SubtitleCachePath)
 	audioTrackHandler := handler.NewAudioTrackHandler(audioTrackSvc)
+
+	// Trickplay (Plan E Phase 03) — nil when disabled, handlers return 404 gracefully
+	var trickplayGen *trickplay.Generator
+	if cfg.TrickplayEnabled {
+		if err := os.MkdirAll(cfg.TrickplayPath, 0755); err != nil {
+			log.Fatalf("failed to create trickplay dir: %v", err)
+		}
+		trickplayGen = trickplay.New(cfg.TrickplayPath, cfg.TrickplayInterval)
+		log.Printf("trickplay enabled (interval: %ds)", cfg.TrickplayInterval)
+	}
+	trickplayHandler := handler.NewTrickplayHandler(trickplayGen, streamSvc)
 
 	// Router
 	mux := http.NewServeMux()
@@ -173,6 +202,9 @@ func runServer() {
 	mux.Handle("PATCH /api/users/{id}", middleware.RequireAdmin(http.HandlerFunc(userHandler.Update)))
 	mux.Handle("DELETE /api/users/{id}", middleware.RequireAdmin(http.HandlerFunc(userHandler.Delete)))
 	mux.Handle("PUT /api/users/{id}/library-access", middleware.RequireAdmin(http.HandlerFunc(userHandler.SetLibraryAccess)))
+
+	// Filesystem browser (admin only — used by Add Library UI)
+	mux.Handle("GET /api/admin/fs/browse", middleware.RequireAdmin(http.HandlerFunc(handler.FSBrowse)))
 
 	// Library admin routes
 	mux.Handle("POST /api/libraries", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.Create)))
@@ -205,7 +237,12 @@ func runServer() {
 	// API routes - Streaming
 	mux.HandleFunc("GET /api/stream/{id}", streamHandler.DirectPlay)
 	mux.HandleFunc("GET /api/stream/{id}/hls/master.m3u8", streamHandler.HLSMaster)
+	mux.HandleFunc("GET /api/stream/{id}/hls/abr.m3u8", streamHandler.HLSABRMaster)
 	mux.HandleFunc("GET /api/stream/{id}/hls/{segment}", streamHandler.HLSSegment)
+
+	// API routes - Trickplay (Plan E Phase 03)
+	mux.HandleFunc("GET /api/media/{id}/trickplay/manifest.vtt", trickplayHandler.ServeVTT)
+	mux.HandleFunc("GET /api/media/{id}/trickplay/{sprite}", trickplayHandler.ServeSprite)
 
 	// API routes - Playback Decision
 	mux.HandleFunc("POST /api/playback/{id}/info", playbackHandler.GetPlaybackInfo)
