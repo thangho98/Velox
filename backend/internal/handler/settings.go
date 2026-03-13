@@ -1,0 +1,237 @@
+package handler
+
+import (
+	"net/http"
+
+	"github.com/thawng/velox/internal/model"
+	"github.com/thawng/velox/internal/repository"
+)
+
+// SettingsHandler handles admin settings endpoints.
+type SettingsHandler struct {
+	repo *repository.AppSettingsRepo
+}
+
+// NewSettingsHandler creates a new settings handler.
+func NewSettingsHandler(repo *repository.AppSettingsRepo) *SettingsHandler {
+	return &SettingsHandler{repo: repo}
+}
+
+// openSubsResponse is the JSON shape for GET /api/admin/settings/opensubtitles.
+type openSubsResponse struct {
+	APIKey      string `json:"api_key"`
+	Username    string `json:"username"`
+	PasswordSet bool   `json:"password_set"`
+}
+
+// openSubsRequest is the JSON shape for PUT /api/admin/settings/opensubtitles.
+type openSubsRequest struct {
+	APIKey   string `json:"api_key"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// GetOpenSubtitles returns the current OpenSubtitles configuration.
+// GET /api/admin/settings/opensubtitles
+func (h *SettingsHandler) GetOpenSubtitles(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	vals, err := h.repo.GetMulti(ctx,
+		model.SettingOpenSubsAPIKey,
+		model.SettingOpenSubsUsername,
+		model.SettingOpenSubsPassword,
+	)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, openSubsResponse{
+		APIKey:      vals[model.SettingOpenSubsAPIKey],
+		Username:    vals[model.SettingOpenSubsUsername],
+		PasswordSet: vals[model.SettingOpenSubsPassword] != "",
+	})
+}
+
+// UpdateOpenSubtitles saves OpenSubtitles credentials.
+// PUT /api/admin/settings/opensubtitles
+func (h *SettingsHandler) UpdateOpenSubtitles(w http.ResponseWriter, r *http.Request) {
+	var req openSubsRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	ctx := r.Context()
+
+	if err := h.repo.Set(ctx, model.SettingOpenSubsAPIKey, req.APIKey); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save api_key")
+		return
+	}
+	if err := h.repo.Set(ctx, model.SettingOpenSubsUsername, req.Username); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save username")
+		return
+	}
+	if err := h.repo.Set(ctx, model.SettingOpenSubsPassword, req.Password); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save password")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, openSubsResponse{
+		APIKey:      req.APIKey,
+		Username:    req.Username,
+		PasswordSet: req.Password != "",
+	})
+}
+
+// tmdbResponse is the JSON shape for GET /api/admin/settings/tmdb.
+type tmdbResponse struct {
+	APIKey string `json:"api_key"`
+}
+
+// tmdbRequest is the JSON shape for PUT /api/admin/settings/tmdb.
+type tmdbRequest struct {
+	APIKey string `json:"api_key"`
+}
+
+// GetTMDb returns the current TMDb configuration.
+// GET /api/admin/settings/tmdb
+func (h *SettingsHandler) GetTMDb(w http.ResponseWriter, r *http.Request) {
+	val, err := h.repo.Get(r.Context(), model.SettingTMDbAPIKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	respondJSON(w, http.StatusOK, tmdbResponse{APIKey: val})
+}
+
+// UpdateTMDb saves the TMDb API key.
+// PUT /api/admin/settings/tmdb
+func (h *SettingsHandler) UpdateTMDb(w http.ResponseWriter, r *http.Request) {
+	var req tmdbRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if err := h.repo.Set(r.Context(), model.SettingTMDbAPIKey, req.APIKey); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save api_key")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, tmdbResponse{APIKey: req.APIKey})
+}
+
+// omdbResponse is the JSON shape for GET /api/admin/settings/omdb.
+type omdbResponse struct {
+	APIKey string `json:"api_key"`
+}
+
+// omdbRequest is the JSON shape for PUT /api/admin/settings/omdb.
+type omdbRequest struct {
+	APIKey string `json:"api_key"`
+}
+
+// GetOMDb returns the current OMDb configuration.
+// GET /api/admin/settings/omdb
+func (h *SettingsHandler) GetOMDb(w http.ResponseWriter, r *http.Request) {
+	val, err := h.repo.Get(r.Context(), model.SettingOMDbAPIKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	respondJSON(w, http.StatusOK, omdbResponse{APIKey: val})
+}
+
+// UpdateOMDb saves the OMDb API key.
+// PUT /api/admin/settings/omdb
+func (h *SettingsHandler) UpdateOMDb(w http.ResponseWriter, r *http.Request) {
+	var req omdbRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if err := h.repo.Set(r.Context(), model.SettingOMDbAPIKey, req.APIKey); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save api_key")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, omdbResponse{APIKey: req.APIKey})
+}
+
+// tvdbResponse is the JSON shape for GET /api/admin/settings/tvdb.
+type tvdbResponse struct {
+	APIKey string `json:"api_key"`
+}
+
+// tvdbRequest is the JSON shape for PUT /api/admin/settings/tvdb.
+type tvdbRequest struct {
+	APIKey string `json:"api_key"`
+}
+
+// GetTVDB returns the current TheTVDB configuration.
+// GET /api/admin/settings/tvdb
+func (h *SettingsHandler) GetTVDB(w http.ResponseWriter, r *http.Request) {
+	val, err := h.repo.Get(r.Context(), model.SettingTVDBAPIKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	respondJSON(w, http.StatusOK, tvdbResponse{APIKey: val})
+}
+
+// UpdateTVDB saves the TheTVDB API key.
+// PUT /api/admin/settings/tvdb
+func (h *SettingsHandler) UpdateTVDB(w http.ResponseWriter, r *http.Request) {
+	var req tvdbRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if err := h.repo.Set(r.Context(), model.SettingTVDBAPIKey, req.APIKey); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save api_key")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, tvdbResponse{APIKey: req.APIKey})
+}
+
+// fanartResponse is the JSON shape for GET /api/admin/settings/fanart.
+type fanartResponse struct {
+	APIKey string `json:"api_key"`
+}
+
+// fanartRequest is the JSON shape for PUT /api/admin/settings/fanart.
+type fanartRequest struct {
+	APIKey string `json:"api_key"`
+}
+
+// GetFanart returns the current fanart.tv configuration.
+// GET /api/admin/settings/fanart
+func (h *SettingsHandler) GetFanart(w http.ResponseWriter, r *http.Request) {
+	val, err := h.repo.Get(r.Context(), model.SettingFanartAPIKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	respondJSON(w, http.StatusOK, fanartResponse{APIKey: val})
+}
+
+// UpdateFanart saves the fanart.tv API key.
+// PUT /api/admin/settings/fanart
+func (h *SettingsHandler) UpdateFanart(w http.ResponseWriter, r *http.Request) {
+	var req fanartRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if err := h.repo.Set(r.Context(), model.SettingFanartAPIKey, req.APIKey); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save api_key")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, fanartResponse{APIKey: req.APIKey})
+}
