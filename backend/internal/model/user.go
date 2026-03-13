@@ -53,3 +53,40 @@ type UserSeriesData struct {
 	Rating     *float64 `json:"rating"`
 	UpdatedAt  string   `json:"updated_at"`
 }
+
+// ContinueWatchingItem represents an in-progress media item (movie or episode)
+type ContinueWatchingItem struct {
+	// UserData fields
+	MediaID      int64   `json:"media_id"`
+	Position     float64 `json:"position"`
+	Completed    bool    `json:"completed"`
+	LastPlayedAt *string `json:"last_played_at"`
+
+	// Media fields
+	Title         string  `json:"title"`
+	PosterPath    string  `json:"poster_path"`
+	BackdropPath  string  `json:"backdrop_path"`
+	MediaType     string  `json:"media_type"`
+	MediaDuration float64 `json:"duration"`
+
+	// Episode context (nullable for movies)
+	SeriesTitle   string `json:"series_title,omitempty"`
+	SeasonNumber  int    `json:"season_number,omitempty"`
+	EpisodeNumber int    `json:"episode_number,omitempty"`
+}
+
+// NextUpItem represents the next unwatched episode for a series
+type NextUpItem struct {
+	MediaID       int64   `json:"media_id"`
+	Title         string  `json:"title"`
+	EpisodeTitle  string  `json:"episode_title"`
+	MediaType     string  `json:"media_type"`
+	StillPath     string  `json:"still_path"`
+	BackdropPath  string  `json:"backdrop_path"`
+	Duration      float64 `json:"duration"`
+	SeasonNumber  int     `json:"season_number"`
+	EpisodeNumber int     `json:"episode_number"`
+	SeriesTitle   string  `json:"series_title"`
+	SeriesPoster  string  `json:"series_poster"`
+	LastWatchedAt *string `json:"last_watched_at"`
+}

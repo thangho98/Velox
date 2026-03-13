@@ -24,6 +24,8 @@ import {
   LuActivity,
   LuExternalLink,
   LuExpand,
+  LuLock,
+  LuLockOpen,
 } from 'react-icons/lu'
 import {
   useMediaWithFiles,
@@ -56,7 +58,7 @@ export function WatchPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastProgressUpdate = useRef(0)
+  const lastProgressUpdate = useRef(Date.now())
   const seekFeedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qualityIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lowBandwidthToastShown = useRef(false)
@@ -188,6 +190,9 @@ export function WatchPage() {
 
   // Bottom tab: 'none' | 'info' | 'chapters'
   const [activeTab, setActiveTab] = useState<'none' | 'info' | 'chapters'>('none')
+
+  // Screen lock
+  const [isLocked, setIsLocked] = useState(false)
 
   // Up Next
   const [upNextDismissed, setUpNextDismissed] = useState(false)
@@ -428,12 +433,24 @@ export function WatchPage() {
     }
   }, [streamUrls, accessToken, audioLanguage])
 
+  // Resume: seek to saved position. Use a ref to snapshot the position before
+  // timeupdate overwrites it, and a flag to ensure we only seek once per mount.
+  const resumePosition = useRef<number | null>(null)
+  const hasResumed = useRef(false)
+
+  // Snapshot saved position on mount (before any timeupdate can overwrite it)
+  useEffect(() => {
+    resumePosition.current = getLastPosition(mediaId)
+    hasResumed.current = false
+  }, [mediaId, getLastPosition])
+
   useEffect(() => {
     const video = videoRef.current
-    if (!video || duration === 0) return
-    const saved = getLastPosition(mediaId)
+    if (!video || duration === 0 || hasResumed.current) return
+    const saved = resumePosition.current ?? 0
+    hasResumed.current = true
     if (saved > 0 && saved < duration * 0.95) video.currentTime = saved
-  }, [mediaId, getLastPosition, duration])
+  }, [duration])
 
   useEffect(() => {
     const video = videoRef.current
@@ -479,6 +496,9 @@ export function WatchPage() {
       if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
         setDuration(video.duration)
       }
+      // Don't save progress until resume seek has completed, otherwise
+      // timeupdate fires with position ~0 and overwrites the saved position.
+      if (!hasResumed.current) return
       setLastPosition(mediaId, video.currentTime)
       const now = Date.now()
       if (now - lastProgressUpdate.current >= 10000 || video.currentTime >= video.duration * 0.95) {
@@ -526,6 +546,15 @@ export function WatchPage() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      // When locked, only allow 'l' to unlock (long-press not needed for keyboard)
+      if (isLocked) {
+        if (e.key === 'l') {
+          e.preventDefault()
+          setIsLocked(false)
+          resetControlsTimeout()
+        }
+        return
+      }
       switch (e.key) {
         case ' ':
         case 'k':
@@ -579,7 +608,16 @@ export function WatchPage() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isFullscreen, togglePlay, seek, changeVolume, toggleFullscreen, toggleMute])
+  }, [
+    isFullscreen,
+    isLocked,
+    togglePlay,
+    seek,
+    changeVolume,
+    toggleFullscreen,
+    toggleMute,
+    resetControlsTimeout,
+  ])
 
   useEffect(() => {
     const onChange = () =>
@@ -643,8 +681,18 @@ export function WatchPage() {
   return (
     <div
       ref={containerRef}
-      className="relative h-screen w-full bg-[#141414] select-none overflow-hidden"
-      onMouseMove={resetControlsTimeout}
+      className={`relative h-screen w-full bg-[#141414] select-none overflow-hidden ${
+        !showControls && isPlaying ? 'cursor-none' : ''
+      }`}
+      onMouseMove={() => {
+        if (!isLocked) resetControlsTimeout()
+      }}
+      onClick={(e) => {
+        if (isLocked) {
+          e.stopPropagation()
+          e.preventDefault()
+        }
+      }}
     >
       {/* Video */}
       <video
@@ -847,12 +895,38 @@ export function WatchPage() {
         </div>
       )}
 
+      {/* Screen lock overlay */}
+      {isLocked && (
+        <div
+          className="absolute inset-0 z-40"
+          onClick={(e) => {
+            e.stopPropagation()
+            e.preventDefault()
+          }}
+        >
+          {/* Unlock button — always visible when locked */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setIsLocked(false)
+              resetControlsTimeout()
+            }}
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-black/60 px-5 py-2.5 text-white/80 backdrop-blur-sm transition-opacity hover:text-white"
+          >
+            <LuLockOpen size={18} />
+            <span className="text-sm font-medium">Tap to unlock</span>
+          </button>
+        </div>
+      )}
+
       {/* ── Controls overlay ─────────────────────────────────────────────────── */}
       <div
         className={`absolute inset-0 flex flex-col justify-between transition-opacity duration-300 ${
-          showControls || isHoveringBar || isDraggingBar
-            ? 'opacity-100'
-            : 'opacity-0 pointer-events-none'
+          isLocked
+            ? 'opacity-0 pointer-events-none'
+            : showControls || isHoveringBar || isDraggingBar
+              ? 'opacity-100'
+              : 'opacity-0 pointer-events-none'
         }`}
         onClick={togglePlay}
       >
@@ -1260,6 +1334,18 @@ export function WatchPage() {
                     <LuSkipForward size={17} />
                   </button>
                 )}
+
+                {/* Screen lock */}
+                <button
+                  onClick={() => {
+                    setIsLocked(true)
+                    setShowControls(false)
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
+                  title="Lock screen"
+                >
+                  <LuLock size={17} />
+                </button>
 
                 {/* Fullscreen */}
                 <button

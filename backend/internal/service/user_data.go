@@ -106,3 +106,43 @@ func (s *UserDataService) SetRating(ctx context.Context, userID, mediaID int64, 
 	}
 	return nil
 }
+
+// DismissProgress resets progress while preserving favorite/rating/play_count
+func (s *UserDataService) DismissProgress(ctx context.Context, userID, mediaID int64) error {
+	if err := s.userDataRepo.DismissProgress(ctx, userID, mediaID); err != nil {
+		return fmt.Errorf("dismissing progress: %w", err)
+	}
+	return nil
+}
+
+// ContinueWatching returns in-progress items (position > 0, not completed)
+func (s *UserDataService) ContinueWatching(ctx context.Context, userID int64, limit int) ([]*model.ContinueWatchingItem, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	items, err := s.userDataRepo.ListContinueWatching(ctx, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("listing continue watching: %w", err)
+	}
+	return items, nil
+}
+
+// NextUp returns the next unwatched episode for each series being followed
+func (s *UserDataService) NextUp(ctx context.Context, userID int64, limit int) ([]*model.NextUpItem, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	items, err := s.userDataRepo.ListNextUp(ctx, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("listing next up: %w", err)
+	}
+	return items, nil
+}

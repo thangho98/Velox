@@ -22,6 +22,10 @@ import type {
   RecentlyWatchedParams,
   SubtitleSearchResult,
   SubtitleDownloadRequest,
+  ContinueWatchingItem,
+  NextUpItem,
+  ContinueWatchingParams,
+  NextUpParams,
 } from '@/types/api'
 
 // Filesystem browser API (admin only)
@@ -198,6 +202,13 @@ export function useUpdateProgress() {
       queryClient.invalidateQueries({
         queryKey: userDataKeys.recentlyWatched({}),
       })
+      // Invalidate continue-watching and next-up when progress updates
+      queryClient.invalidateQueries({
+        queryKey: continueWatchingKeys.all,
+      })
+      queryClient.invalidateQueries({
+        queryKey: nextUpKeys.all,
+      })
     },
   })
 }
@@ -227,6 +238,66 @@ export function useRecentlyWatched(params: RecentlyWatchedParams = { limit: 20 }
     queryKey: userDataKeys.recentlyWatched(params),
     queryFn: () => userDataApi.listRecentlyWatched(params),
     staleTime: 60 * 1000,
+  })
+}
+
+// Continue Watching / Next Up API Functions
+const continueWatchingApi = {
+  list: (params: ContinueWatchingParams = {}) => {
+    const searchParams = new URLSearchParams()
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    const query = searchParams.toString()
+    return api.get<ContinueWatchingItem[]>(`/profile/continue-watching${query ? `?${query}` : ''}`)
+  },
+  dismiss: (mediaId: number) => api.delete(`/profile/progress/${mediaId}/dismiss`),
+}
+
+const nextUpApi = {
+  list: (params: NextUpParams = {}) => {
+    const searchParams = new URLSearchParams()
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    const query = searchParams.toString()
+    return api.get<NextUpItem[]>(`/profile/next-up${query ? `?${query}` : ''}`)
+  },
+}
+
+// Query Keys
+export const continueWatchingKeys = {
+  all: ['continueWatching'] as const,
+  list: (params: ContinueWatchingParams) => [...continueWatchingKeys.all, 'list', params] as const,
+}
+
+export const nextUpKeys = {
+  all: ['nextUp'] as const,
+  list: (params: NextUpParams) => [...nextUpKeys.all, 'list', params] as const,
+}
+
+// React Query Hooks
+export function useContinueWatching(params: ContinueWatchingParams = { limit: 20 }) {
+  return useQuery({
+    queryKey: continueWatchingKeys.list(params),
+    queryFn: () => continueWatchingApi.list(params),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useNextUp(params: NextUpParams = { limit: 20 }) {
+  return useQuery({
+    queryKey: nextUpKeys.list(params),
+    queryFn: () => nextUpApi.list(params),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useDismissProgress() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (mediaId: number) => continueWatchingApi.dismiss(mediaId),
+    onSuccess: () => {
+      // Invalidate continue watching list when an item is dismissed
+      queryClient.invalidateQueries({ queryKey: continueWatchingKeys.all })
+    },
   })
 }
 

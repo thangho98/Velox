@@ -1,13 +1,16 @@
 import { Link } from 'react-router'
-import { useLibraries, useRecentlyWatched, useMediaList } from '@/hooks/stores/useMedia'
+import { useLibraries, useContinueWatching, useNextUp, useMediaList } from '@/hooks/stores/useMedia'
 import { MediaRow } from '@/components/MediaRow'
+import { ContinueWatchingCard } from '@/components/ContinueWatchingCard'
+import { NextUpCard } from '@/components/NextUpCard'
 import { useAuthStore } from '@/stores/auth'
 import { LuPlay, LuFilm, LuLibrary } from 'react-icons/lu'
 
 export function HomePage() {
   const { user } = useAuthStore()
   const { data: libraries, isLoading: libsLoading } = useLibraries()
-  const { data: recentlyWatched, isLoading: recentLoading } = useRecentlyWatched({ limit: 20 })
+  const { data: continueWatching, isLoading: continueLoading } = useContinueWatching({ limit: 20 })
+  const { data: nextUp, isLoading: nextUpLoading } = useNextUp({ limit: 20 })
   const { data: recentMovies, isLoading: moviesLoading } = useMediaList({
     type: 'movie',
     limit: 20,
@@ -20,7 +23,8 @@ export function HomePage() {
   })
 
   const hasLibraries = !libsLoading && libraries && libraries.length > 0
-  const hasRecentlyWatched = recentlyWatched && recentlyWatched.length > 0
+  const hasContinueWatching = continueWatching && continueWatching.length > 0
+  const hasNextUp = nextUp && nextUp.length > 0
 
   return (
     <div className="space-y-8">
@@ -53,14 +57,61 @@ export function HomePage() {
       </section>
 
       {/* Continue Watching */}
-      {(recentLoading || hasRecentlyWatched) && (
-        <MediaRow
-          title="Continue Watching"
-          seeAllLink="/recently-watched"
-          items={recentlyWatched}
-          isLoading={recentLoading}
-          showProgress
-        />
+      {(continueLoading || hasContinueWatching) && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white lg:text-xl">Continue Watching</h2>
+          </div>
+          {continueLoading ? (
+            <div className="hide-scrollbar flex gap-3 overflow-x-auto pb-2">
+              {[...Array(4)].map((_, i) => (
+                <div
+                  key={i}
+                  className="w-48 shrink-0 animate-pulse overflow-hidden rounded-lg bg-netflix-gray"
+                >
+                  <div className="aspect-video bg-gray-700" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="hide-scrollbar flex gap-3 overflow-x-auto pb-2">
+              {continueWatching?.map((item) => (
+                <div key={item.media_id} className="w-48 shrink-0 lg:w-56">
+                  <ContinueWatchingCard item={item} />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Next Up */}
+      {(nextUpLoading || hasNextUp) && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white lg:text-xl">Next Up</h2>
+          </div>
+          {nextUpLoading ? (
+            <div className="hide-scrollbar flex gap-3 overflow-x-auto pb-2">
+              {[...Array(4)].map((_, i) => (
+                <div
+                  key={i}
+                  className="w-48 shrink-0 animate-pulse overflow-hidden rounded-lg bg-netflix-gray"
+                >
+                  <div className="aspect-video bg-gray-700" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="hide-scrollbar flex gap-3 overflow-x-auto pb-2">
+              {nextUp?.map((item) => (
+                <div key={item.media_id} className="w-48 shrink-0 lg:w-56">
+                  <NextUpCard item={item} />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {/* Recently Added Movies */}
@@ -113,7 +164,7 @@ export function HomePage() {
               {user?.is_admin && (
                 <Link
                   to="/admin/libraries"
-                  className="text-sm text-netflix-light-gray hover:text-white transition-colors"
+                  className="text-sm text-netflix-light-gray transition-colors hover:text-white"
                 >
                   Manage →
                 </Link>

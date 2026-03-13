@@ -344,7 +344,44 @@ export interface PlaybackInfo {
   position: number
 }
 
-// Activity Log
+// Continue Watching / Next Up Types
+export interface ContinueWatchingItem {
+  media_id: number
+  position: number
+  completed: boolean
+  last_played_at?: string
+  title: string
+  poster_path: string
+  backdrop_path: string
+  media_type: 'movie' | 'episode'
+  duration: number
+  series_title?: string
+  season_number?: number
+  episode_number?: number
+}
+
+export interface NextUpItem {
+  media_id: number
+  title: string
+  episode_title: string
+  media_type: 'episode'
+  still_path: string
+  backdrop_path: string
+  duration: number
+  season_number: number
+  episode_number: number
+  series_title: string
+  series_poster: string
+  last_watched_at?: string
+}
+
+export interface ContinueWatchingParams {
+  limit?: number
+}
+
+export interface NextUpParams {
+  limit?: number
+}
 export interface ActivityLog {
   id: number
   user_id?: number

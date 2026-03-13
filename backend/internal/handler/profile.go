@@ -246,3 +246,63 @@ func (h *ProfileHandler) ListRecentlyWatched(w http.ResponseWriter, r *http.Requ
 
 	respondJSON(w, http.StatusOK, items)
 }
+
+// ContinueWatching returns in-progress items
+func (h *ProfileHandler) ContinueWatching(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	limit := parseIntQuery(r, "limit", 20)
+
+	items, err := h.userDataSvc.ContinueWatching(r.Context(), userID, limit)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, items)
+}
+
+// NextUp returns the next unwatched episode for each series
+func (h *ProfileHandler) NextUp(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	limit := parseIntQuery(r, "limit", 20)
+
+	items, err := h.userDataSvc.NextUp(r.Context(), userID, limit)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, items)
+}
+
+// DismissProgress resets progress for a media item (preserves favorite/rating)
+func (h *ProfileHandler) DismissProgress(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	mediaID, err := parseID(r, "mediaId")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid media id")
+		return
+	}
+
+	if err := h.userDataSvc.DismissProgress(r.Context(), userID, mediaID); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "progress dismissed"})
+}

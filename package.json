@@ -9,7 +9,7 @@
   },
   "lint-staged": {
     "webapp/src/**/*.{ts,tsx}": [
-      "prettier --write --config webapp/.prettierrc"
+      "webapp/node_modules/.bin/prettier --write --config webapp/.prettierrc"
     ],
     "backend/**/*.go": [
       "gofmt -w"

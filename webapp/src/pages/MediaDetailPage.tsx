@@ -7,10 +7,20 @@ import {
   useSeasons,
   useEpisodes,
   useRefreshMetadata,
+  useSubtitles,
 } from '@/hooks/stores/useMedia'
 import { useAuthStore } from '@/stores/auth'
+import { usePlayerStore } from '@/stores/player'
 import type { Episode } from '@/types/api'
-import { LuChevronLeft, LuFilm, LuStar, LuPlay, LuHeart, LuRefreshCw } from 'react-icons/lu'
+import {
+  LuChevronLeft,
+  LuFilm,
+  LuStar,
+  LuPlay,
+  LuHeart,
+  LuRefreshCw,
+  LuCheck,
+} from 'react-icons/lu'
 import { tmdbImage } from '@/lib/image'
 
 export function MediaDetailPage() {
@@ -23,6 +33,8 @@ export function MediaDetailPage() {
   const { mutate: toggleFavorite } = useToggleFavorite()
   const { mutate: refreshMetadata, isPending: isRefreshing } = useRefreshMetadata(mediaId)
   const { user } = useAuthStore()
+  const { subtitleLanguage, setSubtitleLanguage } = usePlayerStore()
+  const { data: subtitles = [] } = useSubtitles(mediaId)
 
   // Fetch seasons if this is a series (episode type with series_id)
   const isSeries = media?.media.media_type === 'episode' && media.media.series_id
@@ -60,10 +72,9 @@ export function MediaDetailPage() {
   }
 
   const primaryFile = media.files.find((f) => f.is_primary) || media.files[0]
+  const duration = primaryFile?.duration || media.media.duration || 0
   const progressPercent =
-    progress && media?.media.duration
-      ? Math.min(100, (progress.position / media.media.duration) * 100)
-      : 0
+    progress && duration > 0 ? Math.min(100, (progress.position / duration) * 100) : 0
 
   return (
     <div className="min-h-screen bg-netflix-black">
@@ -113,155 +124,207 @@ export function MediaDetailPage() {
                 {media.media.title}
               </h1>
 
-              <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-gray-400">
+              {/* Year · Duration · Ends at · Ratings */}
+              <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-400">
                 {media.media.release_date && (
                   <span>{new Date(media.media.release_date).getFullYear()}</span>
                 )}
+                {primaryFile && primaryFile.duration > 0 && (
+                  <span>{formatDuration(primaryFile.duration)}</span>
+                )}
+                {duration > 0 && !isSeries && (
+                  <span>Ends at {getEndTime(duration - (progress?.position || 0))}</span>
+                )}
                 {media.media.rating > 0 && (
-                  <>
-                    <span className="text-gray-600">|</span>
-                    <span className="flex items-center gap-1">
-                      <LuStar size={16} className="text-yellow-500" />
-                      {media.media.rating.toFixed(1)}
-                    </span>
-                  </>
+                  <span className="flex items-center gap-1">
+                    <LuStar size={14} className="text-yellow-500" />
+                    {media.media.rating.toFixed(1)}
+                  </span>
                 )}
                 {media.media.imdb_rating > 0 && (
-                  <>
-                    <span className="text-gray-600">|</span>
-                    <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-xs font-medium text-yellow-400">
-                      IMDb {media.media.imdb_rating.toFixed(1)}
-                    </span>
-                  </>
+                  <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-xs font-medium text-yellow-400">
+                    IMDb {media.media.imdb_rating.toFixed(1)}
+                  </span>
                 )}
                 {media.media.rt_score > 0 && (
-                  <>
-                    <span className="text-gray-600">|</span>
-                    <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-400">
-                      RT {media.media.rt_score}%
-                    </span>
-                  </>
+                  <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs font-medium text-red-400">
+                    RT {media.media.rt_score}%
+                  </span>
                 )}
                 {media.media.metacritic_score > 0 && (
-                  <>
-                    <span className="text-gray-600">|</span>
-                    <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs font-medium text-blue-400">
-                      MC {media.media.metacritic_score}
-                    </span>
-                  </>
+                  <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-xs font-medium text-blue-400">
+                    MC {media.media.metacritic_score}
+                  </span>
                 )}
                 {isSeries && (
-                  <>
-                    <span className="text-gray-600">|</span>
-                    <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs text-purple-400">
-                      Series
-                    </span>
-                  </>
+                  <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-xs text-purple-400">
+                    Series
+                  </span>
                 )}
               </div>
 
+              {/* Media info line (Emby style) */}
+              {!isSeries &&
+                primaryFile &&
+                (primaryFile.video_codec ||
+                  primaryFile.audio_codec ||
+                  primaryFile.file_size > 0) && (
+                  <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+                    {primaryFile.video_codec && (
+                      <span>
+                        <span className="text-gray-500">Video</span>{' '}
+                        <span className="text-gray-300">
+                          {primaryFile.height > 0 ? `${primaryFile.height}p ` : ''}
+                          {primaryFile.video_codec.toUpperCase()}
+                        </span>
+                      </span>
+                    )}
+                    {primaryFile.audio_codec && (
+                      <span>
+                        <span className="text-gray-500">Audio</span>{' '}
+                        <span className="text-gray-300">
+                          {primaryFile.audio_codec.toUpperCase()}
+                        </span>
+                      </span>
+                    )}
+                    {primaryFile.container && (
+                      <span>
+                        <span className="text-gray-500">Container</span>{' '}
+                        <span className="text-gray-300">{primaryFile.container.toUpperCase()}</span>
+                      </span>
+                    )}
+                    {primaryFile.file_size > 0 && (
+                      <span>
+                        <span className="text-gray-500">Size</span>{' '}
+                        <span className="text-gray-300">
+                          {formatFileSize(primaryFile.file_size)}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                )}
+
               {media.media.overview && (
-                <p className="mb-8 max-w-2xl text-lg leading-relaxed text-gray-300">
+                <p className="mb-6 max-w-2xl text-base leading-relaxed text-gray-300">
                   {media.media.overview}
                 </p>
               )}
 
-              {/* Actions */}
-              <div className="mb-8 flex flex-wrap gap-4">
+              {/* Actions (Emby style) */}
+              <div className="mb-6 flex flex-wrap items-center gap-3">
+                {/* Primary action — filled accent button */}
                 {!isSeries ? (
-                  // Movie play button
-                  <Link
-                    to={`/watch/${mediaId}`}
-                    className="flex items-center gap-2 rounded bg-netflix-red px-8 py-3 font-semibold text-white transition-colors hover:bg-netflix-red-hover"
-                  >
-                    <LuPlay size={20} />
-                    {progress?.position && progress.position > 0 ? 'Resume' : 'Play'}
-                  </Link>
+                  progress?.position && progress.position > 0 ? (
+                    <>
+                      <Link
+                        to={`/watch/${mediaId}`}
+                        className="flex items-center gap-2 rounded bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+                      >
+                        <LuPlay size={18} className="fill-current" />
+                        Resume
+                      </Link>
+                      <Link
+                        to={`/watch/${mediaId}?t=0`}
+                        className="flex items-center gap-2 rounded bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
+                      >
+                        <LuPlay size={16} />
+                        From Beginning
+                      </Link>
+                    </>
+                  ) : (
+                    <Link
+                      to={`/watch/${mediaId}`}
+                      className="flex items-center gap-2 rounded bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+                    >
+                      <LuPlay size={18} className="fill-current" />
+                      Play
+                    </Link>
+                  )
                 ) : (
-                  // Series - Play latest episode or continue watching
                   <Link
                     to={`/watch/${episodes?.find((e) => !e.duration)?.id || episodes?.[0]?.id || mediaId}`}
-                    className="flex items-center gap-2 rounded bg-netflix-red px-8 py-3 font-semibold text-white transition-colors hover:bg-netflix-red-hover"
+                    className="flex items-center gap-2 rounded bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
                   >
-                    <LuPlay size={20} />
-                    {progress?.position && progress.position > 0
-                      ? 'Continue Watching'
-                      : 'Play Latest'}
+                    <LuPlay size={18} className="fill-current" />
+                    {progress?.position && progress.position > 0 ? 'Continue Watching' : 'Play'}
                   </Link>
                 )}
+
+                {/* Icon actions — flat, no background (Emby style) */}
+                {!isSeries && (
+                  <button
+                    className={`p-2 transition-colors ${
+                      progress?.completed ? 'text-green-500' : 'text-gray-400 hover:text-white'
+                    }`}
+                    title={progress?.completed ? 'Watched' : 'Mark as watched'}
+                  >
+                    <LuCheck size={22} />
+                  </button>
+                )}
+
                 <button
                   onClick={() => toggleFavorite(mediaId)}
-                  className={`flex items-center gap-2 rounded px-6 py-3 font-semibold transition-colors ${
-                    progress?.is_favorite
-                      ? 'bg-pink-600 text-white hover:bg-pink-700'
-                      : 'bg-netflix-gray text-white hover:bg-gray-700'
+                  className={`p-2 transition-colors ${
+                    progress?.is_favorite ? 'text-pink-500' : 'text-gray-400 hover:text-white'
                   }`}
+                  title={progress?.is_favorite ? 'Unfavorite' : 'Favorite'}
                 >
-                  <LuHeart size={20} className={progress?.is_favorite ? 'fill-current' : ''} />
-                  {progress?.is_favorite ? 'Favorited' : 'Favorite'}
+                  <LuHeart size={22} className={progress?.is_favorite ? 'fill-current' : ''} />
                 </button>
+
                 {user?.is_admin && (
                   <button
                     onClick={() => refreshMetadata()}
                     disabled={isRefreshing}
-                    className="flex items-center gap-2 rounded bg-netflix-gray px-6 py-3 font-semibold text-white transition-colors hover:bg-gray-700 disabled:opacity-50"
+                    className="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+                    title="Refresh metadata"
                   >
-                    <LuRefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
-                    {isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
+                    <LuRefreshCw size={22} className={isRefreshing ? 'animate-spin' : ''} />
                   </button>
+                )}
+
+                {/* Subtitle selector */}
+                {!isSeries && subtitles.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-400">Subtitles</span>
+                    <select
+                      value={subtitleLanguage ?? ''}
+                      onChange={(e) => setSubtitleLanguage(e.target.value || null)}
+                      className="rounded-full bg-[#2a2a2a] px-4 py-2 pr-8 text-sm text-white outline-none appearance-none cursor-pointer hover:bg-[#333] transition-colors"
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: 'right 12px center',
+                      }}
+                    >
+                      <option value="">Off</option>
+                      {subtitles
+                        .filter((s) => !s.is_image)
+                        .map((s) => (
+                          <option key={s.id} value={s.language}>
+                            {s.label || `${s.language} (${s.format.toUpperCase()})`}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
                 )}
               </div>
 
-              {/* Progress bar */}
-              {!isSeries && progress?.position && progress.position > 0 && (
+              {/* Progress bar (Emby style — green, with remaining time) */}
+              {!isSeries && progress != null && progress.position > 0 && (
                 <div className="mb-8 max-w-md">
-                  <div className="mb-2 flex justify-between text-sm text-gray-400">
-                    <span>{progress.completed ? 'Completed' : 'Continue Watching'}</span>
-                    <span>{Math.round(progressPercent)}%</span>
-                  </div>
-                  <div className="h-1 rounded-full bg-gray-700">
-                    <div
-                      className="h-1 rounded-full bg-netflix-red"
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
-                  <p className="mt-2 text-sm text-gray-400">
-                    {formatTime(progress.position)} / {formatTime(media.media.duration || 0)}
-                  </p>
-                </div>
-              )}
-
-              {/* File info */}
-              {!isSeries && primaryFile && (
-                <div className="rounded-lg bg-netflix-dark/80 p-4 backdrop-blur-sm">
-                  <h3 className="mb-3 font-semibold text-white">Media Details</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm text-gray-400">
-                    <div>
-                      <span className="text-gray-500">Resolution:</span>{' '}
-                      <span className="text-white">
-                        {primaryFile.width}x{primaryFile.height}
-                      </span>
+                  <div className="flex items-center gap-3">
+                    <div className="h-1 flex-1 rounded-full bg-gray-700">
+                      <div
+                        className="h-1 rounded-full bg-green-500"
+                        style={{ width: `${progressPercent}%` }}
+                      />
                     </div>
-                    <div>
-                      <span className="text-gray-500">Duration:</span>{' '}
-                      <span className="text-white">{formatDuration(primaryFile.duration)}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Video:</span>{' '}
-                      <span className="text-white">{primaryFile.video_codec}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Audio:</span>{' '}
-                      <span className="text-white">{primaryFile.audio_codec}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Container:</span>{' '}
-                      <span className="text-white">{primaryFile.container.toUpperCase()}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Size:</span>{' '}
-                      <span className="text-white">{formatFileSize(primaryFile.file_size)}</span>
-                    </div>
+                    <span className="shrink-0 text-sm text-gray-400">
+                      {progress.completed
+                        ? 'Watched'
+                        : `${formatDuration(Math.max(0, duration - progress.position))} remaining`}
+                    </span>
                   </div>
                 </div>
               )}
@@ -389,15 +452,9 @@ function formatDuration(seconds: number): string {
   return `${mins}m`
 }
 
-function formatTime(seconds: number): string {
-  if (!seconds) return '0:00'
-  const hours = Math.floor(seconds / 3600)
-  const mins = Math.floor((seconds % 3600) / 60)
-  const secs = Math.floor(seconds % 60)
-  if (hours > 0) {
-    return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  }
-  return `${mins}:${secs.toString().padStart(2, '0')}`
+function getEndTime(remainingSeconds: number): string {
+  const end = new Date(Date.now() + remainingSeconds * 1000)
+  return end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
 function formatFileSize(bytes: number): string {

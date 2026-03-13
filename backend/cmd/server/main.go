@@ -340,6 +340,9 @@ func runServer() {
 	mux.HandleFunc("GET /api/profile/favorites", profileHandler.ListFavorites)
 	mux.HandleFunc("POST /api/profile/favorites/{mediaId}", profileHandler.ToggleFavorite)
 	mux.HandleFunc("GET /api/profile/recently-watched", profileHandler.ListRecentlyWatched)
+	mux.HandleFunc("GET /api/profile/continue-watching", profileHandler.ContinueWatching)
+	mux.HandleFunc("GET /api/profile/next-up", profileHandler.NextUp)
+	mux.HandleFunc("DELETE /api/profile/progress/{mediaId}/dismiss", profileHandler.DismissProgress)
 
 	// API routes - Libraries (read = authenticated, write = admin above)
 	mux.HandleFunc("GET /api/libraries", libraryHandler.List)

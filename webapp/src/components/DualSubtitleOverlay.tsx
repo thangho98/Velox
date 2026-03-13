@@ -145,7 +145,7 @@ export function DualSubtitleOverlay({
   const needsBoxPadding = style.background !== 'none'
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-36 flex flex-col items-center gap-1.5 px-8">
+    <div className="pointer-events-none absolute inset-x-0 bottom-28 flex flex-col items-center gap-1.5 px-8">
       {/* Secondary subtitle — smaller, yellow, above primary */}
       {secondaryText && (
         <p
