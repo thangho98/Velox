@@ -3,6 +3,8 @@ package watcher
 import (
 	"context"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -11,26 +13,35 @@ import (
 	"github.com/thawng/velox/internal/scanner"
 )
 
-// Watcher monitors library paths for file changes
+// Watcher monitors library paths for file changes and triggers scan callbacks.
 type Watcher struct {
-	watcher    *fsnotify.Watcher
-	libraries  map[int64]string // library ID -> path
-	onCreate   func(libraryID int64, path string)
-	onRemove   func(libraryID int64, path string)
-	onRename   func(libraryID int64, oldPath, newPath string)
+	watcher   *fsnotify.Watcher
+	libraries map[int64][]string // library ID -> root paths
+
+	onFileCreated func(libraryID int64, path string)
+	onFileRemoved func(libraryID int64, path string)
+
+	// Debounce CREATE events — files may still be copying when the event fires.
 	debouncers map[string]*time.Timer
-	mu         sync.Mutex
-	ctx        context.Context
-	cancel     context.CancelFunc
+	debounceD  time.Duration
+
+	// Rename tracking: fsnotify fires RENAME on old path, then CREATE on new.
+	// Buffer the RENAME for a short window to pair with the following CREATE.
+	pendingRenames map[string]int64 // old path -> libraryID
+	renameTTL      time.Duration
+
+	mu     sync.Mutex
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-// Config for the watcher
-type Config struct {
-	Enabled bool
-}
-
-// New creates a new file watcher
-func New(onCreate, onRemove func(libraryID int64, path string), onRename func(libraryID int64, oldPath, newPath string)) (*Watcher, error) {
+// New creates a new file watcher.
+//   - onFileCreated is called (after debounce) when a new video file appears.
+//   - onFileRemoved is called when a video file is deleted.
+func New(
+	onFileCreated func(libraryID int64, path string),
+	onFileRemoved func(libraryID int64, path string),
+) (*Watcher, error) {
 	fsWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -39,55 +50,82 @@ func New(onCreate, onRemove func(libraryID int64, path string), onRename func(li
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Watcher{
-		watcher:    fsWatcher,
-		libraries:  make(map[int64]string),
-		onCreate:   onCreate,
-		onRemove:   onRemove,
-		onRename:   onRename,
-		debouncers: make(map[string]*time.Timer),
-		ctx:        ctx,
-		cancel:     cancel,
+		watcher:        fsWatcher,
+		libraries:      make(map[int64][]string),
+		onFileCreated:  onFileCreated,
+		onFileRemoved:  onFileRemoved,
+		debouncers:     make(map[string]*time.Timer),
+		debounceD:      5 * time.Second,
+		pendingRenames: make(map[string]int64),
+		renameTTL:      2 * time.Second,
+		ctx:            ctx,
+		cancel:         cancel,
 	}, nil
 }
 
-// AddLibrary adds a library path to watch
-func (w *Watcher) AddLibrary(libraryID int64, path string) error {
+// AddLibrary adds all directories under the library's root paths to the watch list.
+func (w *Watcher) AddLibrary(libraryID int64, paths []string) error {
 	w.mu.Lock()
-	w.libraries[libraryID] = path
+	w.libraries[libraryID] = paths
 	w.mu.Unlock()
 
-	// Watch the root path
-	if err := w.watcher.Add(path); err != nil {
-		return err
+	for _, root := range paths {
+		if err := w.watchRecursive(root); err != nil {
+			return err
+		}
 	}
-
-	// TODO: Recursively add subdirectories
-	// For now, fsnotify doesn't support recursive watching on all platforms
-	// We might need to walk and add each subdirectory
-
 	return nil
 }
 
-// RemoveLibrary stops watching a library
+// RemoveLibrary stops watching a library's paths.
 func (w *Watcher) RemoveLibrary(libraryID int64) {
 	w.mu.Lock()
-	path, ok := w.libraries[libraryID]
+	paths, ok := w.libraries[libraryID]
 	if ok {
 		delete(w.libraries, libraryID)
-		w.watcher.Remove(path)
 	}
 	w.mu.Unlock()
+
+	if ok {
+		for _, root := range paths {
+			// Best-effort removal — fsnotify ignores unknown paths.
+			_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+				if err != nil {
+					return nil
+				}
+				if d.IsDir() {
+					w.watcher.Remove(path)
+				}
+				return nil
+			})
+		}
+	}
 }
 
-// Start begins watching for changes
+// Start begins the event loop in a background goroutine.
 func (w *Watcher) Start() {
 	go w.run()
 }
 
-// Stop stops watching
+// Stop gracefully shuts down the watcher.
 func (w *Watcher) Stop() {
 	w.cancel()
 	w.watcher.Close()
+}
+
+// watchRecursive adds a directory and all its subdirectories to fsnotify.
+func (w *Watcher) watchRecursive(root string) error {
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip inaccessible
+		}
+		if d.IsDir() {
+			if err := w.watcher.Add(path); err != nil {
+				log.Printf("watcher: failed to watch %s: %v", path, err)
+			}
+		}
+		return nil
+	})
 }
 
 func (w *Watcher) run() {
@@ -104,31 +142,84 @@ func (w *Watcher) run() {
 			if !ok {
 				return
 			}
-			log.Printf("Watcher error: %v", err)
+			log.Printf("watcher error: %v", err)
 		}
 	}
 }
 
 func (w *Watcher) handleEvent(event fsnotify.Event) {
-	// Find which library this path belongs to
-	libraryID := w.findLibraryForPath(event.Name)
-	if libraryID == 0 {
-		return // Not in a watched library
-	}
+	path := event.Name
 
 	switch {
-	case event.Op&fsnotify.Create == fsnotify.Create:
-		w.debounceCreate(libraryID, event.Name)
-	case event.Op&fsnotify.Remove == fsnotify.Remove:
-		if w.onRemove != nil {
-			w.onRemove(libraryID, event.Name)
+	case event.Op&fsnotify.Create != 0:
+		// New directory → watch it recursively for future events.
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			w.watchRecursive(path)
+			return
 		}
-	case event.Op&fsnotify.Rename == fsnotify.Rename:
-		// fsnotify reports rename as two events: old path + new path
-		// We need to track this - for now simplified
-		if w.onRename != nil {
-			// TODO: Implement proper rename tracking
+
+		if !scanner.IsVideoFile(path) {
+			return
 		}
+
+		libraryID := w.findLibraryForPath(path)
+		if libraryID == 0 {
+			return
+		}
+
+		// Check if this CREATE is the second half of a rename.
+		// The pipeline's fingerprint check already handles renames correctly,
+		// so we just treat it as a normal "new file" event — the pipeline
+		// will detect the fingerprint match and update the path.
+		w.clearPendingRename(path)
+		w.debounceCreate(libraryID, path)
+
+	case event.Op&fsnotify.Remove != 0:
+		if !scanner.IsVideoFile(path) {
+			return
+		}
+
+		libraryID := w.findLibraryForPath(path)
+		if libraryID == 0 {
+			return
+		}
+
+		if w.onFileRemoved != nil {
+			w.onFileRemoved(libraryID, path)
+		}
+
+	case event.Op&fsnotify.Rename != 0:
+		if !scanner.IsVideoFile(path) {
+			return
+		}
+
+		libraryID := w.findLibraryForPath(path)
+		if libraryID == 0 {
+			return
+		}
+
+		// Buffer the rename — a CREATE for the new path should follow shortly.
+		// If no CREATE arrives within renameTTL, treat it as a removal.
+		w.mu.Lock()
+		w.pendingRenames[path] = libraryID
+		w.mu.Unlock()
+
+		time.AfterFunc(w.renameTTL, func() {
+			w.mu.Lock()
+			libID, still := w.pendingRenames[path]
+			if still {
+				delete(w.pendingRenames, path)
+			}
+			w.mu.Unlock()
+
+			if still && w.onFileRemoved != nil {
+				// No matching CREATE arrived — the file was truly removed/renamed out.
+				w.onFileRemoved(libID, path)
+			}
+		})
+
+	case event.Op&fsnotify.Write != 0:
+		// Ignore write events — files are indexed on CREATE.
 	}
 }
 
@@ -136,36 +227,37 @@ func (w *Watcher) debounceCreate(libraryID int64, path string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// Cancel existing timer if any
 	if timer, ok := w.debouncers[path]; ok {
 		timer.Stop()
 	}
 
-	// Debounce for 5 seconds to avoid triggering while file is being written
-	w.debouncers[path] = time.AfterFunc(5*time.Second, func() {
+	w.debouncers[path] = time.AfterFunc(w.debounceD, func() {
 		w.mu.Lock()
 		delete(w.debouncers, path)
 		w.mu.Unlock()
 
-		if w.onCreate != nil {
-			w.onCreate(libraryID, path)
+		if w.onFileCreated != nil {
+			w.onFileCreated(libraryID, path)
 		}
 	})
+}
+
+func (w *Watcher) clearPendingRename(path string) {
+	w.mu.Lock()
+	delete(w.pendingRenames, path)
+	w.mu.Unlock()
 }
 
 func (w *Watcher) findLibraryForPath(path string) int64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	for id, libPath := range w.libraries {
-		if strings.HasPrefix(path, libPath) {
-			return id
+	for id, roots := range w.libraries {
+		for _, root := range roots {
+			if strings.HasPrefix(path, root) {
+				return id
+			}
 		}
 	}
 	return 0
-}
-
-// IsVideoFile checks if path is a video file (delegates to scanner package).
-func IsVideoFile(path string) bool {
-	return scanner.IsVideoFile(path)
 }

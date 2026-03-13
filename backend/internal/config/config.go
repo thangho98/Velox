@@ -24,6 +24,9 @@ type Config struct {
 	// Trickplay thumbnails (Plan E Phase 03)
 	TrickplayEnabled  bool
 	TrickplayInterval int // seconds between thumbnail frames
+
+	// File watcher (Phase 03)
+	FileWatcherEnabled bool
 }
 
 func Load() *Config {
@@ -43,6 +46,8 @@ func Load() *Config {
 		MaxTranscodes:     envOrDefaultInt("VELOX_MAX_TRANSCODES", 2),
 		TrickplayEnabled:  envOrDefaultBool("VELOX_TRICKPLAY_ENABLED", false),
 		TrickplayInterval: envOrDefaultInt("VELOX_TRICKPLAY_INTERVAL", 10),
+
+		FileWatcherEnabled: envOrDefaultBool("VELOX_FILE_WATCHER", true),
 	}
 }
 

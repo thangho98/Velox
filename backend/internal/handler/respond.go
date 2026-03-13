@@ -46,3 +46,7 @@ func parseIntQuery(r *http.Request, key string, fallback int) int {
 func parseJSON(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
+
+func parseInt64Query(s string) (int64, error) {
+	return strconv.ParseInt(s, 10, 64)
+}

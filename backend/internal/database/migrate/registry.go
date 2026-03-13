@@ -66,6 +66,48 @@ func All() []Migration {
 			Up:      up010,
 			Down:    down010,
 		},
+		{
+			Version: 11,
+			Name:    "app_settings",
+			Up:      up011,
+			Down:    down011,
+		},
+		{
+			Version: 12,
+			Name:    "omdb_ratings",
+			Up:      up012,
+			Down:    down012,
+		},
+		{
+			Version: 13,
+			Name:    "tvdb_id",
+			Up:      up013,
+			Down:    down013,
+		},
+		{
+			Version: 14,
+			Name:    "fanart_logo",
+			Up:      up014,
+			Down:    down014,
+		},
+		{
+			Version: 15,
+			Name:    "series_network",
+			Up:      up015,
+			Down:    down015,
+		},
+		{
+			Version: 16,
+			Name:    "activity_log",
+			Up:      up016,
+			Down:    down016,
+		},
+		{
+			Version: 17,
+			Name:    "webhooks",
+			Up:      up017,
+			Down:    down017,
+		},
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/thawng/velox/internal/model"
 )
@@ -458,6 +459,44 @@ func (t *Transcoder) RemuxToWriter(inputPath string, w io.Writer) error {
 // Clean removes transcoded files for a media item.
 func (t *Transcoder) Clean(mediaID int64) error {
 	return os.RemoveAll(t.HLSDir(mediaID))
+}
+
+// CleanupOlderThan removes transcode directories that haven't been modified
+// within the given age duration.
+func (t *Transcoder) CleanupOlderThan(age time.Duration) error {
+	entries, err := os.ReadDir(t.outputDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("reading transcode dir: %w", err)
+	}
+
+	cutoff := time.Now().Add(-age)
+	var removed int
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			dirPath := filepath.Join(t.outputDir, entry.Name())
+			if err := os.RemoveAll(dirPath); err != nil {
+				log.Printf("transcode cleanup: failed to remove %s: %v", dirPath, err)
+			} else {
+				removed++
+			}
+		}
+	}
+
+	if removed > 0 {
+		log.Printf("transcode cleanup: removed %d stale directories", removed)
+	}
+	return nil
 }
 
 // --- HW accel helpers ---

@@ -16,19 +16,32 @@ type AuthConfig struct {
 	SkipPaths map[string]bool
 }
 
-// RequireAuth returns a middleware that requires valid JWT authentication
+// RequireAuth returns a middleware that requires valid JWT authentication.
+// skipPaths are exact path matches; paths ending with "/*" are treated as prefix matches.
 func RequireAuth(jwtManager *auth.JWTManager, skipPaths ...string) func(http.Handler) http.Handler {
 	skipMap := make(map[string]bool)
+	var skipPrefixes []string
 	for _, path := range skipPaths {
-		skipMap[path] = true
+		if strings.HasSuffix(path, "/*") {
+			skipPrefixes = append(skipPrefixes, strings.TrimSuffix(path, "*"))
+		} else {
+			skipMap[path] = true
+		}
 	}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if path should be skipped
+			// Check if path should be skipped (exact match)
 			if skipMap[r.URL.Path] {
 				next.ServeHTTP(w, r)
 				return
+			}
+			// Check prefix matches
+			for _, prefix := range skipPrefixes {
+				if strings.HasPrefix(r.URL.Path, prefix) {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 
 			// Extract token from Authorization header or query param

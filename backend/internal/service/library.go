@@ -33,14 +33,14 @@ func (s *LibraryService) Delete(ctx context.Context, id int64) error {
 
 // Scan creates a scan job and runs the pipeline asynchronously.
 // Returns the queued job immediately so the caller can poll status.
-func (s *LibraryService) Scan(ctx context.Context, id int64) (*model.ScanJob, error) {
+func (s *LibraryService) Scan(ctx context.Context, id int64, force bool) (*model.ScanJob, error) {
 	job, err := s.pipeline.CreateJob(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
 	go func() {
-		if err := s.pipeline.RunJob(context.Background(), job); err != nil {
+		if err := s.pipeline.RunJob(context.Background(), job, force); err != nil {
 			log.Printf("scan library %d job %d: %v", id, job.ID, err)
 		}
 	}()

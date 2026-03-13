@@ -84,7 +84,8 @@ func (h *LibraryHandler) Scan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run scan in background, return job immediately
-	job, err := h.svc.Scan(r.Context(), id)
+	force := r.URL.Query().Get("force") == "true"
+	job, err := h.svc.Scan(r.Context(), id, force)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

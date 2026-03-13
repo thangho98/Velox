@@ -16,6 +16,13 @@ import (
 	"github.com/thawng/velox/pkg/nameparser"
 )
 
+// MetadataMatcher is an optional interface for metadata enrichment (TMDb).
+// When non-nil, the pipeline calls it after persisting new media.
+type MetadataMatcher interface {
+	MatchAndPersistMovie(ctx context.Context, media *model.Media, parsed nameparser.ParsedMedia, filePath string, force bool) error
+	MatchAndPersistEpisode(ctx context.Context, media *model.Media, parsed nameparser.ParsedMedia, filePath string, libraryID int64, force bool) error
+}
+
 // Pipeline handles the media scanning process
 type Pipeline struct {
 	db             *sql.DB
@@ -28,6 +35,7 @@ type Pipeline struct {
 	scanJobRepo    *repository.ScanJobRepo
 	subtitleRepo   *repository.SubtitleRepo
 	audioTrackRepo *repository.AudioTrackRepo
+	metadataSvc    MetadataMatcher // nil = skip metadata enrichment
 }
 
 // NewPipeline creates a new scan pipeline
@@ -57,10 +65,16 @@ func NewPipeline(
 	}
 }
 
+// SetMetadataMatcher attaches an optional metadata enrichment service.
+func (p *Pipeline) SetMetadataMatcher(m MetadataMatcher) {
+	p.metadataSvc = m
+}
+
 // ScanContext holds state during a scan
 type ScanContext struct {
 	LibraryID int64
 	JobID     int64
+	Force     bool // Force re-parse titles for existing files
 	ctx       context.Context
 }
 
@@ -79,7 +93,7 @@ func (p *Pipeline) CreateJob(ctx context.Context, libraryID int64) (*model.ScanJ
 
 // RunJob executes a scan for an already-created job. This is blocking
 // and should be called from a goroutine for async operation.
-func (p *Pipeline) RunJob(ctx context.Context, job *model.ScanJob) error {
+func (p *Pipeline) RunJob(ctx context.Context, job *model.ScanJob, force bool) error {
 	if err := p.scanJobRepo.Start(ctx, job.ID); err != nil {
 		return fmt.Errorf("starting scan job: %w", err)
 	}
@@ -87,6 +101,7 @@ func (p *Pipeline) RunJob(ctx context.Context, job *model.ScanJob) error {
 	scanCtx := &ScanContext{
 		LibraryID: job.LibraryID,
 		JobID:     job.ID,
+		Force:     force,
 		ctx:       ctx,
 	}
 
@@ -136,7 +151,7 @@ func (p *Pipeline) Run(ctx context.Context, libraryID int64) (*model.ScanJob, er
 	if err != nil {
 		return nil, err
 	}
-	if err := p.RunJob(ctx, job); err != nil {
+	if err := p.RunJob(ctx, job, false); err != nil {
 		return job, err
 	}
 	return job, nil
@@ -192,6 +207,11 @@ func (p *Pipeline) processFile(scanCtx *ScanContext, path string) (bool, error) 
 				return false, fmt.Errorf("updating file path: %w", err)
 			}
 		}
+		if scanCtx.Force {
+			if err := p.refreshTitle(scanCtx.ctx, existingFile.MediaID, path); err != nil {
+				return false, fmt.Errorf("refreshing title: %w", err)
+			}
+		}
 		return false, nil // Already known file
 	}
 
@@ -208,6 +228,11 @@ func (p *Pipeline) processFile(scanCtx *ScanContext, path string) (bool, error) 
 		info, _ := os.Stat(path)
 		if info != nil && existingByPath.FileSize == info.Size() && existingByPath.Fingerprint == fp {
 			// Same size + same fingerprint = truly unchanged
+			if scanCtx.Force {
+				if err := p.refreshTitle(scanCtx.ctx, existingByPath.MediaID, path); err != nil {
+					return false, fmt.Errorf("refreshing title: %w", err)
+				}
+			}
 			return false, nil
 		}
 		// File was replaced (different size or different fingerprint) — defer deletion to persist()
@@ -275,11 +300,16 @@ func (p *Pipeline) persist(scanCtx *ScanContext, path string, fingerprint string
 
 	if mediaID == 0 {
 		// Truly new file — create a new Media (logical item)
+		// Build display title: for episodes, combine series name + episode name
+		displayTitle := parsed.Title
+		if parsed.MediaType == "episode" && parsed.EpisodeTitle != "" {
+			displayTitle = parsed.Title + " - " + parsed.EpisodeTitle
+		}
 		media := &model.Media{
 			LibraryID:   scanCtx.LibraryID,
 			MediaType:   parsed.MediaType,
-			Title:       parsed.Title,
-			SortTitle:   parsed.Title,
+			Title:       displayTitle,
+			SortTitle:   displayTitle,
 			ReleaseDate: "", // Will be filled by TMDb matcher in Phase 04
 		}
 		if err := mediaRepo.Create(ctx, media); err != nil {
@@ -354,9 +384,36 @@ func (p *Pipeline) persist(scanCtx *ScanContext, path string, fingerprint string
 		log.Printf("Failed to scan external subtitles: %v", err)
 	}
 
-	// TODO: Phase 04 - TMDb matching will go here
+	// Phase 04: TMDb metadata enrichment (non-critical, outside transaction)
+	if p.metadataSvc != nil {
+		media, err := p.mediaRepo.GetByID(ctx, mediaID)
+		if err != nil {
+			log.Printf("Failed to get media %d for metadata: %v", mediaID, err)
+		} else {
+			var metaErr error
+			switch parsed.MediaType {
+			case "episode":
+				metaErr = p.metadataSvc.MatchAndPersistEpisode(ctx, media, parsed, path, scanCtx.LibraryID, false)
+			default:
+				metaErr = p.metadataSvc.MatchAndPersistMovie(ctx, media, parsed, path, false)
+			}
+			if metaErr != nil {
+				log.Printf("Metadata match for %s: %v", path, metaErr)
+			}
+		}
+	}
 
 	return nil
+}
+
+// refreshTitle re-parses the filename and updates the media title if it changed.
+func (p *Pipeline) refreshTitle(ctx context.Context, mediaID int64, path string) error {
+	parsed := nameparser.ParseWithParents(path)
+	displayTitle := parsed.Title
+	if parsed.MediaType == "episode" && parsed.EpisodeTitle != "" {
+		displayTitle = parsed.Title + " - " + parsed.EpisodeTitle
+	}
+	return p.mediaRepo.UpdateTitle(ctx, mediaID, displayTitle)
 }
 
 // scanExternalSubtitles looks for sidecar subtitle files
