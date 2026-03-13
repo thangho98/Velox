@@ -8,9 +8,7 @@ import { SetupPage } from '@/pages/SetupPage'
 import { LibraryListPage } from '@/pages/LibraryListPage'
 import { MediaDetailPage } from '@/pages/MediaDetailPage'
 import { WatchPage } from '@/pages/WatchPage'
-import { ProfilePage } from '@/pages/ProfilePage'
-import { AdminUsersPage } from '@/pages/AdminUsersPage'
-import { AdminLibrariesPage } from '@/pages/AdminLibrariesPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { MoviesPage } from '@/pages/MoviesPage'
 import { SeriesPage } from '@/pages/SeriesPage'
 import { FavoritesPage } from '@/pages/FavoritesPage'
@@ -33,27 +31,7 @@ function RequireAuth() {
   )
 }
 
-// Admin guard component
-function RequireAdmin() {
-  const { user, isAuthenticated } = useAuthStore()
-  useTokenRefresh()
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-
-  if (!user?.is_admin) {
-    return <Navigate to="/" replace />
-  }
-
-  return (
-    <Layout>
-      <Outlet />
-    </Layout>
-  )
-}
-
-// Fullscreen player layout (no sidebar)
+// Fullscreen player — no Layout wrapper at all
 function RequireAuthFullScreen() {
   const { isAuthenticated } = useAuthStore()
   useTokenRefresh()
@@ -62,11 +40,7 @@ function RequireAuthFullScreen() {
     return <Navigate to="/login" replace />
   }
 
-  return (
-    <Layout fullWidth>
-      <Outlet />
-    </Layout>
-  )
+  return <Outlet />
 }
 
 function NotFoundPage() {
@@ -98,20 +72,24 @@ export function RouterProvider() {
           <Route path="/recently-watched" element={<RecentlyWatchedPage />} />
           <Route path="/libraries" element={<LibraryListPage />} />
           <Route path="/media/:id" element={<MediaDetailPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/settings" element={<ProfilePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/search" element={<SearchPage />} />
+          {/* Redirects for old routes */}
+          <Route path="/profile" element={<Navigate to="/settings?section=profile" replace />} />
+          <Route
+            path="/admin/libraries"
+            element={<Navigate to="/settings?section=libraries" replace />}
+          />
+          <Route path="/admin/users" element={<Navigate to="/settings?section=users" replace />} />
+          <Route
+            path="/admin/settings"
+            element={<Navigate to="/settings?section=subtitles" replace />}
+          />
         </Route>
 
         {/* Fullscreen routes (player) */}
         <Route element={<RequireAuthFullScreen />}>
           <Route path="/watch/:id" element={<WatchPage />} />
-        </Route>
-
-        {/* Admin routes */}
-        <Route element={<RequireAdmin />}>
-          <Route path="/admin/libraries" element={<AdminLibrariesPage />} />
-          <Route path="/admin/users" element={<AdminUsersPage />} />
         </Route>
 
         {/* 404 */}

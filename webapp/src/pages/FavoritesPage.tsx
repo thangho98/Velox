@@ -1,5 +1,6 @@
 import { useFavorites } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
+import { LuHeart } from 'react-icons/lu'
 
 export function FavoritesPage() {
   const { data: favorites, isLoading } = useFavorites({ limit: 100 })
@@ -21,19 +22,7 @@ export function FavoritesPage() {
         </div>
       ) : favorites?.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-          <svg
-            className="mb-4 h-12 w-12 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-            />
-          </svg>
+          <LuHeart size={48} className="mb-4 text-gray-600" />
           <p className="text-gray-400">No favorites yet</p>
           <p className="text-sm text-gray-500">
             Click the heart icon on any movie or series to add it here

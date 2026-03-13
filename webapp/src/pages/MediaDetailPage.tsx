@@ -6,8 +6,12 @@ import {
   useProgress,
   useSeasons,
   useEpisodes,
+  useRefreshMetadata,
 } from '@/hooks/stores/useMedia'
+import { useAuthStore } from '@/stores/auth'
 import type { Episode } from '@/types/api'
+import { LuChevronLeft, LuFilm, LuStar, LuPlay, LuHeart, LuRefreshCw } from 'react-icons/lu'
+import { tmdbImage } from '@/lib/image'
 
 export function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -17,6 +21,8 @@ export function MediaDetailPage() {
   const { data: media, isLoading } = useMediaWithFiles(mediaId)
   const { data: progress } = useProgress(mediaId)
   const { mutate: toggleFavorite } = useToggleFavorite()
+  const { mutate: refreshMetadata, isPending: isRefreshing } = useRefreshMetadata(mediaId)
+  const { user } = useAuthStore()
 
   // Fetch seasons if this is a series (episode type with series_id)
   const isSeries = media?.media.media_type === 'episode' && media.media.series_id
@@ -60,12 +66,12 @@ export function MediaDetailPage() {
       : 0
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-netflix-black">
       {/* Backdrop */}
       {media.media.backdrop_path && (
         <div className="fixed inset-0 h-screen">
           <img
-            src={media.media.backdrop_path}
+            src={tmdbImage(media.media.backdrop_path, 'w1280')!}
             alt={media.media.title}
             className="h-full w-full object-cover"
           />
@@ -81,14 +87,7 @@ export function MediaDetailPage() {
           to="/"
           className="fixed left-4 top-20 z-20 flex items-center gap-2 rounded-full bg-black/50 p-3 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
         >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
+          <LuChevronLeft size={20} />
         </Link>
 
         <div className="container mx-auto px-4 py-24 lg:px-8">
@@ -97,25 +96,13 @@ export function MediaDetailPage() {
             <div className="mx-auto flex-shrink-0 lg:mx-0">
               {media.media.poster_path ? (
                 <img
-                  src={media.media.poster_path}
+                  src={tmdbImage(media.media.poster_path, 'w500')!}
                   alt={media.media.title}
                   className="w-64 rounded-lg shadow-2xl lg:w-80"
                 />
               ) : (
                 <div className="flex h-96 w-64 items-center justify-center rounded-lg bg-netflix-dark lg:w-80">
-                  <svg
-                    className="h-16 w-16 text-gray-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-                    />
-                  </svg>
+                  <LuFilm size={64} className="text-gray-600" />
                 </div>
               )}
             </div>
@@ -134,14 +121,32 @@ export function MediaDetailPage() {
                   <>
                     <span className="text-gray-600">|</span>
                     <span className="flex items-center gap-1">
-                      <svg
-                        className="h-4 w-4 text-yellow-500"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                      </svg>
+                      <LuStar size={16} className="text-yellow-500" />
                       {media.media.rating.toFixed(1)}
+                    </span>
+                  </>
+                )}
+                {media.media.imdb_rating > 0 && (
+                  <>
+                    <span className="text-gray-600">|</span>
+                    <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-xs font-medium text-yellow-400">
+                      IMDb {media.media.imdb_rating.toFixed(1)}
+                    </span>
+                  </>
+                )}
+                {media.media.rt_score > 0 && (
+                  <>
+                    <span className="text-gray-600">|</span>
+                    <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-400">
+                      RT {media.media.rt_score}%
+                    </span>
+                  </>
+                )}
+                {media.media.metacritic_score > 0 && (
+                  <>
+                    <span className="text-gray-600">|</span>
+                    <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs font-medium text-blue-400">
+                      MC {media.media.metacritic_score}
                     </span>
                   </>
                 )}
@@ -169,9 +174,7 @@ export function MediaDetailPage() {
                     to={`/watch/${mediaId}`}
                     className="flex items-center gap-2 rounded bg-netflix-red px-8 py-3 font-semibold text-white transition-colors hover:bg-netflix-red-hover"
                   >
-                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-                    </svg>
+                    <LuPlay size={20} />
                     {progress?.position && progress.position > 0 ? 'Resume' : 'Play'}
                   </Link>
                 ) : (
@@ -180,9 +183,7 @@ export function MediaDetailPage() {
                     to={`/watch/${episodes?.find((e) => !e.duration)?.id || episodes?.[0]?.id || mediaId}`}
                     className="flex items-center gap-2 rounded bg-netflix-red px-8 py-3 font-semibold text-white transition-colors hover:bg-netflix-red-hover"
                   >
-                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-                    </svg>
+                    <LuPlay size={20} />
                     {progress?.position && progress.position > 0
                       ? 'Continue Watching'
                       : 'Play Latest'}
@@ -196,26 +197,19 @@ export function MediaDetailPage() {
                       : 'bg-netflix-gray text-white hover:bg-gray-700'
                   }`}
                 >
-                  {progress?.is_favorite ? (
-                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path
-                        fillRule="evenodd"
-                        d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  ) : (
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                      />
-                    </svg>
-                  )}
+                  <LuHeart size={20} className={progress?.is_favorite ? 'fill-current' : ''} />
                   {progress?.is_favorite ? 'Favorited' : 'Favorite'}
                 </button>
+                {user?.is_admin && (
+                  <button
+                    onClick={() => refreshMetadata()}
+                    disabled={isRefreshing}
+                    className="flex items-center gap-2 rounded bg-netflix-gray px-6 py-3 font-semibold text-white transition-colors hover:bg-gray-700 disabled:opacity-50"
+                  >
+                    <LuRefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
+                    {isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
+                  </button>
+                )}
               </div>
 
               {/* Progress bar */}
@@ -340,25 +334,13 @@ function EpisodeCard({ episode }: { episode: Episode }) {
       <div className="relative flex h-20 w-32 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-netflix-black">
         {episode.still_path ? (
           <img
-            src={episode.still_path}
+            src={tmdbImage(episode.still_path, 'w300')!}
             alt={episode.title}
             className="h-full w-full object-cover"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <svg
-              className="h-8 w-8 text-gray-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-              />
-            </svg>
+            <LuFilm size={32} className="text-gray-600" />
           </div>
         )}
         {/* Play overlay on hover */}
@@ -367,9 +349,7 @@ function EpisodeCard({ episode }: { episode: Episode }) {
           className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
         >
           <div className="rounded-full bg-netflix-red p-2">
-            <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-            </svg>
+            <LuPlay size={20} className="text-white" />
           </div>
         </Link>
       </div>
@@ -393,9 +373,7 @@ function EpisodeCard({ episode }: { episode: Episode }) {
         to={`/watch/${episode.id}`}
         className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white opacity-0 transition-all group-hover:opacity-100 hover:bg-netflix-red"
       >
-        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-          <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-        </svg>
+        <LuPlay size={16} />
         Play
       </Link>
     </div>

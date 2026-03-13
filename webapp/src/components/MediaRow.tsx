@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { MediaCard } from './MediaCard'
 import { MediaRowSkeleton } from './Skeleton'
 import type { MediaListItem, UserData } from '@/types/api'
+import { LuChevronLeft, LuChevronRight } from 'react-icons/lu'
 
 interface MediaRowProps {
   title: string
@@ -66,19 +67,7 @@ export function MediaRow({ title, seeAllLink, items, isLoading, showProgress }: 
             className="absolute left-0 top-0 z-10 flex h-full w-10 items-center justify-center bg-gradient-to-r from-netflix-black to-transparent opacity-0 transition-opacity group-hover:opacity-100"
             aria-label="Scroll left"
           >
-            <svg
-              className="h-6 w-6 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
+            <LuChevronLeft size={24} className="text-white" />
           </button>
         )}
 
@@ -89,14 +78,7 @@ export function MediaRow({ title, seeAllLink, items, isLoading, showProgress }: 
             className="absolute right-0 top-0 z-10 flex h-full w-10 items-center justify-center bg-gradient-to-l from-netflix-black to-transparent opacity-0 transition-opacity group-hover:opacity-100"
             aria-label="Scroll right"
           >
-            <svg
-              className="h-6 w-6 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+            <LuChevronRight size={24} className="text-white" />
           </button>
         )}
 

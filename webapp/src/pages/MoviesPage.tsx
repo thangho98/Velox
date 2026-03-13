@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMediaList } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
+import { LuX, LuFilm } from 'react-icons/lu'
 
 export function MoviesPage() {
   const [filters, setFilters] = useState({
@@ -115,14 +116,7 @@ export function MoviesPage() {
                 onClick={() => setFilters({ ...filters, genre: '' })}
                 className="ml-1 hover:text-white"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <LuX size={16} />
               </button>
             </span>
           )}
@@ -133,14 +127,7 @@ export function MoviesPage() {
                 onClick={() => setFilters({ ...filters, year: '' })}
                 className="ml-1 hover:text-white"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <LuX size={16} />
               </button>
             </span>
           )}
@@ -160,19 +147,7 @@ export function MoviesPage() {
         </div>
       ) : sortedMovies?.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-          <svg
-            className="mb-4 h-12 w-12 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-            />
-          </svg>
+          <LuFilm size={48} className="mb-4 text-gray-600" />
           <p className="text-gray-400">
             {movies?.length === 0
               ? 'No movies found in your libraries.'

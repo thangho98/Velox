@@ -10,6 +10,7 @@ import {
 } from '@/hooks/stores/useAuth'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
+import { LuLogOut, LuMonitor } from 'react-icons/lu'
 
 export function ProfilePage() {
   const { logout } = useAuthStore()
@@ -30,14 +31,7 @@ export function ProfilePage() {
           onClick={logout}
           className="flex items-center gap-2 rounded bg-netflix-gray px-4 py-2 text-white transition-colors hover:bg-red-600"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-            />
-          </svg>
+          <LuLogOut size={16} />
           Sign out
         </button>
       </div>
@@ -354,19 +348,7 @@ function SessionsTab() {
         >
           <div className="flex items-center gap-4">
             <div className="flex h-10 w-10 items-center justify-center rounded bg-netflix-gray">
-              <svg
-                className="h-5 w-5 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                />
-              </svg>
+              <LuMonitor size={20} className="text-gray-400" />
             </div>
             <div>
               <p className="font-medium text-white">{session.device_name || 'Unknown Device'}</p>

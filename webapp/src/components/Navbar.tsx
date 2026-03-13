@@ -1,5 +1,6 @@
 import { Link, useNavigate, useLocation } from 'react-router'
 import { useState, useRef, useEffect } from 'react'
+import { LuSearch, LuX, LuChevronDown, LuLogOut, LuSettings } from 'react-icons/lu'
 import { Logo } from './Logo'
 import { useAuthStore } from '@/stores/auth'
 import { useLogout } from '@/hooks/stores/useAuth'
@@ -24,23 +25,18 @@ export function Navbar() {
   const userMenuRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // Track scroll for navbar background
   useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 0)
-    }
+    const handleScroll = () => setScrolled(window.scrollY > 0)
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Focus search input when opened
   useEffect(() => {
     if (isSearchOpen && searchInputRef.current) {
       searchInputRef.current.focus()
     }
   }, [isSearchOpen])
 
-  // Close user menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
@@ -60,10 +56,6 @@ export function Navbar() {
     }
   }
 
-  const handleLogout = () => {
-    logout()
-  }
-
   return (
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
@@ -76,7 +68,6 @@ export function Navbar() {
         {/* Left: Logo + Nav */}
         <div className="flex items-center gap-8">
           <Logo />
-
           {isAuthenticated && (
             <nav className="hidden items-center gap-6 md:flex">
               {navItems.map((item) => (
@@ -98,7 +89,6 @@ export function Navbar() {
 
         {/* Right: Search + User */}
         <div className="flex items-center gap-4">
-          {/* Search */}
           {isAuthenticated && (
             <div className="relative">
               {isSearchOpen ? (
@@ -106,19 +96,7 @@ export function Navbar() {
                   onSubmit={handleSearch}
                   className="flex items-center gap-2 rounded bg-netflix-black/80 border border-gray-600 px-3 py-1.5"
                 >
-                  <svg
-                    className="h-4 w-4 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
+                  <LuSearch size={16} className="text-gray-400" />
                   <input
                     ref={searchInputRef}
                     type="text"
@@ -132,14 +110,7 @@ export function Navbar() {
                     onClick={toggleSearch}
                     className="text-gray-400 hover:text-white"
                   >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
+                    <LuX size={16} />
                   </button>
                 </form>
               ) : (
@@ -148,20 +119,12 @@ export function Navbar() {
                   className="p-2 text-gray-300 transition-colors hover:text-white"
                   aria-label="Search"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
+                  <LuSearch size={20} />
                 </button>
               )}
             </div>
           )}
 
-          {/* User Menu */}
           {isAuthenticated && user && (
             <div ref={userMenuRef} className="relative">
               <button
@@ -173,20 +136,12 @@ export function Navbar() {
                     user.username?.[0]?.toUpperCase() ||
                     'U'}
                 </div>
-                <svg
-                  className={`h-3 w-3 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
-                </svg>
+                <LuChevronDown
+                  size={12}
+                  className={`transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}
+                />
               </button>
 
-              {/* Dropdown */}
               {isUserMenuOpen && (
                 <div className="absolute right-0 top-full mt-2 w-48 rounded bg-netflix-dark border border-netflix-gray shadow-xl">
                   <div className="px-4 py-3 border-b border-netflix-gray">
@@ -197,87 +152,19 @@ export function Navbar() {
                   </div>
                   <div className="py-1">
                     <Link
-                      to="/profile"
+                      to="/settings"
                       className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-netflix-gray hover:text-white"
                       onClick={() => setIsUserMenuOpen(false)}
                     >
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                        />
-                      </svg>
-                      Profile
+                      <LuSettings size={16} />
+                      Settings
                     </Link>
-                    {user.is_admin && (
-                      <Link
-                        to="/admin/libraries"
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-netflix-gray hover:text-white"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                          />
-                        </svg>
-                        Libraries
-                      </Link>
-                    )}
-                    {user.is_admin && (
-                      <Link
-                        to="/admin/users"
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-netflix-gray hover:text-white"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                          />
-                        </svg>
-                        Users
-                      </Link>
-                    )}
                     <div className="my-1 border-t border-netflix-gray" />
                     <button
-                      onClick={handleLogout}
+                      onClick={() => logout()}
                       className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-netflix-gray hover:text-white"
                     >
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                        />
-                      </svg>
+                      <LuLogOut size={16} />
                       Sign out
                     </button>
                   </div>

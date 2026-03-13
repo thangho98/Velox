@@ -13,8 +13,8 @@ export function Layout({ children, fullWidth = false }: LayoutProps) {
       {/* Fixed Navbar */}
       <Navbar />
 
-      {/* Fixed Sidebar (desktop) */}
-      <Sidebar />
+      {/* Fixed Sidebar (desktop) — hidden in fullWidth mode (e.g. WatchPage) */}
+      {!fullWidth && <Sidebar />}
 
       {/* Main Content */}
       <main

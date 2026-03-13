@@ -12,6 +12,7 @@ interface PlayerState {
   secondarySubtitleLanguage: string | null // dual-subtitle secondary track, null = off
   subtitleSize: 'small' | 'medium' | 'large'
   subtitleColor: string
+  subtitleBackground: 'solid' | 'semi' | 'none' // solid=black box, semi=translucent, none=text-stroke only
 
   // Audio preferences
   audioLanguage: string | null
@@ -19,6 +20,12 @@ interface PlayerState {
 
   // Quality preference (sent as max_height in playback info request)
   maxStreamingQuality: 'auto' | '1080p' | '720p' | '480p'
+
+  // Video display
+  aspectRatio: 'contain' | 'cover' | 'fill'
+
+  // Repeat mode
+  repeatMode: 'none' | 'one' | 'all'
 
   // Last position (for resume)
   lastPositions: Record<number, number> // mediaId -> position in seconds
@@ -32,9 +39,12 @@ interface PlayerState {
   setSecondarySubtitleLanguage: (lang: string | null) => void
   setSubtitleSize: (size: 'small' | 'medium' | 'large') => void
   setSubtitleColor: (color: string) => void
+  setSubtitleBackground: (bg: 'solid' | 'semi' | 'none') => void
 
   setAudioTrack: (lang: string | null, id: number | null) => void
   setMaxStreamingQuality: (quality: 'auto' | '1080p' | '720p' | '480p') => void
+  setAspectRatio: (ratio: 'contain' | 'cover' | 'fill') => void
+  setRepeatMode: (mode: 'none' | 'one' | 'all') => void
 
   setLastPosition: (mediaId: number, position: number) => void
   getLastPosition: (mediaId: number) => number
@@ -51,13 +61,16 @@ export const usePlayerStore = create<PlayerState>()(
 
       subtitleLanguage: null,
       secondarySubtitleLanguage: null,
-      subtitleSize: 'medium',
+      subtitleSize: 'large',
       subtitleColor: '#ffffff',
+      subtitleBackground: 'none',
 
       audioLanguage: null,
       audioTrackId: null,
 
       maxStreamingQuality: 'auto',
+      aspectRatio: 'contain',
+      repeatMode: 'none',
 
       lastPositions: {},
 
@@ -77,10 +90,14 @@ export const usePlayerStore = create<PlayerState>()(
 
       setSubtitleColor: (color) => set({ subtitleColor: color }),
 
+      setSubtitleBackground: (bg) => set({ subtitleBackground: bg }),
+
       setAudioTrack: (lang: string | null, id: number | null) =>
         set({ audioLanguage: lang, audioTrackId: id }),
 
       setMaxStreamingQuality: (quality) => set({ maxStreamingQuality: quality }),
+      setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
+      setRepeatMode: (mode) => set({ repeatMode: mode }),
 
       setLastPosition: (mediaId, position) =>
         set((state) => ({
@@ -107,9 +124,12 @@ export const usePlayerStore = create<PlayerState>()(
         secondarySubtitleLanguage: state.secondarySubtitleLanguage,
         subtitleSize: state.subtitleSize,
         subtitleColor: state.subtitleColor,
+        subtitleBackground: state.subtitleBackground,
         audioLanguage: state.audioLanguage,
         audioTrackId: state.audioTrackId,
         maxStreamingQuality: state.maxStreamingQuality,
+        aspectRatio: state.aspectRatio,
+        repeatMode: state.repeatMode,
         lastPositions: state.lastPositions,
       }),
     },

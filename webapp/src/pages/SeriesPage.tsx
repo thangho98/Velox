@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMediaList } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
+import { LuX, LuTv } from 'react-icons/lu'
 
 export function SeriesPage() {
   const [filters, setFilters] = useState({
@@ -115,14 +116,7 @@ export function SeriesPage() {
                 onClick={() => setFilters({ ...filters, genre: '' })}
                 className="ml-1 hover:text-white"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <LuX size={16} />
               </button>
             </span>
           )}
@@ -133,14 +127,7 @@ export function SeriesPage() {
                 onClick={() => setFilters({ ...filters, year: '' })}
                 className="ml-1 hover:text-white"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <LuX size={16} />
               </button>
             </span>
           )}
@@ -160,19 +147,7 @@ export function SeriesPage() {
         </div>
       ) : sortedSeries?.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-          <svg
-            className="mb-4 h-12 w-12 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-            />
-          </svg>
+          <LuTv size={48} className="mb-4 text-gray-600" />
           <p className="text-gray-400">
             {series?.length === 0
               ? 'No series found in your libraries.'

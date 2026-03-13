@@ -4,6 +4,15 @@ import { useLibraries, useCreateLibrary, useMediaList } from '@/hooks/stores/use
 import { MediaCard } from '@/components/MediaCard'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
+import {
+  LuPlus,
+  LuChevronRight,
+  LuLibrary,
+  LuFilm,
+  LuLayoutGrid,
+  LuList,
+  LuX,
+} from 'react-icons/lu'
 
 export function LibraryListPage() {
   const { user } = useAuthStore()
@@ -23,14 +32,7 @@ export function LibraryListPage() {
             onClick={() => setIsCreateModalOpen(true)}
             className="flex items-center gap-2 rounded bg-netflix-red px-4 py-2 font-semibold text-white transition-colors hover:bg-netflix-red-hover"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
+            <LuPlus size={20} />
             Add Library
           </button>
         )}
@@ -55,19 +57,7 @@ export function LibraryListPage() {
                   <h3 className="font-medium text-white">{lib.name}</h3>
                   <p className="text-sm capitalize text-gray-400">{lib.type}</p>
                 </div>
-                <svg
-                  className="h-5 w-5 text-gray-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
+                <LuChevronRight size={20} className="text-gray-500" />
               </div>
               <p className="mt-2 truncate text-xs text-gray-500">{lib.paths?.[0]}</p>
             </button>
@@ -93,19 +83,7 @@ export function LibraryListPage() {
             <LibraryContent libraryId={selectedLib.id} libraryName={selectedLib.name} />
           ) : (
             <div className="flex h-96 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-              <svg
-                className="mb-4 h-16 w-16 text-gray-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                />
-              </svg>
+              <LuLibrary size={64} className="mb-4 text-gray-600" />
               <p className="text-gray-400">Select a library to view contents</p>
             </div>
           )}
@@ -134,9 +112,7 @@ function LibraryContent({ libraryId, libraryName }: { libraryId: number; library
                 : 'bg-netflix-gray text-gray-300 hover:bg-gray-700'
             }`}
           >
-            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-            </svg>
+            <LuLayoutGrid size={16} />
             Grid
           </button>
           <button
@@ -147,13 +123,7 @@ function LibraryContent({ libraryId, libraryName }: { libraryId: number; library
                 : 'bg-netflix-gray text-gray-300 hover:bg-gray-700'
             }`}
           >
-            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
-                clipRule="evenodd"
-              />
-            </svg>
+            <LuList size={16} />
             List
           </button>
         </div>
@@ -165,19 +135,7 @@ function LibraryContent({ libraryId, libraryName }: { libraryId: number; library
         </div>
       ) : media?.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-          <svg
-            className="mb-4 h-12 w-12 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-            />
-          </svg>
+          <LuFilm size={48} className="mb-4 text-gray-600" />
           <p className="text-gray-400">No media found in this library.</p>
         </div>
       ) : libraryViewMode === 'grid' ? (
@@ -211,19 +169,7 @@ function LibraryContent({ libraryId, libraryName }: { libraryId: number; library
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
-                    <svg
-                      className="h-6 w-6 text-gray-600"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-                      />
-                    </svg>
+                    <LuFilm size={24} className="text-gray-600" />
                   </div>
                 )}
               </div>
@@ -231,19 +177,7 @@ function LibraryContent({ libraryId, libraryName }: { libraryId: number; library
                 <h3 className="truncate font-medium text-white">{item.title}</h3>
                 <p className="truncate text-sm text-gray-400">{item.genres.join(', ')}</p>
               </div>
-              <svg
-                className="h-5 w-5 text-gray-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
+              <LuChevronRight size={20} className="text-gray-500" />
             </Link>
           ))}
         </div>
@@ -288,14 +222,7 @@ function CreateLibraryModal({ onClose }: { onClose: () => void }) {
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white">Add Library</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
-            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <LuX size={24} />
           </button>
         </div>
 

@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import { useRecentlyWatched } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
 import { useState } from 'react'
+import { LuClock } from 'react-icons/lu'
 
 export function RecentlyWatchedPage() {
   const [limit, setLimit] = useState(20)
@@ -54,19 +55,7 @@ export function RecentlyWatchedPage() {
         </div>
       ) : filteredItems?.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-          <svg
-            className="mb-4 h-12 w-12 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <LuClock size={48} className="mb-4 text-gray-600" />
           <p className="text-gray-400">
             {filter === 'all'
               ? 'No watch history yet'

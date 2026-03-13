@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import { useLibraries, useRecentlyWatched, useMediaList } from '@/hooks/stores/useMedia'
 import { MediaRow } from '@/components/MediaRow'
 import { useAuthStore } from '@/stores/auth'
+import { LuPlay, LuFilm, LuLibrary } from 'react-icons/lu'
 
 export function HomePage() {
   const { user } = useAuthStore()
@@ -37,9 +38,7 @@ export function HomePage() {
                 to="/movies"
                 className="flex items-center gap-2 rounded bg-netflix-red px-5 py-2.5 font-semibold text-white transition-colors hover:bg-netflix-red-hover"
               >
-                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-                </svg>
+                <LuPlay size={16} />
                 Movies
               </Link>
               <Link
@@ -87,19 +86,7 @@ export function HomePage() {
       {/* Empty state — no libraries */}
       {!libsLoading && libraries?.length === 0 && (
         <div className="rounded-xl bg-netflix-dark p-12 text-center">
-          <svg
-            className="mx-auto mb-4 h-14 w-14 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-            />
-          </svg>
+          <LuLibrary size={56} className="mx-auto mb-4 text-gray-600" />
           <p className="mb-2 text-lg font-medium text-gray-300">No libraries yet</p>
           {user?.is_admin ? (
             <Link
@@ -140,19 +127,7 @@ export function HomePage() {
                   className="group relative overflow-hidden rounded-lg bg-netflix-dark p-6 transition-all hover:bg-netflix-gray"
                 >
                   <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-netflix-red/20">
-                    <svg
-                      className="h-5 w-5 text-netflix-red"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-                      />
-                    </svg>
+                    <LuFilm size={20} className="text-netflix-red" />
                   </div>
                   <h3 className="mb-1 font-semibold text-white transition-colors group-hover:text-netflix-red">
                     {lib.name}

@@ -20,6 +20,8 @@ import type {
   ToggleFavoriteResponse,
   FavoritesListParams,
   RecentlyWatchedParams,
+  SubtitleSearchResult,
+  SubtitleDownloadRequest,
 } from '@/types/api'
 
 // Filesystem browser API (admin only)
@@ -36,7 +38,8 @@ const libraryApi = {
   list: () => api.get<Library[]>('/libraries'),
   create: (data: CreateLibraryRequest) => api.post<Library>('/libraries', data),
   delete: (id: number) => api.delete(`/libraries/${id}`),
-  scan: (id: number) => api.post<void>(`/libraries/${id}/scan`, {}),
+  scan: (id: number, force = false) =>
+    api.post<void>(`/libraries/${id}/scan${force ? '?force=true' : ''}`, {}),
 }
 
 // Query Keys
@@ -79,7 +82,8 @@ export function useDeleteLibrary() {
 
 export function useScanLibrary() {
   return useMutation({
-    mutationFn: libraryApi.scan,
+    mutationFn: ({ id, force = false }: { id: number; force?: boolean }) =>
+      libraryApi.scan(id, force),
   })
 }
 
@@ -289,6 +293,15 @@ export function useAudioTracks(mediaId: number, request: PlaybackInfoRequest = {
     enabled: mediaId > 0,
   })
 }
+
+export function usePlaybackInfo(mediaId: number, request: PlaybackInfoRequest = {}) {
+  return useQuery({
+    queryKey: streamingKeys.playbackInfo(mediaId, request),
+    queryFn: () => streamingApi.getPlaybackInfo(mediaId, request),
+    staleTime: 5 * 60 * 1000,
+    enabled: mediaId > 0,
+  })
+}
 export function useSeasons(seriesId: number) {
   return useQuery({
     queryKey: seriesKeys.seasons(seriesId),
@@ -313,5 +326,51 @@ export function useEpisode(episodeId: number) {
     queryFn: () => seriesApi.getEpisode(episodeId),
     staleTime: 5 * 60 * 1000, // 5 minutes
     enabled: episodeId > 0,
+  })
+}
+
+// Subtitle Search API Functions (external providers)
+const subtitleSearchApi = {
+  search: (mediaId: number, lang: string) =>
+    api.get<SubtitleSearchResult[]>(
+      `/media/${mediaId}/subtitles/search?lang=${encodeURIComponent(lang)}`,
+    ),
+  download: (mediaId: number, body: SubtitleDownloadRequest) =>
+    api.post<unknown>(`/media/${mediaId}/subtitles/download`, body),
+}
+
+export const subtitleSearchKeys = {
+  all: ['subtitleSearch'] as const,
+  search: (mediaId: number, lang: string) => [...subtitleSearchKeys.all, mediaId, lang] as const,
+}
+
+export function useSubtitleSearch(mediaId: number, lang: string, enabled = true) {
+  return useQuery({
+    queryKey: subtitleSearchKeys.search(mediaId, lang),
+    queryFn: () => subtitleSearchApi.search(mediaId, lang),
+    staleTime: 2 * 60 * 1000,
+    enabled: enabled && mediaId > 0 && lang !== '',
+  })
+}
+
+export function useDownloadSubtitle(mediaId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: SubtitleDownloadRequest) => subtitleSearchApi.download(mediaId, body),
+    onSuccess: () => {
+      // Invalidate playback info so subtitle list refreshes
+      queryClient.invalidateQueries({ queryKey: streamingKeys.all })
+    },
+  })
+}
+
+export function useRefreshMetadata(mediaId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<Media>(`/media/${mediaId}/refresh`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: mediaKeys.withFiles(mediaId) })
+      queryClient.invalidateQueries({ queryKey: mediaKeys.detail(mediaId) })
+    },
   })
 }

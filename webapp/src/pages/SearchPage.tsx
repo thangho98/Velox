@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router'
 import { useMediaList } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
+import { LuSearch, LuX } from 'react-icons/lu'
 
 const DEBOUNCE_MS = 300
 
@@ -86,19 +87,7 @@ export function SearchPage() {
         {/* Search Input */}
         <div className="relative max-w-2xl">
           <div className="absolute left-4 top-1/2 -translate-y-1/2">
-            <svg
-              className="h-5 w-5 text-gray-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+            <LuSearch size={20} className="text-gray-500" />
           </div>
           <input
             type="text"
@@ -112,14 +101,7 @@ export function SearchPage() {
               onClick={clearSearch}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <LuX size={20} />
             </button>
           )}
         </div>
@@ -162,14 +144,7 @@ export function SearchPage() {
                   onClick={() => setFilters({ ...filters, type: '' })}
                   className="ml-1 hover:text-white"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+                  <LuX size={16} />
                 </button>
               </span>
             )}
@@ -180,14 +155,7 @@ export function SearchPage() {
                   onClick={() => setFilters({ ...filters, genre: '' })}
                   className="ml-1 hover:text-white"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+                  <LuX size={16} />
                 </button>
               </span>
             )}
@@ -219,19 +187,7 @@ export function SearchPage() {
 
           {filteredMedia?.length === 0 ? (
             <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-              <svg
-                className="mb-4 h-12 w-12 text-gray-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
+              <LuSearch size={48} className="mb-4 text-gray-600" />
               <p className="text-gray-400">No results found for &quot;{debouncedQuery}&quot;</p>
               <button onClick={clearSearch} className="mt-2 text-netflix-red hover:underline">
                 Clear search
@@ -327,19 +283,7 @@ export function SearchPage() {
           {/* Empty State */}
           {allMedia?.length === 0 && (
             <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-              <svg
-                className="mb-4 h-12 w-12 text-gray-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
+              <LuSearch size={48} className="mb-4 text-gray-600" />
               <p className="text-gray-400">Start typing to search your media library</p>
             </div>
           )}

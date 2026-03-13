@@ -6,6 +6,17 @@ import {
   useScanLibrary,
 } from '@/hooks/stores/useMedia'
 import { DirectoryPicker } from '@/components/DirectoryPicker'
+import {
+  LuFilm,
+  LuTv,
+  LuList,
+  LuPlus,
+  LuLibrary,
+  LuRefreshCw,
+  LuTrash2,
+  LuX,
+  LuFolder,
+} from 'react-icons/lu'
 
 // ── Library type definitions ──────────────────────────────────────────────────
 
@@ -23,48 +34,21 @@ const LIBRARY_TYPES: LibraryTypeOption[] = [
     label: 'Movies',
     description: 'Feature films',
     color: 'blue',
-    icon: (
-      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-        />
-      </svg>
-    ),
+    icon: <LuFilm size={20} />,
   },
   {
     value: 'tvshows',
     label: 'TV Shows',
     description: 'Series & episodes',
     color: 'purple',
-    icon: (
-      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-        />
-      </svg>
-    ),
+    icon: <LuTv size={20} />,
   },
   {
     value: 'mixed',
     label: 'Mixed Content',
     description: 'Movies & TV combined',
     color: 'green',
-    icon: (
-      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M4 6h16M4 10h16M4 14h16M4 18h16"
-        />
-      </svg>
-    ),
+    icon: <LuList size={20} />,
   },
 ]
 
@@ -143,9 +127,9 @@ export function AdminLibrariesPage() {
     }
   }
 
-  const handleScan = (id: number) => {
+  const handleScan = (id: number, force = false) => {
     setScanningId(id)
-    scanLibrary(id, { onSettled: () => setScanningId(null) })
+    scanLibrary({ id, force }, { onSettled: () => setScanningId(null) })
   }
 
   const setPath = (idx: number, value: string) => {
@@ -177,9 +161,7 @@ export function AdminLibrariesPage() {
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 rounded bg-netflix-red px-4 py-2 font-semibold text-white transition-colors hover:bg-netflix-red-hover"
         >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
+          <LuPlus size={20} />
           Add Library
         </button>
       </div>
@@ -191,19 +173,7 @@ export function AdminLibrariesPage() {
         </div>
       ) : libraries?.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-          <svg
-            className="mb-4 h-12 w-12 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-            />
-          </svg>
+          <LuLibrary size={48} className="mb-4 text-gray-600" />
           <p className="text-gray-400">No libraries configured</p>
           <p className="text-sm text-gray-500">
             Add your first library to start organizing your media
@@ -267,35 +237,25 @@ export function AdminLibrariesPage() {
                       </>
                     ) : (
                       <>
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                          />
-                        </svg>
+                        <LuRefreshCw size={16} />
                         Scan
                       </>
                     )}
                   </button>
                   <button
+                    onClick={() => handleScan(lib.id, true)}
+                    disabled={scanningId === lib.id}
+                    className="flex items-center gap-1 rounded bg-netflix-gray px-3 py-1.5 text-sm text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
+                    title="Re-parse all filenames and update titles"
+                  >
+                    <LuRefreshCw size={16} />
+                    Force Rescan
+                  </button>
+                  <button
                     onClick={() => handleDelete(lib.id, lib.name)}
                     className="rounded bg-netflix-gray px-3 py-1.5 text-sm text-white transition-colors hover:bg-red-600"
                   >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
+                    <LuTrash2 size={16} />
                   </button>
                 </div>
               </div>
@@ -325,14 +285,7 @@ export function AdminLibrariesPage() {
                 onClick={() => setShowAddModal(false)}
                 className="text-gray-400 hover:text-white"
               >
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <LuX size={24} />
               </button>
             </div>
 
@@ -398,19 +351,7 @@ export function AdminLibrariesPage() {
                     onClick={addPath}
                     className="flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-white"
                   >
-                    <svg
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 4v16m8-8H4"
-                      />
-                    </svg>
+                    <LuPlus size={14} />
                     Add folder
                   </button>
                 </div>
@@ -431,19 +372,7 @@ export function AdminLibrariesPage() {
                         className="shrink-0 rounded bg-netflix-gray px-3 py-2.5 text-gray-300 transition-colors hover:bg-gray-600 hover:text-white"
                         title="Browse server folders"
                       >
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                          />
-                        </svg>
+                        <LuFolder size={16} />
                       </button>
                       {formData.paths.length > 1 && (
                         <button
@@ -452,19 +381,7 @@ export function AdminLibrariesPage() {
                           className="shrink-0 rounded bg-netflix-gray px-3 py-2.5 text-gray-500 transition-colors hover:bg-red-600/20 hover:text-red-400"
                           title="Remove folder"
                         >
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M6 18L18 6M6 6l12 12"
-                            />
-                          </svg>
+                          <LuX size={16} />
                         </button>
                       )}
                     </div>
