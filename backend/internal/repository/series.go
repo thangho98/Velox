@@ -20,13 +20,15 @@ func NewSeriesRepo(db DBTX) *SeriesRepo {
 // Create inserts a new series
 func (r *SeriesRepo) Create(ctx context.Context, s *model.Series) error {
 	query := `INSERT INTO series
-		(library_id, title, sort_title, tmdb_id, imdb_id, overview, status, first_air_date, poster_path, backdrop_path)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(library_id, title, sort_title, tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date,
+		 poster_path, backdrop_path, logo_path, thumb_path)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, created_at, updated_at`
 
 	row := r.db.QueryRowContext(ctx, query,
-		s.LibraryID, s.Title, s.SortTitle, s.TmdbID, s.ImdbID,
-		s.Overview, s.Status, s.FirstAirDate, s.PosterPath, s.BackdropPath)
+		s.LibraryID, s.Title, s.SortTitle, s.TmdbID, s.ImdbID, s.TvdbID,
+		s.Overview, s.Status, s.Network, s.FirstAirDate, s.PosterPath, s.BackdropPath,
+		s.LogoPath, s.ThumbPath)
 
 	return row.Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
 }
@@ -35,12 +37,12 @@ func (r *SeriesRepo) Create(ctx context.Context, s *model.Series) error {
 func (r *SeriesRepo) GetByID(ctx context.Context, id int64) (*model.Series, error) {
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, overview, status, first_air_date, poster_path, backdrop_path,
+		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		created_at, updated_at
 		FROM series WHERE id = ?`, id).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.Overview, &s.Status, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.CreatedAt, &s.UpdatedAt)
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -50,12 +52,14 @@ func (r *SeriesRepo) GetByID(ctx context.Context, id int64) (*model.Series, erro
 // Update updates a series
 func (r *SeriesRepo) Update(ctx context.Context, s *model.Series) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE series SET
-		title = ?, sort_title = ?, tmdb_id = ?, imdb_id = ?,
-		overview = ?, status = ?, first_air_date = ?, poster_path = ?, backdrop_path = ?,
+		title = ?, sort_title = ?, tmdb_id = ?, imdb_id = ?, tvdb_id = ?,
+		overview = ?, status = ?, network = ?, first_air_date = ?,
+		poster_path = ?, backdrop_path = ?, logo_path = ?, thumb_path = ?,
 		updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
-		s.Title, s.SortTitle, s.TmdbID, s.ImdbID,
-		s.Overview, s.Status, s.FirstAirDate, s.PosterPath, s.BackdropPath, s.ID)
+		s.Title, s.SortTitle, s.TmdbID, s.ImdbID, s.TvdbID,
+		s.Overview, s.Status, s.Network, s.FirstAirDate,
+		s.PosterPath, s.BackdropPath, s.LogoPath, s.ThumbPath, s.ID)
 	return err
 }
 
@@ -68,7 +72,7 @@ func (r *SeriesRepo) Delete(ctx context.Context, id int64) error {
 // List retrieves series with optional filters
 func (r *SeriesRepo) List(ctx context.Context, libraryID int64, limit, offset int) ([]model.Series, error) {
 	query := `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, overview, status, first_air_date, poster_path, backdrop_path,
+		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		created_at, updated_at
 		FROM series WHERE 1=1`
 	args := []any{}
@@ -99,8 +103,8 @@ func (r *SeriesRepo) List(ctx context.Context, libraryID int64, limit, offset in
 	for rows.Next() {
 		var s model.Series
 		if err := rows.Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.Overview, &s.Status, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanning series: %w", err)
 		}
 		items = append(items, s)
@@ -112,12 +116,28 @@ func (r *SeriesRepo) List(ctx context.Context, libraryID int64, limit, offset in
 func (r *SeriesRepo) GetByTmdbID(ctx context.Context, tmdbID int64) (*model.Series, error) {
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, overview, status, first_air_date, poster_path, backdrop_path,
+		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		created_at, updated_at
 		FROM series WHERE tmdb_id = ?`, tmdbID).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.Overview, &s.Status, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.CreatedAt, &s.UpdatedAt)
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetByTvdbID retrieves series by TheTVDB ID
+func (r *SeriesRepo) GetByTvdbID(ctx context.Context, tvdbID int64) (*model.Series, error) {
+	var s model.Series
+	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
+		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
+		created_at, updated_at
+		FROM series WHERE tvdb_id = ?`, tvdbID).
+		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -128,12 +148,12 @@ func (r *SeriesRepo) GetByTmdbID(ctx context.Context, tmdbID int64) (*model.Seri
 func (r *SeriesRepo) GetByImdbID(ctx context.Context, imdbID string) (*model.Series, error) {
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, overview, status, first_air_date, poster_path, backdrop_path,
+		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		created_at, updated_at
 		FROM series WHERE imdb_id = ?`, imdbID).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.Overview, &s.Status, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.CreatedAt, &s.UpdatedAt)
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +163,7 @@ func (r *SeriesRepo) GetByImdbID(ctx context.Context, imdbID string) (*model.Ser
 // Search searches series by title
 func (r *SeriesRepo) Search(ctx context.Context, query string, limit int) ([]model.Series, error) {
 	q := `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, overview, status, first_air_date, poster_path, backdrop_path,
+		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		created_at, updated_at
 		FROM series WHERE title LIKE ? OR sort_title LIKE ?
 		ORDER BY sort_title LIMIT ?`
@@ -159,8 +179,8 @@ func (r *SeriesRepo) Search(ctx context.Context, query string, limit int) ([]mod
 	for rows.Next() {
 		var s model.Series
 		if err := rows.Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.Overview, &s.Status, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanning series: %w", err)
 		}
 		items = append(items, s)
@@ -335,6 +355,14 @@ func (r *EpisodeRepo) Update(ctx context.Context, e *model.Episode) error {
 		episode_number = ?, title = ?, overview = ?, still_path = ?, air_date = ?
 		WHERE id = ?`,
 		e.EpisodeNumber, e.Title, e.Overview, e.StillPath, e.AirDate, e.ID)
+	return err
+}
+
+// UpdateSeasonLink updates the season and episode number for an episode record.
+func (r *EpisodeRepo) UpdateSeasonLink(ctx context.Context, id, seasonID int64, episodeNumber int) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE episodes SET season_id = ?, episode_number = ? WHERE id = ?`,
+		seasonID, episodeNumber, id)
 	return err
 }
 

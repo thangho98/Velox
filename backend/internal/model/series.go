@@ -8,11 +8,15 @@ type Series struct {
 	SortTitle    string  `json:"sort_title"`
 	TmdbID       *int64  `json:"tmdb_id,omitempty"`
 	ImdbID       *string `json:"imdb_id,omitempty"`
+	TvdbID       *int64  `json:"tvdb_id,omitempty"`
 	Overview     string  `json:"overview"`
 	Status       string  `json:"status"`         // "Returning Series" | "Ended" | "Canceled"
+	Network      string  `json:"network"`        // "CBS", "Netflix", etc.
 	FirstAirDate string  `json:"first_air_date"` // YYYY-MM-DD
 	PosterPath   string  `json:"poster_path"`
 	BackdropPath string  `json:"backdrop_path"`
+	LogoPath     string  `json:"logo_path"`
+	ThumbPath    string  `json:"thumb_path"`
 	CreatedAt    string  `json:"created_at"`
 	UpdatedAt    string  `json:"updated_at"`
 }

@@ -75,6 +75,7 @@ type TVMatchResult struct {
 	SeasonNumber  int
 	EpisodeNumber int
 	EpisodeTitle  string
+	TvdbID        int // TheTVDB series ID (from TMDb external_ids)
 }
 
 // MatchMovie tries to match a movie file with TMDb metadata
@@ -177,6 +178,11 @@ func (m *Matcher) MatchTVShow(ctx context.Context, parsed nameparser.ParsedMedia
 
 	// Step 5: Get series details and match episode
 	return m.matchTVEpisodeBySeriesID(ctx, bestMatch.ID, parsed, filePath, nil)
+}
+
+// MatchTVEpisodeBySeriesID matches episode using a known series TMDb ID.
+func (m *Matcher) MatchTVEpisodeBySeriesID(ctx context.Context, seriesID int, parsed nameparser.ParsedMedia, filePath string) (*TVMatchResult, error) {
+	return m.matchTVEpisodeBySeriesID(ctx, seriesID, parsed, filePath, nil)
 }
 
 // matchTVEpisodeBySeriesID matches episode using series TMDb ID
@@ -452,6 +458,10 @@ func (m *Matcher) convertSeriesToTVResult(series *tmdb.TVDetails, seasonNum, epi
 		EpisodeNumber: episodeNum,
 	}
 
+	if series.ExternalIDs != nil && series.ExternalIDs.TVDBID > 0 {
+		result.TvdbID = series.ExternalIDs.TVDBID
+	}
+
 	for _, g := range series.Genres {
 		result.Genres = append(result.Genres, GenreInfo{ID: g.ID, Name: g.Name})
 	}
@@ -467,21 +477,26 @@ func (m *Matcher) convertEpisodeDetails(series *tmdb.TVDetails, season *tmdb.Sea
 
 	result := &TVMatchResult{
 		MatchResult: MatchResult{
-			Found:       true,
-			TMDbID:      episode.ID,
-			Title:       episode.Name,
-			Overview:    episode.Overview,
-			ReleaseDate: episode.AirDate,
-			Year:        tmdb.GetYear(episode.AirDate),
-			StillPath:   episode.StillPath,
-			Rating:      episode.VoteAverage,
-			Confidence:  confidence,
-			Source:      "tmdb_search",
+			Found:        true,
+			TMDbID:       episode.ID,
+			Title:        episode.Name,
+			Overview:     episode.Overview,
+			ReleaseDate:  episode.AirDate,
+			Year:         tmdb.GetYear(episode.AirDate),
+			StillPath:    episode.StillPath,
+			BackdropPath: series.BackdropPath,
+			Rating:       episode.VoteAverage,
+			Confidence:   confidence,
+			Source:       "tmdb_search",
 		},
 		SeriesID:      series.ID,
 		SeasonNumber:  episode.SeasonNumber,
 		EpisodeNumber: episode.EpisodeNumber,
 		EpisodeTitle:  episode.Name,
+	}
+
+	if series.ExternalIDs != nil && series.ExternalIDs.TVDBID > 0 {
+		result.TvdbID = series.ExternalIDs.TVDBID
 	}
 
 	// Use series poster if episode has no still

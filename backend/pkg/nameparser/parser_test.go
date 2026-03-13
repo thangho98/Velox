@@ -10,12 +10,11 @@ func TestParse(t *testing.T) {
 		filename string
 		want     ParsedMedia
 	}{
-		// Note: Simple parser leaves quality/codec in title - production would need smarter parsing
 		{
 			name:     "Standard movie with year and quality",
 			filename: "The.Matrix.1999.1080p.BluRay.x264.mkv",
 			want: ParsedMedia{
-				Title:     "The Matrix BluRay",
+				Title:     "The Matrix",
 				Year:      1999,
 				Season:    0,
 				Episode:   0,
@@ -28,7 +27,7 @@ func TestParse(t *testing.T) {
 			name:     "Movie with spaces",
 			filename: "Inception 2010 720p BluRay.mp4",
 			want: ParsedMedia{
-				Title:     "Inception BluRay",
+				Title:     "Inception",
 				Year:      2010,
 				Season:    0,
 				Episode:   0,
@@ -40,7 +39,7 @@ func TestParse(t *testing.T) {
 			name:     "Movie with 4K",
 			filename: "Dune.2021.4K.HDR.HEVC.mkv",
 			want: ParsedMedia{
-				Title:     "Dune HDR",
+				Title:     "Dune",
 				Year:      2021,
 				Season:    0,
 				Episode:   0,
@@ -51,16 +50,16 @@ func TestParse(t *testing.T) {
 		},
 
 		// TV Series - Standard format
-		// Note: Parser removes SxxExx but leaves remaining text in title
 		{
 			name:     "Series S01E01 format",
 			filename: "Breaking.Bad.S01E01.Pilot.720p.mkv",
 			want: ParsedMedia{
-				Title:     "Breaking Bad Pilot",
-				Season:    1,
-				Episode:   1,
-				MediaType: "episode",
-				Quality:   "720p",
+				Title:        "Breaking Bad",
+				EpisodeTitle: "Pilot",
+				Season:       1,
+				Episode:      1,
+				MediaType:    "episode",
+				Quality:      "720p",
 			},
 		},
 		{
@@ -92,10 +91,11 @@ func TestParse(t *testing.T) {
 			name:     "Series 1x01 format",
 			filename: "Friends.1x01.The.One.Where.It.All.Began.avi",
 			want: ParsedMedia{
-				Title:     "Friends The One Where It All Began",
-				Season:    1,
-				Episode:   1,
-				MediaType: "episode",
+				Title:        "Friends",
+				EpisodeTitle: "The One Where It All Began",
+				Season:       1,
+				Episode:      1,
+				MediaType:    "episode",
 			},
 		},
 		{
@@ -115,32 +115,33 @@ func TestParse(t *testing.T) {
 			name:     "Multi-episode S01E01E02",
 			filename: "Show.S01E01E02.Title.mkv",
 			want: ParsedMedia{
-				Title:      "Show Title",
-				Season:     1,
-				Episode:    1,
-				EndEpisode: 2,
-				MediaType:  "episode",
+				Title:        "Show",
+				EpisodeTitle: "Title",
+				Season:       1,
+				Episode:      1,
+				EndEpisode:   2,
+				MediaType:    "episode",
 			},
 		},
 		{
 			name:     "Multi-episode with dash",
 			filename: "Anime.S01E01-E03.Batch.mkv",
 			want: ParsedMedia{
-				Title:      "Anime E03 Batch", // Third episode code not parsed, stays in title
-				Season:     1,
-				Episode:    1,
-				EndEpisode: 3,
-				MediaType:  "episode",
+				Title:        "Anime",
+				EpisodeTitle: "E03 Batch",
+				Season:       1,
+				Episode:      1,
+				EndEpisode:   3,
+				MediaType:    "episode",
 			},
 		},
 
 		// Daily shows / Date format
-		// Note: Date format not auto-detected as episode - date stays in title
 		{
 			name:     "Daily show with date",
 			filename: "The.Daily.Show.2024.03.15.1080p.mkv",
 			want: ParsedMedia{
-				Title:     "The Daily Show 03 15",
+				Title:     "The Daily Show",
 				Year:      2024,
 				Season:    0,
 				Episode:   0,
@@ -227,18 +228,33 @@ func TestParse(t *testing.T) {
 				Codec:     "VP9",
 			},
 		},
-		// Note: Parser removes matched patterns from title, so "Anime E03" is expected
-		// A more sophisticated parser would be needed to handle triple episodes properly
 		{
 			name:     "Anime triple episode",
 			filename: "Anime.S01E01E02E03.1080p.mkv",
 			want: ParsedMedia{
-				Title:      "Anime E03", // Third episode code not parsed
-				Season:     1,
-				Episode:    1,
-				EndEpisode: 2, // Parser captures first two
-				MediaType:  "episode",
-				Quality:    "1080p",
+				Title:        "Anime",
+				EpisodeTitle: "E03",
+				Season:       1,
+				Episode:      1,
+				EndEpisode:   2,
+				MediaType:    "episode",
+				Quality:      "1080p",
+			},
+		},
+		// Real-world test: Malcolm in the Middle format
+		{
+			name:     "Malcolm in the Middle AMZN WEB-DL",
+			filename: "Malcolm in the Middle (2000) - S01E01 - Pilot (1080p AMZN WEB-DL x265 Silence).mkv",
+			want: ParsedMedia{
+				Title:        "Malcolm in the Middle",
+				EpisodeTitle: "Pilot",
+				Year:         2000,
+				Season:       1,
+				Episode:      1,
+				MediaType:    "episode",
+				Quality:      "1080p",
+				Codec:        "X265",
+				ReleaseGroup: "Silence",
 			},
 		},
 	}
@@ -249,6 +265,9 @@ func TestParse(t *testing.T) {
 
 			if got.Title != tt.want.Title {
 				t.Errorf("Title = %q, want %q", got.Title, tt.want.Title)
+			}
+			if got.EpisodeTitle != tt.want.EpisodeTitle {
+				t.Errorf("EpisodeTitle = %q, want %q", got.EpisodeTitle, tt.want.EpisodeTitle)
 			}
 			if got.Year != tt.want.Year {
 				t.Errorf("Year = %d, want %d", got.Year, tt.want.Year)

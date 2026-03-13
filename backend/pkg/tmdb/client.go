@@ -17,6 +17,10 @@ const (
 	// TMDb allows ~40 requests per 10 seconds
 	rateLimitBurst    = 40
 	rateLimitInterval = 10 * time.Second
+
+	// DefaultAPIKey is the built-in TMDb v4 read access token.
+	// Users can override this with their own key via Settings → Metadata.
+	DefaultAPIKey = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI3MjIyZWVkYTA1ZGM2MTlhZmM5OTk2ZTdmOTRlNWQ4YyIsIm5iZiI6MTc3MzM0MjMzMS43OTQsInN1YiI6IjY5YjMwZTdiN2ExZjcxMzdlZWE3NzFjOCIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.LYxk8U888DLhwqda8oGR91dO9eH9eOddJ6njJNeK4Fk"
 )
 
 // Client for TMDb API.

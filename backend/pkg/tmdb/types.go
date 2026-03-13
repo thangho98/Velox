@@ -128,7 +128,7 @@ type SeasonSummary struct {
 }
 
 type SeasonDetails struct {
-	ID           int              `json:"_id"`
+	ID           string           `json:"_id"`
 	AirDate      string           `json:"air_date"`
 	Name         string           `json:"name"`
 	Overview     string           `json:"overview"`
