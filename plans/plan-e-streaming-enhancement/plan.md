@@ -1,5 +1,5 @@
 # Plan E: Streaming Enhancement
-Status: ⬜ Pending
+Status: ✅ Done
 Priority: 🟡 High
 Dependencies: Plan D (need playback engine first)
 
@@ -11,7 +11,7 @@ Chỉ làm SAU KHI playback decision engine hoạt động đúng.
 
 | Phase | Name | Tasks | Status |
 |-------|------|-------|--------|
-| 01 | Hardware Transcoding | 5 tasks | ⬜ |
-| 02 | Adaptive Bitrate HLS | 5 tasks | ⬜ |
-| 03 | Trickplay Thumbnails | 4 tasks | ⬜ |
+| 01 | Hardware Transcoding | 5 tasks | ✅ |
+| 02 | Adaptive Bitrate HLS | 5 tasks | ✅ |
+| 03 | Trickplay Thumbnails | 4 tasks | ✅ |
     

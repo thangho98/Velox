@@ -1,7 +1,16 @@
 {
   "meta": {
     "schema_version": "1.1.0",
-    "updated_at": "2026-03-12"
+    "updated_at": "2026-03-13",
+    "plan_status": {
+      "A": "✅ Done — Core Domain & Ingestion (all 5 phases 100%)",
+      "B": "✅ Done — Auth & Sessions",
+      "C": "✅ Done — Web App MVP (frontend build clean)",
+      "D": "✅ Done — Playback Decision Engine",
+      "E": "✅ Done — Streaming Enhancement (HW transcode, ABR HLS, Trickplay)",
+      "F": "✅ Done — Admin Operations (Activity Logging, Dashboard, Scheduler, Webhooks)",
+      "G": "⬜ Pending — Nice-to-have"
+    }
   },
   "project": {
     "name": "Velox",
@@ -15,7 +24,8 @@
       "framework": "stdlib net/http (Go 1.22+ routing)",
       "database": "SQLite (WAL mode, foreign_keys=on, MaxOpenConns=1)",
       "driver": "mattn/go-sqlite3 v1.14.34",
-      "transcoding": "FFmpeg 8.0 / FFprobe"
+      "transcoding": "FFmpeg 8.0 / FFprobe",
+      "file_watcher": "fsnotify v1.9.0"
     },
     "frontend": {
       "framework": "React 19",
@@ -34,7 +44,7 @@
     }
   },
   "database_schema": {
-    "summary": "22 tables across 11 migrations. Media server stores: libraries, movies/episodes (logical), video files (physical), series/seasons, genres, people/credits, subtitles, audio tracks, users, watch progress, favorites, sessions.",
+    "summary": "22 tables across 15 migrations. Media server stores: libraries, movies/episodes (logical), video files (physical), series/seasons, genres, people/credits, subtitles, audio tracks, users, watch progress, favorites, sessions, app settings.",
     "design_doc": "docs/database-design.md",
     "tables_by_migration": {
       "001_initial": ["libraries", "media (old)", "progress (old)"],
@@ -47,7 +57,11 @@
       "008_auth": ["refresh_tokens", "sessions"],
       "009_user_state": ["user_data", "user_series_data"],
       "010_activity": ["activity_log", "task_history", "webhooks"],
-      "011_external_ids": ["external_ids"]
+      "011_app_settings": ["app_settings"],
+      "012_omdb_ratings": ["media (ALTER +imdb_rating, rt_score, metacritic_score)"],
+      "013_tvdb_id": ["media (ALTER +tvdb_id)", "series (ALTER +tvdb_id, imdb_id)"],
+      "014_fanart_logo": ["media (ALTER +logo_path, thumb_path)", "series (ALTER +logo_path, thumb_path)"],
+      "015_series_network": ["series (ALTER +network)"]
     },
     "key_patterns": [
       "Logical vs Physical: media (content) ↔ media_files (file on disk)",
@@ -56,29 +70,39 @@
       "Unified user_data: progress + favorites + rating in 1 table (Emby pattern)",
       "Fingerprint: {file_size}:{xxhash64_first_64KB} for rename detection",
       "XOR polymorphic: media_genres/credits CHECK exactly one of media_id/series_id",
-      "Provider IDs: tmdb_id + imdb_id indexed directly, external_ids table for others"
+      "Provider IDs: tmdb_id + imdb_id + tvdb_id indexed directly"
     ]
+  },
+  "metadata_providers": {
+    "TMDb": "Primary — movies + TV. Built-in API key, rate-limited (40req/10s token bucket). Provides poster, backdrop, overview, cast, genres.",
+    "OMDb": "Enrichment — IMDb rating, Rotten Tomatoes %, Metacritic score. Built-in key.",
+    "TheTVDB": "TV enrichment — TVDB IDs, IMDb cross-reference, series status. Built-in key.",
+    "Fanart.tv": "Artwork enrichment — HD clearlogos, thumbnails. Built-in key.",
+    "TVmaze": "TV enrichment — network, status, external ID cross-reference. Free, no key needed.",
+    "NFO": "Local override — NFO files take priority over TMDb search."
   },
   "architecture": {
     "layers": [
       "handler (HTTP) → service (business logic) → repository (SQL) → model (structs)",
-      "Migrations via internal/database/migrate/registry.go",
+      "Migrations via internal/database/migrate/registry.go (15 migrations)",
       "DBTX interface (repository/db.go) — repos accept *sql.DB or *sql.Tx",
       "WithTx() on repos for transaction-scoped operations",
       "service.ErrNotFound sentinel wrapping sql.ErrNoRows (service/errors.go)",
       "respondJSON wraps success in {\"data\": ...}, logs encode errors"
     ],
     "scan_pipeline": "Pipeline (scanner/pipeline.go) — CreateJob (sync) + RunJob (async goroutine). Stages: discover → fingerprint → probe → parse → persist. ScanJob tracks progress via scan_jobs table.",
+    "file_watcher": "watcher/watcher.go — fsnotify recursive directory watching, 5s debounce CREATE, rename tracking (2s TTL), auto-watch new subdirectories. Config: VELOX_FILE_WATCHER=true (default). onCreate → triggers full scan job, onRemove → marks file missing.",
+    "file_verification": "scanner/verify.go — Verifier checks all files exist on disk. Runs at startup + every 6h. Batch 500 files. Updates last_verified_at or marks missing.",
     "playback_strategy": "Direct Play first → Direct Stream (remux) → Transcode Audio → Full Transcode",
     "auth": "JWT (15min access + 7-day refresh + session_id in claims), bcrypt cost 12, first-run setup wizard, atomic refresh token rotation (DELETE...RETURNING), per-session activity tracking",
-    "metadata": "TMDb primary (rate-limited 40req/10s token bucket), NFO/local files override, Levenshtein string similarity for fuzzy title matching, external_ids for TVDB/AniDB/etc"
+    "metadata": "TMDb primary + OMDb + TheTVDB + Fanart.tv + TVmaze enrichment chain. NFO/local files override. Levenshtein string similarity for fuzzy title matching."
   },
   "plans": {
-    "A": "Core Domain & Ingestion (5 phases)",
+    "A": "Core Domain & Ingestion (5 phases: migration system, core data model, scan pipeline, TMDb integration, subtitle discovery)",
     "B": "Auth & Sessions (3 phases)",
     "C": "Web App MVP (4 phases)",
     "D": "Playback Decision Engine (3 phases)",
-    "E": "Streaming Enhancement (3 phases)",
+    "E": "Streaming Enhancement (3 phases: HW transcode, ABR HLS, Trickplay)",
     "F": "Admin Operations (3 phases)",
     "G": "Nice-to-have (3 phases)"
   },

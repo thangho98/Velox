@@ -1,5 +1,5 @@
 # Plan F: Admin & Operations
-Status: ⬜ Pending
+Status: ✅ Done
 Priority: 🟢 Medium
 Dependencies: Plan B (auth), Plan D (transcode sessions)
 
@@ -7,6 +7,6 @@ Dependencies: Plan B (auth), Plan D (transcode sessions)
 
 | Phase | Name | Tasks | Status |
 |-------|------|-------|--------|
-| 01 | Activity Logging & Stats | 5 tasks | ⬜ |
-| 02 | Admin Dashboard | 5 tasks | ⬜ |
-| 03 | Scheduled Tasks | 4 tasks | ⬜ |
+| 01 | Activity Logging & Stats | 5 tasks | ✅ |
+| 02 | Admin Dashboard | 5 tasks | ✅ |
+| 03 | Scheduled Tasks | 4 tasks | ✅ |

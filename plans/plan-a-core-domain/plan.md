@@ -1,5 +1,5 @@
 # Plan A: Core Domain & Ingestion
-Status: ⬜ Pending
+Status: ✅ Done
 Priority: 🔴 Critical (làm đầu tiên)
 
 ## Mục tiêu
@@ -10,11 +10,11 @@ Sau plan này: scan folder → identify file → fetch metadata → sẵn sàng 
 
 | Phase | Name | Tasks | Status |
 |-------|------|-------|--------|
-| 01 | Migration System | 5 tasks | ⬜ |
-| 02 | Core Data Model | 9 tasks | ⬜ |
-| 03 | Scan Pipeline & File Identity | 8 tasks | ⬜ |
-| 04 | TMDb Integration | 7 tasks | ⬜ |
-| 05 | Subtitle Discovery | 5 tasks | ⬜ |
+| 01 | Migration System | 5 tasks | ✅ |
+| 02 | Core Data Model | 9 tasks | ✅ |
+| 03 | Scan Pipeline & File Identity | 8 tasks | ✅ |
+| 04 | TMDb Integration | 7 tasks | ✅ |
+| 05 | Subtitle Discovery | 5 tasks | ✅ |
 
 ## Key Design Decisions
 - Migration versioning thay vì CREATE IF NOT EXISTS
