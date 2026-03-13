@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/thawng/velox/internal/repository"
@@ -8,13 +10,75 @@ import (
 
 // SeriesHandler handles series, season, and episode endpoints.
 type SeriesHandler struct {
+	seriesRepo  *repository.SeriesRepo
 	seasonRepo  *repository.SeasonRepo
 	episodeRepo *repository.EpisodeRepo
 }
 
 // NewSeriesHandler creates a new series handler.
-func NewSeriesHandler(seasonRepo *repository.SeasonRepo, episodeRepo *repository.EpisodeRepo) *SeriesHandler {
-	return &SeriesHandler{seasonRepo: seasonRepo, episodeRepo: episodeRepo}
+func NewSeriesHandler(seriesRepo *repository.SeriesRepo, seasonRepo *repository.SeasonRepo, episodeRepo *repository.EpisodeRepo) *SeriesHandler {
+	return &SeriesHandler{seriesRepo: seriesRepo, seasonRepo: seasonRepo, episodeRepo: episodeRepo}
+}
+
+// ListSeries returns a list of series with optional filtering.
+// GET /api/series?library_id=&limit=&offset=
+func (h *SeriesHandler) ListSeries(w http.ResponseWriter, r *http.Request) {
+	libraryID, err := parseInt64Query(r.URL.Query().Get("library_id"))
+	if err != nil {
+		libraryID = 0
+	}
+	limit := parseIntQuery(r, "limit", 50)
+	offset := parseIntQuery(r, "offset", 0)
+
+	series, err := h.seriesRepo.List(r.Context(), libraryID, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, series)
+}
+
+// GetSeries returns a single series by ID.
+// GET /api/series/{id}
+func (h *SeriesHandler) GetSeries(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid series id")
+		return
+	}
+
+	series, err := h.seriesRepo.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(w, http.StatusNotFound, "series not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, series)
+}
+
+// SearchSeries searches for series by title.
+// GET /api/series/search?q=&limit=
+func (h *SeriesHandler) SearchSeries(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		respondError(w, http.StatusBadRequest, "query required")
+		return
+	}
+
+	limit := parseIntQuery(r, "limit", 20)
+
+	results, err := h.seriesRepo.Search(r.Context(), q, limit)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, results)
 }
 
 // ListSeasons returns all seasons for a series.

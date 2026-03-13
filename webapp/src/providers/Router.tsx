@@ -7,6 +7,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { SetupPage } from '@/pages/SetupPage'
 import { LibraryListPage } from '@/pages/LibraryListPage'
 import { MediaDetailPage } from '@/pages/MediaDetailPage'
+import { SeriesDetailPage } from '@/pages/SeriesDetailPage'
 import { WatchPage } from '@/pages/WatchPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { MoviesPage } from '@/pages/MoviesPage'
@@ -67,11 +68,12 @@ export function RouterProvider() {
         <Route element={<RequireAuth />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/movies" element={<MoviesPage />} />
+          <Route path="/movies/:id" element={<MediaDetailPage />} />
           <Route path="/series" element={<SeriesPage />} />
+          <Route path="/series/:seriesId" element={<SeriesDetailPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/recently-watched" element={<RecentlyWatchedPage />} />
           <Route path="/libraries" element={<LibraryListPage />} />
-          <Route path="/media/:id" element={<MediaDetailPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/search" element={<SearchPage />} />
           {/* Redirects for old routes */}

@@ -9,6 +9,7 @@ interface MediaCardProps {
   title: string
   posterPath?: string | null
   type?: 'movie' | 'series'
+  seriesId?: number // ADD — series.id for routing
   year?: number
   rating?: number
   progress?: {
@@ -28,6 +29,7 @@ export function MediaCard({
   title,
   posterPath,
   type = 'movie',
+  seriesId,
   year,
   rating,
   progress: externalProgress,
@@ -38,7 +40,14 @@ export function MediaCard({
 }: MediaCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const { mutate: toggleFavorite } = useToggleFavorite()
-  const { data: fetchedProgress } = useProgress(showProgress ? id : 0)
+
+  // Series cards: id is series.id, NOT media_id — skip progress/favorite
+  const isSeries = type === 'series'
+  const { data: fetchedProgress } = useProgress(!isSeries && showProgress ? id : 0)
+
+  // Force no progress/favorite for series cards
+  const effectiveShowProgress = isSeries ? false : showProgress
+  const effectiveShowFavorite = isSeries ? false : showFavorite
 
   const rawProgress = externalProgress ?? fetchedProgress
   const progress = rawProgress
@@ -63,13 +72,16 @@ export function MediaCard({
   const aspectClass = aspectRatio === 'poster' ? 'aspect-[2/3]' : 'aspect-video'
   const sizeClasses = { sm: 'text-xs', md: 'text-sm', lg: 'text-base' }
 
+  // Type-aware link
+  const linkTo = isSeries ? `/series/${seriesId || id}` : `/movies/${id}`
+
   return (
     <div
       className="group relative cursor-pointer"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <Link to={`/media/${id}`} className="block">
+      <Link to={linkTo} className="block">
         <div
           className={`${aspectClass} relative overflow-hidden rounded-lg bg-netflix-dark transition-transform duration-300 group-hover:scale-105 ${sizeClasses[size]}`}
         >
@@ -116,7 +128,7 @@ export function MediaCard({
           </div>
 
           {/* Progress Bar */}
-          {showProgress && hasProgress && (
+          {effectiveShowProgress && hasProgress && (
             <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-2">
               <div className="h-1 rounded-full bg-gray-600">
                 <div
@@ -129,7 +141,7 @@ export function MediaCard({
           )}
 
           {/* Completed Badge */}
-          {showProgress && progress?.completed && (
+          {effectiveShowProgress && progress?.completed && (
             <div className="absolute bottom-2 right-2 rounded-full bg-green-500 p-1.5">
               <LuCheck size={16} className="text-white" />
             </div>
@@ -144,7 +156,7 @@ export function MediaCard({
         {year && <p className="text-xs text-gray-500">{year}</p>}
       </div>
 
-      {showFavorite && (
+      {effectiveShowFavorite && (
         <button
           onClick={(e) => {
             e.preventDefault()

@@ -266,7 +266,7 @@ func runServer() {
 	}
 	trickplayHandler := handler.NewTrickplayHandler(trickplayGen, streamSvc)
 	imageHandler := handler.NewImageHandler()
-	seriesHandler := handler.NewSeriesHandler(seasonRepo, episodeRepo)
+	seriesHandler := handler.NewSeriesHandler(seriesRepo, seasonRepo, episodeRepo)
 	metadataHandler := handler.NewMetadataHandler(mediaSvc, metadataSvc)
 	activityHandler := handler.NewActivityHandler(activitySvc)
 	adminHandler := handler.NewAdminHandler(adminSvc)
@@ -356,6 +356,9 @@ func runServer() {
 	mux.HandleFunc("GET /api/media/{id}/versions", mediaHandler.GetVersions)
 
 	// API routes - Series
+	mux.HandleFunc("GET /api/series", seriesHandler.ListSeries)
+	mux.HandleFunc("GET /api/series/search", seriesHandler.SearchSeries)
+	mux.HandleFunc("GET /api/series/{id}", seriesHandler.GetSeries)
 	mux.HandleFunc("GET /api/series/{id}/seasons", seriesHandler.ListSeasons)
 	mux.HandleFunc("GET /api/series/{id}/seasons/{seasonId}/episodes", seriesHandler.ListEpisodes)
 

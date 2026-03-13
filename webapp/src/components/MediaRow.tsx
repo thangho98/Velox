@@ -117,6 +117,9 @@ export function MediaRow({ title, seeAllLink, items, isLoading, showProgress }: 
                     title={item.title}
                     posterPath={item.poster_path}
                     type={item.type ?? (item.media_type === 'episode' ? 'series' : 'movie')}
+                    seriesId={
+                      'series_id' in item ? (item as { series_id?: number }).series_id : undefined
+                    }
                     year={item.release_date ? new Date(item.release_date).getFullYear() : undefined}
                     rating={item.rating}
                     showProgress={showProgress}

@@ -10,6 +10,8 @@ import type {
   MediaListParams,
   Season,
   Episode,
+  Series,
+  SeriesListParams,
   StreamUrls,
   PlaybackInfo,
   PlaybackInfoRequest,
@@ -303,6 +305,17 @@ export function useDismissProgress() {
 
 // Season/Episode API Functions
 const seriesApi = {
+  list: (params: SeriesListParams = {}) => {
+    const searchParams = new URLSearchParams()
+    if (params.library_id) searchParams.append('library_id', String(params.library_id))
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    if (params.offset) searchParams.append('offset', String(params.offset))
+    const query = searchParams.toString()
+    return api.get<Series[]>(`/series${query ? `?${query}` : ''}`)
+  },
+  get: (id: number) => api.get<Series>(`/series/${id}`),
+  search: (query: string, limit = 20) =>
+    api.get<Series[]>(`/series/search?q=${encodeURIComponent(query)}&limit=${limit}`),
   getSeasons: (seriesId: number) => api.get<Season[]>(`/series/${seriesId}/seasons`),
   getEpisodes: (seriesId: number, seasonId: number) =>
     api.get<Episode[]>(`/series/${seriesId}/seasons/${seasonId}/episodes`),
@@ -312,6 +325,9 @@ const seriesApi = {
 // Query Keys
 export const seriesKeys = {
   all: ['series'] as const,
+  list: (params: SeriesListParams) => [...seriesKeys.all, 'list', params] as const,
+  detail: (id: number) => [...seriesKeys.all, 'detail', id] as const,
+  search: (query: string) => [...seriesKeys.all, 'search', query] as const,
   seasons: (seriesId: number) => [...seriesKeys.all, 'seasons', seriesId] as const,
   episodes: (seriesId: number, seasonId: number) =>
     [...seriesKeys.all, 'episodes', seriesId, seasonId] as const,
@@ -373,6 +389,32 @@ export function usePlaybackInfo(mediaId: number, request: PlaybackInfoRequest = 
     enabled: mediaId > 0,
   })
 }
+export function useSeriesList(params: SeriesListParams = {}) {
+  return useQuery({
+    queryKey: seriesKeys.list(params),
+    queryFn: () => seriesApi.list(params),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useSeriesDetail(id: number) {
+  return useQuery({
+    queryKey: seriesKeys.detail(id),
+    queryFn: () => seriesApi.get(id),
+    staleTime: 5 * 60 * 1000,
+    enabled: id > 0,
+  })
+}
+
+export function useSeriesSearch(query: string, limit = 20) {
+  return useQuery({
+    queryKey: seriesKeys.search(query),
+    queryFn: () => seriesApi.search(query, limit),
+    staleTime: 60 * 1000,
+    enabled: query.length > 0,
+  })
+}
+
 export function useSeasons(seriesId: number) {
   return useQuery({
     queryKey: seriesKeys.seasons(seriesId),

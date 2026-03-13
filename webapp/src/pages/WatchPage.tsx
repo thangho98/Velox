@@ -1314,10 +1314,10 @@ export function WatchPage() {
                       {/* More */}
                       <div className="border-t border-white/10 pt-3">
                         <button
-                          onClick={() => navigate(`/media/${mediaId}`)}
+                          onClick={() => navigate(-1)}
                           className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
                         >
-                          <LuExternalLink size={13} /> More info
+                          <LuExternalLink size={13} /> Back
                         </button>
                       </div>
                     </div>

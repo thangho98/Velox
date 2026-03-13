@@ -1,5 +1,11 @@
 import { Link } from 'react-router'
-import { useLibraries, useContinueWatching, useNextUp, useMediaList } from '@/hooks/stores/useMedia'
+import {
+  useLibraries,
+  useContinueWatching,
+  useNextUp,
+  useMediaList,
+  useSeriesList,
+} from '@/hooks/stores/useMedia'
 import { MediaRow } from '@/components/MediaRow'
 import { ContinueWatchingCard } from '@/components/ContinueWatchingCard'
 import { NextUpCard } from '@/components/NextUpCard'
@@ -15,12 +21,21 @@ export function HomePage() {
     type: 'movie',
     limit: 20,
   })
-  // TODO: replace with GET /api/series once backend endpoint is available.
-  // Currently fetches episode records as a proxy for series content.
-  const { data: recentSeries, isLoading: seriesLoading } = useMediaList({
-    type: 'episode',
-    limit: 20,
-  })
+  // Use real series data from GET /api/series
+  const { data: rawSeries, isLoading: seriesLoading } = useSeriesList({ limit: 20 })
+
+  // Map Series[] to MediaRow-compatible shape
+  const recentSeries = rawSeries?.map((s) => ({
+    id: s.id,
+    title: s.title,
+    sort_title: s.sort_title,
+    poster_path: s.poster_path,
+    media_type: 'episode' as const, // MediaRow uses this for type detection
+    type: 'series' as const,
+    genres: [] as string[],
+    release_date: s.first_air_date,
+    series_id: s.id, // for MediaRow → MediaCard routing
+  }))
 
   const hasLibraries = !libsLoading && libraries && libraries.length > 0
   const hasContinueWatching = continueWatching && continueWatching.length > 0

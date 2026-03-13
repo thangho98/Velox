@@ -1,39 +1,32 @@
 import { useState } from 'react'
-import { useMediaList } from '@/hooks/stores/useMedia'
+import { useSeriesList } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
 import { LuX, LuTv } from 'react-icons/lu'
+import type { Series } from '@/types/api'
 
 export function SeriesPage() {
   const [filters, setFilters] = useState({
-    genre: '',
     year: '',
     sortBy: 'newest',
   })
+  const { data: series, isLoading } = useSeriesList({ limit: 100 })
 
-  const { data: series, isLoading } = useMediaList({
-    type: 'episode',
-    limit: 100,
-  })
-
-  // Filter and sort series
-  const filteredSeries = series?.filter((s) => {
-    if (filters.genre && !s.genres.includes(filters.genre)) return false
+  // Filter
+  const filteredSeries = series?.filter((s: Series) => {
     if (filters.year) {
-      const seriesYear = s.release_date ? new Date(s.release_date).getFullYear() : null
-      if (seriesYear !== Number(filters.year)) return false
+      const year = s.first_air_date ? new Date(s.first_air_date).getFullYear() : null
+      if (year !== Number(filters.year)) return false
     }
     return true
   })
 
-  // Sort series
-  const sortedSeries = filteredSeries?.sort((a, b) => {
+  // Sort
+  const sortedSeries = filteredSeries?.sort((a: Series, b: Series) => {
     switch (filters.sortBy) {
       case 'newest':
-        return new Date(b.release_date || 0).getTime() - new Date(a.release_date || 0).getTime()
+        return new Date(b.first_air_date || 0).getTime() - new Date(a.first_air_date || 0).getTime()
       case 'oldest':
-        return new Date(a.release_date || 0).getTime() - new Date(b.release_date || 0).getTime()
-      case 'rating':
-        return (b.rating || 0) - (a.rating || 0)
+        return new Date(a.first_air_date || 0).getTime() - new Date(b.first_air_date || 0).getTime()
       case 'title':
         return a.title.localeCompare(b.title)
       default:
@@ -41,12 +34,11 @@ export function SeriesPage() {
     }
   })
 
-  // Get unique genres and years for filters
-  const genres = [...new Set(series?.flatMap((s) => s.genres ?? []) || [])].filter(Boolean).sort()
+  // Years for filter
   const years = [
     ...new Set(
       series
-        ?.map((s) => (s.release_date ? new Date(s.release_date).getFullYear() : null))
+        ?.map((s: Series) => (s.first_air_date ? new Date(s.first_air_date).getFullYear() : null))
         .filter((y): y is number => y !== null && !Number.isNaN(y)) || [],
     ),
   ].sort((a, b) => b - a)
@@ -64,20 +56,6 @@ export function SeriesPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3">
-          {/* Genre Filter */}
-          <select
-            value={filters.genre}
-            onChange={(e) => setFilters({ ...filters, genre: e.target.value })}
-            className="rounded-lg bg-netflix-dark px-4 py-2 text-sm text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
-          >
-            <option value="">All Genres</option>
-            {genres.map((genre) => (
-              <option key={genre} value={genre}>
-                {genre}
-              </option>
-            ))}
-          </select>
-
           {/* Year Filter */}
           <select
             value={filters.year}
@@ -100,39 +78,25 @@ export function SeriesPage() {
           >
             <option value="newest">Newest First</option>
             <option value="oldest">Oldest First</option>
-            <option value="rating">Highest Rated</option>
             <option value="title">Title A-Z</option>
           </select>
         </div>
       </div>
 
       {/* Active Filters */}
-      {(filters.genre || filters.year) && (
+      {filters.year && (
         <div className="flex flex-wrap gap-2">
-          {filters.genre && (
-            <span className="flex items-center gap-1 rounded-full bg-purple-500/20 px-3 py-1 text-sm text-purple-400">
-              {filters.genre}
-              <button
-                onClick={() => setFilters({ ...filters, genre: '' })}
-                className="ml-1 hover:text-white"
-              >
-                <LuX size={16} />
-              </button>
-            </span>
-          )}
-          {filters.year && (
-            <span className="flex items-center gap-1 rounded-full bg-purple-500/20 px-3 py-1 text-sm text-purple-400">
-              {filters.year}
-              <button
-                onClick={() => setFilters({ ...filters, year: '' })}
-                className="ml-1 hover:text-white"
-              >
-                <LuX size={16} />
-              </button>
-            </span>
-          )}
+          <span className="flex items-center gap-1 rounded-full bg-purple-500/20 px-3 py-1 text-sm text-purple-400">
+            {filters.year}
+            <button
+              onClick={() => setFilters({ ...filters, year: '' })}
+              className="ml-1 hover:text-white"
+            >
+              <LuX size={16} />
+            </button>
+          </span>
           <button
-            onClick={() => setFilters({ genre: '', year: '', sortBy: 'newest' })}
+            onClick={() => setFilters({ year: '', sortBy: 'newest' })}
             className="text-sm text-gray-400 hover:text-white"
           >
             Clear all
@@ -156,15 +120,15 @@ export function SeriesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {sortedSeries?.map((s) => (
+          {sortedSeries?.map((s: Series) => (
             <MediaCard
               key={s.id}
               id={s.id}
               title={s.title}
               posterPath={s.poster_path}
               type="series"
-              year={s.release_date ? new Date(s.release_date).getFullYear() : undefined}
-              rating={s.rating}
+              seriesId={s.id}
+              year={s.first_air_date ? new Date(s.first_air_date).getFullYear() : undefined}
             />
           ))}
         </div>

@@ -9,7 +9,8 @@
       "D": "✅ Done — Playback Decision Engine",
       "E": "✅ Done — Streaming Enhancement (HW transcode, ABR HLS, Trickplay)",
       "F": "✅ Done — Admin Operations (Activity Logging, Dashboard, Scheduler, Webhooks)",
-      "G": "⬜ Pending — Nice-to-have"
+      "G": "⬜ Pending — Nice-to-have",
+      "J": "🟡 In Progress — Netflix-style Series Grouping + URL Routing (4 phases, planning complete)"
     }
   },
   "project": {
@@ -104,7 +105,8 @@
     "D": "Playback Decision Engine (3 phases)",
     "E": "Streaming Enhancement (3 phases: HW transcode, ABR HLS, Trickplay)",
     "F": "Admin Operations (3 phases)",
-    "G": "Nice-to-have (3 phases)"
+    "G": "Nice-to-have (3 phases)",
+    "J": "Netflix-style Series Grouping + URL Routing (4 phases: Backend API, Frontend Types, Routes+SeriesDetailPage, Update Listing Pages)"
   },
   "conventions": {
     "language": "Vietnamese in plans, English in code/commits",

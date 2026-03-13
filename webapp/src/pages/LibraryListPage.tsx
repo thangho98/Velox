@@ -157,7 +157,7 @@ function LibraryContent({ libraryId, libraryName }: { libraryId: number; library
           {media?.map((item) => (
             <Link
               key={item.id}
-              to={`/media/${item.id}`}
+              to={item.media_type === 'episode' ? `/series/${item.id}` : `/movies/${item.id}`}
               className="flex items-center gap-4 rounded-lg bg-netflix-dark p-3 transition-colors hover:bg-netflix-gray"
             >
               <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded bg-netflix-gray">

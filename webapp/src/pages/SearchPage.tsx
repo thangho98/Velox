@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router'
-import { useMediaList } from '@/hooks/stores/useMedia'
+import { useMediaList, useSeriesList, useSeriesSearch } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
 import { LuSearch, LuX } from 'react-icons/lu'
+import type { Series } from '@/types/api'
 
 const DEBOUNCE_MS = 300
 
@@ -44,14 +45,23 @@ export function SearchPage() {
     return () => clearTimeout(timer)
   }, [query, filters, searchParams, setSearchParams])
 
-  // Fetch all media
-  const { data: allMedia, isLoading } = useMediaList({
-    limit: 500,
+  // Fetch data based on view
+  const { data: allMovies, isLoading: moviesLoading } = useMediaList({
+    type: 'movie',
+    limit: 100,
   })
+  const { data: allSeries, isLoading: seriesLoading } = useSeriesList({ limit: 100 })
 
-  // Filter media based on search and filters
-  const filteredMedia = allMedia?.filter((item) => {
-    // Text search
+  // Search results
+  const { data: seriesSearchResults, isLoading: seriesSearchLoading } = useSeriesSearch(
+    debouncedQuery,
+    20,
+  )
+
+  const isLoading = moviesLoading || seriesLoading || seriesSearchLoading
+
+  // Filter movies based on search
+  const filteredMovies = allMovies?.filter((item) => {
     if (debouncedQuery) {
       const searchLower = debouncedQuery.toLowerCase()
       const titleMatch = item.title.toLowerCase().includes(searchLower)
@@ -59,24 +69,26 @@ export function SearchPage() {
       const genreMatch = item.genres.some((g) => g.toLowerCase().includes(searchLower))
       if (!titleMatch && !overviewMatch && !genreMatch) return false
     }
-
-    // Type filter
-    if (filters.type && item.media_type !== filters.type) return false
-
-    // Genre filter
+    // Genre filter (movies only)
     if (filters.genre && !item.genres.includes(filters.genre)) return false
-
     return true
   })
 
-  // Get unique genres from results
-  const genres = [...new Set(allMedia?.flatMap((m) => m.genres) || [])].sort()
+  // Filter series based on search (client-side when no server search)
+  const filteredSeries = debouncedQuery ? seriesSearchResults || [] : allSeries || []
+
+  // Get unique genres from movie results
+  const genres = [...new Set(allMovies?.flatMap((m) => m.genres) || [])].sort()
 
   const clearSearch = useCallback(() => {
     setQuery('')
     setDebouncedQuery('')
     setFilters({ type: '', genre: '' })
   }, [])
+
+  // Determine what to show based on filters
+  const showMovies = !filters.type || filters.type === 'movie'
+  const showSeries = !filters.type || filters.type === 'series'
 
   return (
     <div className="space-y-6">
@@ -119,19 +131,21 @@ export function SearchPage() {
             <option value="series">Series</option>
           </select>
 
-          {/* Genre Filter */}
-          <select
-            value={filters.genre}
-            onChange={(e) => setFilters({ ...filters, genre: e.target.value })}
-            className="rounded-lg bg-netflix-dark px-4 py-2 text-sm text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
-          >
-            <option value="">All Genres</option>
-            {genres.map((genre) => (
-              <option key={genre} value={genre}>
-                {genre}
-              </option>
-            ))}
-          </select>
+          {/* Genre Filter - only show when viewing movies */}
+          {showMovies && (
+            <select
+              value={filters.genre}
+              onChange={(e) => setFilters({ ...filters, genre: e.target.value })}
+              className="rounded-lg bg-netflix-dark px-4 py-2 text-sm text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
+            >
+              <option value="">All Genres</option>
+              {genres.map((genre) => (
+                <option key={genre} value={genre}>
+                  {genre}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Active Filters */}
@@ -176,44 +190,69 @@ export function SearchPage() {
         </div>
       ) : debouncedQuery || filters.type || filters.genre ? (
         // Search results
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">
-              {filteredMedia?.length === 0
-                ? 'No results'
-                : `${filteredMedia?.length} result${filteredMedia?.length === 1 ? '' : 's'}`}
-            </h2>
-          </div>
-
-          {filteredMedia?.length === 0 ? (
-            <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-              <LuSearch size={48} className="mb-4 text-gray-600" />
-              <p className="text-gray-400">No results found for &quot;{debouncedQuery}&quot;</p>
-              <button onClick={clearSearch} className="mt-2 text-netflix-red hover:underline">
-                Clear search
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-              {filteredMedia?.map((item) => (
-                <MediaCard
-                  key={item.id}
-                  id={item.id}
-                  title={item.title}
-                  posterPath={item.poster_path}
-                  type={item.media_type === 'episode' ? 'series' : 'movie'}
-                  year={item.release_date ? new Date(item.release_date).getFullYear() : undefined}
-                  rating={item.rating}
-                />
-              ))}
-            </div>
+        <div className="space-y-8">
+          {/* Movies Results */}
+          {showMovies && filteredMovies && filteredMovies.length > 0 && (
+            <section>
+              <h2 className="mb-4 text-lg font-semibold text-white">
+                Movies ({filteredMovies.length})
+              </h2>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {filteredMovies.map((item) => (
+                  <MediaCard
+                    key={item.id}
+                    id={item.id}
+                    title={item.title}
+                    posterPath={item.poster_path}
+                    type="movie"
+                    year={item.release_date ? new Date(item.release_date).getFullYear() : undefined}
+                    rating={item.rating}
+                  />
+                ))}
+              </div>
+            </section>
           )}
+
+          {/* Series Results */}
+          {showSeries && filteredSeries && filteredSeries.length > 0 && (
+            <section>
+              <h2 className="mb-4 text-lg font-semibold text-white">
+                Series ({filteredSeries.length})
+              </h2>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {filteredSeries.map((s: Series) => (
+                  <MediaCard
+                    key={`series-${s.id}`}
+                    id={s.id}
+                    title={s.title}
+                    posterPath={s.poster_path}
+                    type="series"
+                    seriesId={s.id}
+                    year={s.first_air_date ? new Date(s.first_air_date).getFullYear() : undefined}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* No results */}
+          {((showMovies && !filteredMovies?.length) ||
+            (showSeries && !filteredSeries?.length && filters.type === 'series')) &&
+            !((showMovies && filteredMovies?.length) || (showSeries && filteredSeries?.length)) && (
+              <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
+                <LuSearch size={48} className="mb-4 text-gray-600" />
+                <p className="text-gray-400">No results found for &quot;{debouncedQuery}&quot;</p>
+                <button onClick={clearSearch} className="mt-2 text-netflix-red hover:underline">
+                  Clear search
+                </button>
+              </div>
+            )}
         </div>
       ) : (
         // Default view - show all content
         <div className="space-y-8">
           {/* Movies Section */}
-          {allMedia && allMedia.filter((m) => m.media_type === 'movie').length > 0 && (
+          {allMovies && allMovies.length > 0 && (
             <section>
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-white">Movies</h2>
@@ -225,63 +264,53 @@ export function SearchPage() {
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                {allMedia
-                  .filter((m) => m.media_type === 'movie')
-                  .slice(0, 6)
-                  .map((movie) => (
-                    <MediaCard
-                      key={movie.id}
-                      id={movie.id}
-                      title={movie.title}
-                      posterPath={movie.poster_path}
-                      type="movie"
-                      year={
-                        movie.release_date ? new Date(movie.release_date).getFullYear() : undefined
-                      }
-                      rating={movie.rating}
-                    />
-                  ))}
+                {allMovies.slice(0, 6).map((movie) => (
+                  <MediaCard
+                    key={movie.id}
+                    id={movie.id}
+                    title={movie.title}
+                    posterPath={movie.poster_path}
+                    type="movie"
+                    year={
+                      movie.release_date ? new Date(movie.release_date).getFullYear() : undefined
+                    }
+                    rating={movie.rating}
+                  />
+                ))}
               </div>
             </section>
           )}
 
           {/* Series Section */}
-          {allMedia && allMedia.filter((m) => m.media_type === 'episode').length > 0 && (
+          {allSeries && allSeries.length > 0 && (
             <section>
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-white">Series</h2>
                 <button
-                  onClick={() => setFilters({ ...filters, type: 'episode' })}
+                  onClick={() => setFilters({ ...filters, type: 'series' })}
                   className="text-sm text-netflix-red hover:underline"
                 >
                   View all
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                {allMedia
-                  .filter((m) => m.media_type === 'episode')
-                  .slice(0, 6)
-                  .map((series) => (
-                    <MediaCard
-                      key={series.id}
-                      id={series.id}
-                      title={series.title}
-                      posterPath={series.poster_path}
-                      type="series"
-                      year={
-                        series.release_date
-                          ? new Date(series.release_date).getFullYear()
-                          : undefined
-                      }
-                      rating={series.rating}
-                    />
-                  ))}
+                {allSeries.slice(0, 6).map((s: Series) => (
+                  <MediaCard
+                    key={s.id}
+                    id={s.id}
+                    title={s.title}
+                    posterPath={s.poster_path}
+                    type="series"
+                    seriesId={s.id}
+                    year={s.first_air_date ? new Date(s.first_air_date).getFullYear() : undefined}
+                  />
+                ))}
               </div>
             </section>
           )}
 
           {/* Empty State */}
-          {allMedia?.length === 0 && (
+          {allMovies?.length === 0 && allSeries?.length === 0 && (
             <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
               <LuSearch size={48} className="mb-4 text-gray-600" />
               <p className="text-gray-400">Start typing to search your media library</p>

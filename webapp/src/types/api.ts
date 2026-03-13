@@ -175,6 +175,38 @@ export interface MediaListItem {
   overview?: string
 }
 
+// Series Types (from GET /api/series)
+export interface Series {
+  id: number
+  library_id: number
+  title: string
+  sort_title: string
+  tmdb_id?: number
+  imdb_id?: string
+  tvdb_id?: number
+  overview: string
+  status: string // "Returning Series" | "Ended" | "Canceled"
+  network: string
+  first_air_date: string
+  poster_path: string
+  backdrop_path: string
+  logo_path: string
+  thumb_path: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SeriesWithSeasons {
+  series: Series
+  seasons: Season[]
+}
+
+export interface SeriesListParams {
+  library_id?: number
+  limit?: number
+  offset?: number
+}
+
 // Season Types
 export interface Season {
   id: number
