@@ -12,6 +12,8 @@ import (
 type MediaService struct {
 	repo          *repository.MediaRepo
 	mediaFileRepo *repository.MediaFileRepo
+	episodeRepo   *repository.EpisodeRepo
+	seasonRepo    *repository.SeasonRepo
 }
 
 func NewMediaService(repo *repository.MediaRepo, mediaFileRepo *repository.MediaFileRepo) *MediaService {
@@ -20,6 +22,12 @@ func NewMediaService(repo *repository.MediaRepo, mediaFileRepo *repository.Media
 		mediaFileRepo: mediaFileRepo,
 	}
 }
+
+// SetEpisodeRepo sets the episode repo for episode info enrichment.
+func (s *MediaService) SetEpisodeRepo(r *repository.EpisodeRepo) { s.episodeRepo = r }
+
+// SetSeasonRepo sets the season repo for episode info enrichment.
+func (s *MediaService) SetSeasonRepo(r *repository.SeasonRepo) { s.seasonRepo = r }
 
 func (s *MediaService) List(ctx context.Context, libraryID int64, mediaType string, limit, offset int) ([]model.Media, error) {
 	if limit <= 0 {
@@ -50,10 +58,24 @@ func (s *MediaService) GetWithFiles(ctx context.Context, id int64) (*model.Media
 		return nil, err
 	}
 
-	return &model.MediaWithFiles{
+	result := &model.MediaWithFiles{
 		Media: *media,
 		Files: files,
-	}, nil
+	}
+
+	// Enrich with episode/season info when applicable
+	if media.MediaType == "episode" && s.episodeRepo != nil && s.seasonRepo != nil {
+		if ep, err := s.episodeRepo.GetByMediaID(ctx, id); err == nil {
+			result.SeriesID = ep.SeriesID
+			result.SeasonID = ep.SeasonID
+			result.EpisodeNumber = ep.EpisodeNumber
+			if season, err := s.seasonRepo.GetByID(ctx, ep.SeasonID); err == nil {
+				result.SeasonNumber = season.SeasonNumber
+			}
+		}
+	}
+
+	return result, nil
 }
 
 func (s *MediaService) Search(ctx context.Context, query string, limit int) ([]model.Media, error) {

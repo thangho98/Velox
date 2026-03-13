@@ -47,6 +47,12 @@ type MediaFile struct {
 type MediaWithFiles struct {
 	Media Media       `json:"media"`
 	Files []MediaFile `json:"files"`
+
+	// Episode-only fields (populated when media_type == "episode")
+	SeriesID      int64 `json:"series_id,omitempty"`
+	SeasonID      int64 `json:"season_id,omitempty"`
+	EpisodeNumber int   `json:"episode_number,omitempty"`
+	SeasonNumber  int   `json:"season_number,omitempty"`
 }
 
 // MediaListItem represents a media item for list views with genres

@@ -226,6 +226,8 @@ func runServer() {
 	transcoderSvc := transcoder.New(cfg.TranscodePath, hwAccel, cfg.MaxTranscodes)
 	librarySvc := service.NewLibraryService(libraryRepo, scanJobRepo, pipeline)
 	mediaSvc := service.NewMediaService(mediaRepo, mediaFileRepo)
+	mediaSvc.SetEpisodeRepo(episodeRepo)
+	mediaSvc.SetSeasonRepo(seasonRepo)
 	streamSvc := service.NewStreamService(mediaFileRepo, audioTrackRepo, transcoderSvc)
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, sessionRepo, jwtManager, db)
 	userDataSvc := service.NewUserDataService(userDataRepo)

@@ -37,18 +37,20 @@ export function MediaDetailPage() {
   const { data: subtitles = [] } = useSubtitles(mediaId)
 
   // Fetch seasons if this is a series (episode type with series_id)
-  const isSeries = media?.media.media_type === 'episode' && media.media.series_id
-  const seriesId = media?.media.series_id || mediaId
+  const isSeries = media?.media.media_type === 'episode' && media?.series_id
+  const seriesId = media?.series_id || mediaId
 
+  const { data: seriesMedia } = useMediaWithFiles(isSeries ? seriesId : 0)
   const { data: seasons, isLoading: seasonsLoading } = useSeasons(seriesId)
   const { data: episodes, isLoading: episodesLoading } = useEpisodes(
     seriesId,
     selectedSeasonId || seasons?.[0]?.id || 0,
   )
 
-  // Auto-select first season when seasons load
+  // Auto-select the season this episode belongs to, or first season
   if (seasons && seasons.length > 0 && !selectedSeasonId) {
-    setSelectedSeasonId(seasons[0].id)
+    const episodeSeason = media?.season_id ? seasons.find((s) => s.id === media.season_id) : null
+    setSelectedSeasonId(episodeSeason?.id || seasons[0].id)
   }
 
   if (isLoading) {
@@ -75,6 +77,16 @@ export function MediaDetailPage() {
   const duration = primaryFile?.duration || media.media.duration || 0
   const progressPercent =
     progress && duration > 0 ? Math.min(100, (progress.position / duration) * 100) : 0
+
+  // Build display title: "Series Title (Year) - S02E05 - Episode Title" for episodes
+  const seriesTitle = seriesMedia?.media.title
+  const seriesYear = seriesMedia?.media.release_date
+    ? new Date(seriesMedia.media.release_date).getFullYear()
+    : null
+  const displayTitle =
+    isSeries && seriesTitle
+      ? `${seriesTitle}${seriesYear ? ` (${seriesYear})` : ''} - S${String(media.season_number || 0).padStart(2, '0')}E${String(media.episode_number || 0).padStart(2, '0')} - ${media.media.title}`
+      : media.media.title
 
   return (
     <div className="min-h-screen bg-netflix-black">
@@ -120,9 +132,7 @@ export function MediaDetailPage() {
 
             {/* Info */}
             <div className="flex-1">
-              <h1 className="mb-2 text-3xl font-bold text-white lg:text-5xl">
-                {media.media.title}
-              </h1>
+              <h1 className="mb-2 text-3xl font-bold text-white lg:text-5xl">{displayTitle}</h1>
 
               {/* Year · Duration · Ends at · Ratings */}
               <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-400">

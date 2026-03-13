@@ -155,6 +155,11 @@ export interface MediaFile {
 export interface MediaWithFiles {
   media: Media
   files: MediaFile[]
+  // Episode-only fields
+  series_id?: number
+  season_id?: number
+  episode_number?: number
+  season_number?: number
 }
 
 export interface MediaListItem {
@@ -189,6 +194,7 @@ export interface Episode {
   id: number
   series_id: number
   season_id: number
+  media_id: number
   episode_number: number
   title: string
   overview: string
