@@ -71,11 +71,15 @@ type CrewInfo struct {
 // TVMatchResult contains TV show specific matching
 type TVMatchResult struct {
 	MatchResult
-	SeriesID      int
-	SeasonNumber  int
-	EpisodeNumber int
-	EpisodeTitle  string
-	TvdbID        int // TheTVDB series ID (from TMDb external_ids)
+	SeriesID       int
+	SeasonNumber   int
+	EpisodeNumber  int
+	EpisodeTitle   string
+	TvdbID         int // TheTVDB series ID (from TMDb external_ids)
+	SeriesTitle    string
+	SeriesOverview string
+	SeriesPoster   string
+	SeriesAirDate  string
 }
 
 // MatchMovie tries to match a movie file with TMDb metadata
@@ -426,8 +430,11 @@ func (m *Matcher) convertTVShowNFO(nfoShow *nfo.TVShow, parsed nameparser.Parsed
 			Confidence:    1.0,
 			Source:        "nfo",
 		},
-		SeasonNumber:  parsed.Season,
-		EpisodeNumber: parsed.Episode,
+		SeasonNumber:   parsed.Season,
+		EpisodeNumber:  parsed.Episode,
+		SeriesTitle:    nfoShow.Title,
+		SeriesOverview: nfoShow.Plot,
+		SeriesPoster:   nfoShow.Poster,
 	}
 
 	for _, g := range nfoShow.Genres {
@@ -453,9 +460,13 @@ func (m *Matcher) convertSeriesToTVResult(series *tmdb.TVDetails, seasonNum, epi
 			Confidence:    0.7,
 			Source:        "tmdb_partial",
 		},
-		SeriesID:      series.ID,
-		SeasonNumber:  seasonNum,
-		EpisodeNumber: episodeNum,
+		SeriesID:       series.ID,
+		SeasonNumber:   seasonNum,
+		EpisodeNumber:  episodeNum,
+		SeriesTitle:    series.Name,
+		SeriesOverview: series.Overview,
+		SeriesPoster:   series.PosterPath,
+		SeriesAirDate:  series.FirstAirDate,
 	}
 
 	if series.ExternalIDs != nil && series.ExternalIDs.TVDBID > 0 {
@@ -489,10 +500,14 @@ func (m *Matcher) convertEpisodeDetails(series *tmdb.TVDetails, season *tmdb.Sea
 			Confidence:   confidence,
 			Source:       "tmdb_search",
 		},
-		SeriesID:      series.ID,
-		SeasonNumber:  episode.SeasonNumber,
-		EpisodeNumber: episode.EpisodeNumber,
-		EpisodeTitle:  episode.Name,
+		SeriesID:       series.ID,
+		SeasonNumber:   episode.SeasonNumber,
+		EpisodeNumber:  episode.EpisodeNumber,
+		EpisodeTitle:   episode.Name,
+		SeriesTitle:    series.Name,
+		SeriesOverview: series.Overview,
+		SeriesPoster:   series.PosterPath,
+		SeriesAirDate:  series.FirstAirDate,
 	}
 
 	if series.ExternalIDs != nil && series.ExternalIDs.TVDBID > 0 {

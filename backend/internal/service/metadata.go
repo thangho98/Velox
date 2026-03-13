@@ -184,7 +184,7 @@ func (s *MetadataService) MatchAndPersistEpisode(ctx context.Context, media *mod
 	}
 
 	// Link episode to series/season
-	s.linkEpisode(ctx, media.ID, series.ID, season.ID, result.EpisodeNumber)
+	s.linkEpisode(ctx, media.ID, series.ID, season.ID, result.EpisodeNumber, media.Title, media.Overview, media.PosterPath)
 
 	return nil
 }
@@ -202,13 +202,21 @@ func (s *MetadataService) findOrCreateSeries(ctx context.Context, result *metada
 		}
 	}
 
+	seriesTitle := result.SeriesTitle
+	if seriesTitle == "" {
+		seriesTitle = result.Title
+	}
+	seriesOverview := result.SeriesOverview
+	if seriesOverview == "" {
+		seriesOverview = result.Overview
+	}
 	series := &model.Series{
 		LibraryID:    libraryID,
-		Title:        result.Title,
-		SortTitle:    result.Title,
-		Overview:     result.Overview,
-		FirstAirDate: result.ReleaseDate,
-		PosterPath:   result.PosterPath,
+		Title:        seriesTitle,
+		SortTitle:    seriesTitle,
+		Overview:     seriesOverview,
+		FirstAirDate: result.SeriesAirDate,
+		PosterPath:   result.SeriesPoster,
 		BackdropPath: result.BackdropPath,
 	}
 	if result.SeriesID > 0 {
@@ -266,14 +274,23 @@ func (s *MetadataService) findOrCreateSeason(ctx context.Context, seriesID int64
 }
 
 // linkEpisode creates or updates the episode record linking media to series/season.
-func (s *MetadataService) linkEpisode(ctx context.Context, mediaID, seriesID, seasonID int64, episodeNumber int) {
+func (s *MetadataService) linkEpisode(ctx context.Context, mediaID, seriesID, seasonID int64, episodeNumber int, title, overview, stillPath string) {
 	if episodeNumber <= 0 {
 		return
 	}
 
 	existing, err := s.episodeRepo.GetByMediaID(ctx, mediaID)
 	if err == nil && existing != nil {
-		return // Already linked
+		// Update metadata if missing
+		if (existing.Title == "" && title != "") || (existing.StillPath == "" && stillPath != "") || (existing.Overview == "" && overview != "") {
+			existing.Title = title
+			existing.Overview = overview
+			existing.StillPath = stillPath
+			if updateErr := s.episodeRepo.Update(ctx, existing); updateErr != nil {
+				log.Printf("Failed to update episode metadata: %v", updateErr)
+			}
+		}
+		return
 	}
 
 	ep := &model.Episode{
@@ -281,6 +298,9 @@ func (s *MetadataService) linkEpisode(ctx context.Context, mediaID, seriesID, se
 		SeasonID:      seasonID,
 		MediaID:       mediaID,
 		EpisodeNumber: episodeNumber,
+		Title:         title,
+		Overview:      overview,
+		StillPath:     stillPath,
 	}
 	if err := s.episodeRepo.Create(ctx, ep); err != nil {
 		log.Printf("Failed to link episode: %v", err)

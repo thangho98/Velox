@@ -173,6 +173,7 @@ export interface MediaListItem {
   release_date?: string
   rating?: number
   overview?: string
+  series_id?: number
 }
 
 // Series Types (from GET /api/series)
@@ -337,6 +338,8 @@ export interface PlaybackAudioTrack {
   label: string
   codec: string
   channels: number
+  bitrate: number
+  sample_rate: number
   is_default: boolean
   selected: boolean
 }
@@ -368,6 +371,9 @@ export interface PlaybackInfo {
   stream_url: string
   abr_url?: string // adaptive bitrate HLS master playlist (populated when transcoding)
   video_codec: string
+  video_profile: string
+  video_level: number
+  video_fps: number
   audio_codec: string
   container: string
   file_size: number

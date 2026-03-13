@@ -198,6 +198,52 @@ func (h *SettingsHandler) UpdateTVDB(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, tvdbResponse{APIKey: req.APIKey})
 }
 
+// playbackResponse is the JSON shape for GET /api/admin/settings/playback.
+type playbackResponse struct {
+	PlaybackMode string `json:"playback_mode"` // "auto" or "direct_play"
+}
+
+// playbackRequest is the JSON shape for PUT /api/admin/settings/playback.
+type playbackRequest struct {
+	PlaybackMode string `json:"playback_mode"`
+}
+
+// GetPlayback returns the current playback policy.
+// GET /api/admin/settings/playback
+func (h *SettingsHandler) GetPlayback(w http.ResponseWriter, r *http.Request) {
+	val, err := h.repo.Get(r.Context(), model.SettingPlaybackMode)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	if val == "" {
+		val = "auto"
+	}
+	respondJSON(w, http.StatusOK, playbackResponse{PlaybackMode: val})
+}
+
+// UpdatePlayback saves the playback policy.
+// PUT /api/admin/settings/playback
+func (h *SettingsHandler) UpdatePlayback(w http.ResponseWriter, r *http.Request) {
+	var req playbackRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if req.PlaybackMode != "auto" && req.PlaybackMode != "direct_play" {
+		respondError(w, http.StatusBadRequest, "playback_mode must be 'auto' or 'direct_play'")
+		return
+	}
+
+	if err := h.repo.Set(r.Context(), model.SettingPlaybackMode, req.PlaybackMode); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save setting")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, playbackResponse{PlaybackMode: req.PlaybackMode})
+}
+
 // fanartResponse is the JSON shape for GET /api/admin/settings/fanart.
 type fanartResponse struct {
 	APIKey string `json:"api_key"`
@@ -234,4 +280,80 @@ func (h *SettingsHandler) UpdateFanart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, fanartResponse{APIKey: req.APIKey})
+}
+
+// autoSubResponse is the JSON shape for GET /api/admin/settings/auto-subtitles.
+type autoSubResponse struct {
+	Languages string `json:"languages"` // comma-separated: "en,vi"
+}
+
+// autoSubRequest is the JSON shape for PUT /api/admin/settings/auto-subtitles.
+type autoSubRequest struct {
+	Languages string `json:"languages"`
+}
+
+// GetAutoSubtitles returns the auto-download subtitle configuration.
+// GET /api/admin/settings/auto-subtitles
+func (h *SettingsHandler) GetAutoSubtitles(w http.ResponseWriter, r *http.Request) {
+	val, err := h.repo.Get(r.Context(), model.SettingAutoSubLanguages)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	respondJSON(w, http.StatusOK, autoSubResponse{Languages: val})
+}
+
+// UpdateAutoSubtitles saves the auto-download subtitle configuration.
+// PUT /api/admin/settings/auto-subtitles
+func (h *SettingsHandler) UpdateAutoSubtitles(w http.ResponseWriter, r *http.Request) {
+	var req autoSubRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if err := h.repo.Set(r.Context(), model.SettingAutoSubLanguages, req.Languages); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save setting")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, autoSubResponse{Languages: req.Languages})
+}
+
+// subdlResponse is the JSON shape for GET /api/admin/settings/subdl.
+type subdlResponse struct {
+	APIKey string `json:"api_key"`
+}
+
+// subdlRequest is the JSON shape for PUT /api/admin/settings/subdl.
+type subdlRequest struct {
+	APIKey string `json:"api_key"`
+}
+
+// GetSubdl returns the current Subdl configuration.
+// GET /api/admin/settings/subdl
+func (h *SettingsHandler) GetSubdl(w http.ResponseWriter, r *http.Request) {
+	val, err := h.repo.Get(r.Context(), model.SettingSubdlAPIKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	respondJSON(w, http.StatusOK, subdlResponse{APIKey: val})
+}
+
+// UpdateSubdl saves the Subdl API key.
+// PUT /api/admin/settings/subdl
+func (h *SettingsHandler) UpdateSubdl(w http.ResponseWriter, r *http.Request) {
+	var req subdlRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if err := h.repo.Set(r.Context(), model.SettingSubdlAPIKey, req.APIKey); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save api_key")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, subdlResponse{APIKey: req.APIKey})
 }

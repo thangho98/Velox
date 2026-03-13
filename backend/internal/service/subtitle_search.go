@@ -13,6 +13,7 @@ import (
 	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/pkg/opensubs"
 	"github.com/thawng/velox/pkg/podnapisi"
+	"github.com/thawng/velox/pkg/subdl"
 	"github.com/thawng/velox/pkg/subprovider"
 )
 
@@ -22,6 +23,9 @@ type SubtitleSearchService struct {
 	mfRepo       *repository.MediaFileRepo
 	subtitleRepo *repository.SubtitleRepo
 	settingsRepo *repository.AppSettingsRepo
+	episodeRepo  *repository.EpisodeRepo
+	seasonRepo   *repository.SeasonRepo
+	seriesRepo   *repository.SeriesRepo
 	podClient    *podnapisi.Client
 	downloadDir  string // e.g. ~/.velox/subtitles/downloaded
 }
@@ -32,6 +36,9 @@ func NewSubtitleSearchService(
 	mfRepo *repository.MediaFileRepo,
 	subtitleRepo *repository.SubtitleRepo,
 	settingsRepo *repository.AppSettingsRepo,
+	episodeRepo *repository.EpisodeRepo,
+	seasonRepo *repository.SeasonRepo,
+	seriesRepo *repository.SeriesRepo,
 	downloadDir string,
 ) *SubtitleSearchService {
 	return &SubtitleSearchService{
@@ -39,14 +46,59 @@ func NewSubtitleSearchService(
 		mfRepo:       mfRepo,
 		subtitleRepo: subtitleRepo,
 		settingsRepo: settingsRepo,
+		episodeRepo:  episodeRepo,
+		seasonRepo:   seasonRepo,
+		seriesRepo:   seriesRepo,
 		podClient:    podnapisi.New(),
 		downloadDir:  downloadDir,
 	}
 }
 
-// Search queries both providers for subtitles matching the given media and language.
+// episodeInfo holds series-level metadata resolved from an episode media item.
+type episodeInfo struct {
+	seriesTitle   string
+	seriesTmdbID  int
+	seriesImdbID  string
+	seasonNumber  int
+	episodeNumber int
+}
+
+// resolveEpisodeInfo looks up series-level metadata for an episode media item.
+// Returns nil if the media is not an episode or lookup fails.
+func (s *SubtitleSearchService) resolveEpisodeInfo(ctx context.Context, mediaID int64) *episodeInfo {
+	ep, err := s.episodeRepo.GetByMediaID(ctx, mediaID)
+	if err != nil {
+		return nil
+	}
+
+	season, err := s.seasonRepo.GetByID(ctx, ep.SeasonID)
+	if err != nil {
+		return nil
+	}
+
+	series, err := s.seriesRepo.GetByID(ctx, ep.SeriesID)
+	if err != nil {
+		return nil
+	}
+
+	info := &episodeInfo{
+		seriesTitle:   series.Title,
+		seasonNumber:  season.SeasonNumber,
+		episodeNumber: ep.EpisodeNumber,
+	}
+	if series.TmdbID != nil && *series.TmdbID > 0 {
+		info.seriesTmdbID = int(*series.TmdbID)
+	}
+	if series.ImdbID != nil && *series.ImdbID != "" {
+		info.seriesImdbID = *series.ImdbID
+	}
+	return info
+}
+
+// Search queries all providers for subtitles matching the given media and language.
 // Uses the original video filename (without extension) as the search query — providers
 // match best on release names which are closer to the filename than the parsed title.
+// For episodes, resolves series-level tmdb_id and passes season/episode numbers.
 func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang string) ([]subprovider.Result, error) {
 	media, err := s.mediaRepo.GetByID(ctx, mediaID)
 	if err != nil {
@@ -59,6 +111,12 @@ func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang 
 	if err == nil && mf != nil {
 		base := filepath.Base(mf.FilePath)
 		query = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+
+	// For episodes, resolve series-level metadata (series tmdb_id, season/episode numbers)
+	var epInfo *episodeInfo
+	if media.MediaType == "episode" {
+		epInfo = s.resolveEpisodeInfo(ctx, mediaID)
 	}
 
 	var results []subprovider.Result
@@ -91,6 +149,49 @@ func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang 
 		}
 	}
 
+	// Subdl (if configured)
+	subdlClient, err := s.buildSubdlClient(ctx)
+	if err != nil {
+		log.Printf("subdl not configured: %v", err)
+	}
+	if subdlClient != nil {
+		sdParams := subdl.SearchParams{
+			FilmName: media.Title,
+			FileName: query,
+			Language: lang,
+		}
+		// For episodes, use series-level IDs and pass season/episode numbers
+		if epInfo != nil {
+			sdParams.FilmName = epInfo.seriesTitle
+			if epInfo.seriesTmdbID > 0 {
+				sdParams.TmdbID = epInfo.seriesTmdbID
+			}
+			if epInfo.seriesImdbID != "" {
+				sdParams.ImdbID = epInfo.seriesImdbID
+			}
+			sdParams.SeasonNumber = epInfo.seasonNumber
+			sdParams.EpisodeNumber = epInfo.episodeNumber
+			sdParams.Type = "tv"
+		} else {
+			if media.ImdbID != nil && *media.ImdbID != "" {
+				sdParams.ImdbID = *media.ImdbID
+			}
+			if media.TmdbID != nil && *media.TmdbID > 0 {
+				sdParams.TmdbID = int(*media.TmdbID)
+			}
+		}
+		if year := extractYear(media.ReleaseDate); year > 0 {
+			sdParams.Year = year
+		}
+
+		sdResults, err := subdlClient.Search(ctx, sdParams)
+		if err != nil {
+			log.Printf("subdl search error: %v", err)
+		} else {
+			results = append(results, sdResults...)
+		}
+	}
+
 	// Podnapisi (always available)
 	podParams := podnapisi.SearchParams{
 		Keywords: query,
@@ -98,6 +199,11 @@ func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang 
 	}
 	if year := extractYear(media.ReleaseDate); year > 0 {
 		podParams.Year = year
+	}
+	// For episodes, pass season/episode to Podnapisi too
+	if epInfo != nil {
+		podParams.Season = epInfo.seasonNumber
+		podParams.Episode = epInfo.episodeNumber
 	}
 
 	podResults, err := s.podClient.SearchJSON(ctx, podParams)
@@ -114,7 +220,8 @@ func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang 
 }
 
 // Download fetches a subtitle from the given provider and saves it to disk + DB.
-func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, provider, externalID string) (*model.Subtitle, error) {
+// If language is non-empty, it is stored on the subtitle record.
+func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, provider, externalID, language string) (*model.Subtitle, error) {
 	// Get primary file for this media
 	mf, err := s.mfRepo.GetPrimaryByMediaID(ctx, mediaID)
 	if err != nil {
@@ -141,6 +248,16 @@ func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, pro
 			return nil, fmt.Errorf("downloading from podnapisi: %w", err)
 		}
 
+	case "subdl":
+		sdClient, err := s.buildSubdlClient(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("subdl not configured: %w", err)
+		}
+		data, filename, err = sdClient.Download(ctx, externalID)
+		if err != nil {
+			return nil, fmt.Errorf("downloading from subdl: %w", err)
+		}
+
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", provider)
 	}
@@ -158,7 +275,10 @@ func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, pro
 		return nil, fmt.Errorf("creating download dir: %w", err)
 	}
 
-	saveName := fmt.Sprintf("%s_%s%s", provider, externalID, ext)
+	// Sanitize externalID for use as filename (may contain slashes or .zip suffix)
+	safeID := strings.ReplaceAll(externalID, "/", "_")
+	safeID = strings.TrimSuffix(safeID, ".zip")
+	saveName := fmt.Sprintf("%s_%s%s", provider, safeID, ext)
 	savePath := filepath.Join(dir, saveName)
 	if err := os.WriteFile(savePath, data, 0644); err != nil {
 		return nil, fmt.Errorf("writing subtitle file: %w", err)
@@ -167,9 +287,9 @@ func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, pro
 	// Create DB record
 	sub := &model.Subtitle{
 		MediaFileID: mf.ID,
-		Language:    "", // will be populated from search result by caller if needed
+		Language:    language,
 		Codec:       codec,
-		Title:       fmt.Sprintf("%s (%s)", filename, provider),
+		Title:       subtitleTitle(language, provider),
 		IsEmbedded:  false,
 		StreamIndex: -1,
 		FilePath:    savePath,
@@ -205,6 +325,95 @@ func (s *SubtitleSearchService) buildOpenSubsClient(ctx context.Context) (*opens
 	}
 
 	return opensubs.New(apiKey, username, password), nil
+}
+
+// buildSubdlClient loads the API key from DB and creates a client.
+// Falls back to the built-in key if none is configured.
+func (s *SubtitleSearchService) buildSubdlClient(ctx context.Context) (*subdl.Client, error) {
+	apiKey, _ := s.settingsRepo.Get(ctx, model.SettingSubdlAPIKey)
+	if apiKey == "" {
+		apiKey = subdl.DefaultAPIKey
+	}
+	return subdl.New(apiKey), nil
+}
+
+// AutoDownload fetches subtitles for configured languages if the media file
+// doesn't already have them (embedded or external). Designed to be called
+// from the scan pipeline — non-critical, errors are logged but not fatal.
+func (s *SubtitleSearchService) AutoDownload(ctx context.Context, mediaID, mediaFileID int64) error {
+	// Check configured languages
+	langsStr, err := s.settingsRepo.Get(ctx, model.SettingAutoSubLanguages)
+	if err != nil || langsStr == "" {
+		return nil // not configured or disabled
+	}
+
+	var targetLangs []string
+	for _, l := range strings.Split(langsStr, ",") {
+		l = strings.TrimSpace(strings.ToLower(l))
+		if l != "" {
+			targetLangs = append(targetLangs, l)
+		}
+	}
+	if len(targetLangs) == 0 {
+		return nil
+	}
+
+	// Check which languages already exist (embedded + sidecar)
+	existing, err := s.subtitleRepo.ListByMediaFileID(ctx, mediaFileID)
+	if err != nil {
+		return fmt.Errorf("listing existing subtitles: %w", err)
+	}
+	haveLang := make(map[string]bool)
+	for _, sub := range existing {
+		if sub.Language != "" {
+			haveLang[strings.ToLower(sub.Language)] = true
+		}
+	}
+
+	for _, lang := range targetLangs {
+		if haveLang[lang] {
+			log.Printf("auto-sub: media %d already has %s subtitle, skipping", mediaID, lang)
+			continue
+		}
+
+		results, err := s.Search(ctx, mediaID, lang)
+		if err != nil {
+			log.Printf("auto-sub: search failed for media %d lang %s: %v", mediaID, lang, err)
+			continue
+		}
+		if len(results) == 0 {
+			log.Printf("auto-sub: no %s subtitles found for media %d", lang, mediaID)
+			continue
+		}
+
+		// Pick the first (best) result
+		best := results[0]
+		_, err = s.Download(ctx, mediaID, best.Provider, best.ExternalID, lang)
+		if err != nil {
+			log.Printf("auto-sub: download failed for media %d lang %s: %v", mediaID, lang, err)
+			continue
+		}
+
+		log.Printf("auto-sub: downloaded %s subtitle for media %d from %s", lang, mediaID, best.Provider)
+	}
+
+	return nil
+}
+
+// subtitleTitle builds a human-readable title for a downloaded subtitle.
+func subtitleTitle(langCode, provider string) string {
+	names := map[string]string{
+		"en": "English", "vi": "Vietnamese", "fr": "French", "de": "German",
+		"es": "Spanish", "pt": "Portuguese", "it": "Italian", "ja": "Japanese",
+		"ko": "Korean", "zh": "Chinese", "nl": "Dutch", "pl": "Polish",
+		"ru": "Russian", "ar": "Arabic", "tr": "Turkish", "sv": "Swedish",
+		"th": "Thai", "id": "Indonesian",
+	}
+	name := names[strings.ToLower(langCode)]
+	if name == "" {
+		name = langCode
+	}
+	return fmt.Sprintf("%s (%s)", name, provider)
 }
 
 // extractYear parses "2023-01-15" → 2023

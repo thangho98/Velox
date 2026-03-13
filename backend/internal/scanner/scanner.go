@@ -120,18 +120,21 @@ func (s *Scanner) persistMedia(ctx context.Context, libraryID int64, title, path
 	}
 
 	mf := &model.MediaFile{
-		MediaID:     media.ID,
-		FilePath:    path,
-		FileSize:    fileSize,
-		Duration:    probe.Duration,
-		Width:       probe.Width,
-		Height:      probe.Height,
-		VideoCodec:  probe.VideoCodec,
-		AudioCodec:  probe.AudioCodec,
-		Container:   probe.Container,
-		Bitrate:     int(probe.Bitrate),
-		IsPrimary:   true,
-		Fingerprint: "", // TODO: implement fingerprint in Phase 03
+		MediaID:      media.ID,
+		FilePath:     path,
+		FileSize:     fileSize,
+		Duration:     probe.Duration,
+		Width:        probe.Width,
+		Height:       probe.Height,
+		VideoCodec:   probe.VideoCodec,
+		VideoProfile: probe.VideoProfile,
+		VideoLevel:   probe.VideoLevel,
+		VideoFPS:     probe.VideoFPS,
+		AudioCodec:   probe.AudioCodec,
+		Container:    probe.Container,
+		Bitrate:      int(probe.Bitrate),
+		IsPrimary:    true,
+		Fingerprint:  "", // TODO: implement fingerprint in Phase 03
 	}
 	if err := mediaFileRepo.Create(ctx, mf); err != nil {
 		return fmt.Errorf("creating media file: %w", err)

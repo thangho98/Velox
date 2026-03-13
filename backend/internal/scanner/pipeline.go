@@ -23,6 +23,13 @@ type MetadataMatcher interface {
 	MatchAndPersistEpisode(ctx context.Context, media *model.Media, parsed nameparser.ParsedMedia, filePath string, libraryID int64, force bool) error
 }
 
+// SubtitleAutoDownloader is an optional interface for auto-downloading subtitles.
+// When non-nil, the pipeline calls it after persisting new media to fetch
+// subtitles in configured languages from external providers.
+type SubtitleAutoDownloader interface {
+	AutoDownload(ctx context.Context, mediaID, mediaFileID int64) error
+}
+
 // Pipeline handles the media scanning process
 type Pipeline struct {
 	db             *sql.DB
@@ -35,7 +42,8 @@ type Pipeline struct {
 	scanJobRepo    *repository.ScanJobRepo
 	subtitleRepo   *repository.SubtitleRepo
 	audioTrackRepo *repository.AudioTrackRepo
-	metadataSvc    MetadataMatcher // nil = skip metadata enrichment
+	metadataSvc    MetadataMatcher        // nil = skip metadata enrichment
+	subtitleDL     SubtitleAutoDownloader // nil = skip subtitle auto-download
 }
 
 // NewPipeline creates a new scan pipeline
@@ -68,6 +76,11 @@ func NewPipeline(
 // SetMetadataMatcher attaches an optional metadata enrichment service.
 func (p *Pipeline) SetMetadataMatcher(m MetadataMatcher) {
 	p.metadataSvc = m
+}
+
+// SetSubtitleAutoDownloader attaches an optional subtitle auto-download service.
+func (p *Pipeline) SetSubtitleAutoDownloader(dl SubtitleAutoDownloader) {
+	p.subtitleDL = dl
 }
 
 // ScanContext holds state during a scan
@@ -320,18 +333,21 @@ func (p *Pipeline) persist(scanCtx *ScanContext, path string, fingerprint string
 
 	// Create MediaFile (physical file)
 	mediaFile := &model.MediaFile{
-		MediaID:     mediaID,
-		FilePath:    path,
-		FileSize:    info.Size(),
-		Duration:    probe.Duration,
-		Width:       probe.Width,
-		Height:      probe.Height,
-		VideoCodec:  probe.VideoCodec,
-		AudioCodec:  probe.AudioCodec,
-		Container:   probe.Container,
-		Bitrate:     int(probe.Bitrate),
-		Fingerprint: fingerprint,
-		IsPrimary:   isPrimary,
+		MediaID:      mediaID,
+		FilePath:     path,
+		FileSize:     info.Size(),
+		Duration:     probe.Duration,
+		Width:        probe.Width,
+		Height:       probe.Height,
+		VideoCodec:   probe.VideoCodec,
+		VideoProfile: probe.VideoProfile,
+		VideoLevel:   probe.VideoLevel,
+		VideoFPS:     probe.VideoFPS,
+		AudioCodec:   probe.AudioCodec,
+		Container:    probe.Container,
+		Bitrate:      int(probe.Bitrate),
+		Fingerprint:  fingerprint,
+		IsPrimary:    isPrimary,
 	}
 
 	if err := mediaFileRepo.Create(ctx, mediaFile); err != nil {
@@ -348,6 +364,7 @@ func (p *Pipeline) persist(scanCtx *ScanContext, path string, fingerprint string
 			Channels:      track.Channels,
 			ChannelLayout: track.ChannelLayout,
 			Bitrate:       track.Bitrate,
+			SampleRate:    track.SampleRate,
 			Title:         track.Title,
 			IsDefault:     track.IsDefault,
 		}
@@ -382,6 +399,13 @@ func (p *Pipeline) persist(scanCtx *ScanContext, path string, fingerprint string
 	// they are non-critical and won't leave orphan media rows on failure.
 	if err := p.scanExternalSubtitles(ctx, mediaFile.ID, path); err != nil {
 		log.Printf("Failed to scan external subtitles: %v", err)
+	}
+
+	// Auto-download subtitles for configured languages (non-critical, outside transaction)
+	if p.subtitleDL != nil {
+		if err := p.subtitleDL.AutoDownload(ctx, mediaID, mediaFile.ID); err != nil {
+			log.Printf("auto-download subtitles for media %d: %v", mediaID, err)
+		}
 	}
 
 	// Phase 04: TMDb metadata enrichment (non-critical, outside transaction)

@@ -1,7 +1,7 @@
 // Client capability detection using MediaSource API
 // Results are cached in localStorage
 
-const STORAGE_KEY = 'velox-client-capabilities'
+const STORAGE_KEY = 'velox-client-capabilities-v2'
 
 export interface ClientCapabilities {
   browser: string
@@ -141,10 +141,19 @@ export function detectCapabilities(): ClientCapabilities {
   if (testAudioCodec('audio/mpeg')) {
     audioCodecs.push('mp3')
   }
-  if (testAudioCodec('audio/flac')) {
+  // FLAC support in HTML media is inconsistent across browsers/containers.
+  // Keep this conservative so backend does not choose a silent direct path.
+  if (
+    (browser === 'chrome' || browser === 'edge' || browser === 'safari') &&
+    testAudioCodec('audio/flac')
+  ) {
     audioCodecs.push('flac')
   }
-  if (testAudioCodec('audio/mp4; codecs="ac-3"')) {
+
+  // AC-3 detection via canPlayType is optimistic on some browsers and can lead
+  // to "video plays, no audio" when direct play/direct stream is chosen.
+  // Only advertise it on engines where support is expected to be reliable.
+  if ((browser === 'safari' || browser === 'edge') && testAudioCodec('audio/mp4; codecs="ac-3"')) {
     audioCodecs.push('ac3')
   }
 

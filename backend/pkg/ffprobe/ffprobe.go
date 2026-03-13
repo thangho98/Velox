@@ -6,20 +6,24 @@ import (
 	"log"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 // ProbeResult contains basic media file metadata
 type ProbeResult struct {
-	Duration    float64
-	Width       int
-	Height      int
-	VideoCodec  string
-	AudioCodec  string
-	Container   string
-	Bitrate     int64
-	HasSub      bool
-	AudioTracks []AudioTrackInfo
-	Subtitles   []SubtitleInfo
+	Duration     float64
+	Width        int
+	Height       int
+	VideoCodec   string
+	VideoProfile string  // e.g. "High", "Main 10"
+	VideoLevel   int     // e.g. 40, 51
+	VideoFPS     float64 // frames per second from r_frame_rate
+	AudioCodec   string
+	Container    string
+	Bitrate      int64
+	HasSub       bool
+	AudioTracks  []AudioTrackInfo
+	Subtitles    []SubtitleInfo
 }
 
 // AudioTrackInfo contains detailed audio track metadata
@@ -30,6 +34,7 @@ type AudioTrackInfo struct {
 	Channels      int
 	ChannelLayout string
 	Bitrate       int
+	SampleRate    int
 	Title         string
 	IsDefault     bool
 }
@@ -63,11 +68,16 @@ type StreamInfo struct {
 	Index         int         `json:"index"`
 	CodecType     string      `json:"codec_type"`
 	CodecName     string      `json:"codec_name"`
+	Profile       string      `json:"profile"`
+	Level         int         `json:"level"`
 	Width         int         `json:"width"`
 	Height        int         `json:"height"`
+	RFrameRate    string      `json:"r_frame_rate"`
+	AvgFrameRate  string      `json:"avg_frame_rate"`
 	Channels      int         `json:"channels"`
 	ChannelLayout string      `json:"channel_layout"`
 	BitRate       string      `json:"bit_rate"`
+	SampleRate    string      `json:"sample_rate"`
 	Tags          StreamTags  `json:"tags"`
 	Disposition   Disposition `json:"disposition"`
 }
@@ -135,6 +145,12 @@ func Probe(path string) (*ProbeResult, error) {
 				r.VideoCodec = s.CodecName
 				r.Width = s.Width
 				r.Height = s.Height
+				r.VideoProfile = s.Profile
+				r.VideoLevel = s.Level
+				r.VideoFPS = parseFrameRate(s.RFrameRate)
+				if r.VideoFPS == 0 {
+					r.VideoFPS = parseFrameRate(s.AvgFrameRate)
+				}
 			}
 		case "audio":
 			if firstAudioCodec == "" {
@@ -156,6 +172,8 @@ func Probe(path string) (*ProbeResult, error) {
 				title = s.Tags.HandlerName
 			}
 
+			sampleRate, _ := strconv.Atoi(s.SampleRate)
+
 			track := AudioTrackInfo{
 				StreamIndex:   s.Index,
 				Codec:         s.CodecName,
@@ -163,6 +181,7 @@ func Probe(path string) (*ProbeResult, error) {
 				Channels:      s.Channels,
 				ChannelLayout: s.ChannelLayout,
 				Bitrate:       bitrate,
+				SampleRate:    sampleRate,
 				Title:         title,
 				IsDefault:     isDefault,
 			}
@@ -210,6 +229,26 @@ func IsTextBasedSubtitle(codec string) bool {
 		}
 	}
 	return false
+}
+
+// parseFrameRate parses ffprobe frame rate strings like "24000/1001" or "24" into float64.
+func parseFrameRate(rate string) float64 {
+	if rate == "" || rate == "0/0" {
+		return 0
+	}
+	parts := strings.SplitN(rate, "/", 2)
+	if len(parts) == 2 {
+		num, err1 := strconv.ParseFloat(parts[0], 64)
+		den, err2 := strconv.ParseFloat(parts[1], 64)
+		if err1 == nil && err2 == nil && den > 0 {
+			return num / den
+		}
+	}
+	v, err := strconv.ParseFloat(rate, 64)
+	if err == nil {
+		return v
+	}
+	return 0
 }
 
 // IsImageBasedSubtitle returns true if the codec is image-based (requires burn-in)

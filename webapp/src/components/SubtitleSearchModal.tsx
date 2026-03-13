@@ -24,11 +24,60 @@ const LANGUAGES = [
   { code: 'id', name: 'Indonesian' },
 ]
 
+// Map ISO 639-2 (3-letter) codes to ISO 639-1 (2-letter) for provider APIs
+const ISO_639_2_TO_1: Record<string, string> = {
+  eng: 'en',
+  vie: 'vi',
+  fra: 'fr',
+  fre: 'fr',
+  deu: 'de',
+  ger: 'de',
+  spa: 'es',
+  por: 'pt',
+  ita: 'it',
+  jpn: 'ja',
+  kor: 'ko',
+  zho: 'zh',
+  chi: 'zh',
+  nld: 'nl',
+  dut: 'nl',
+  pol: 'pl',
+  rus: 'ru',
+  ara: 'ar',
+  tur: 'tr',
+  swe: 'sv',
+  tha: 'th',
+  ind: 'id',
+}
+
+function normalizeLangCode(code: string | null | undefined): string {
+  if (!code) return 'en'
+  const lower = code.toLowerCase()
+  return ISO_639_2_TO_1[lower] ?? lower
+}
+
 interface SubtitleSearchModalProps {
   mediaId: number
   defaultLang?: string | null
   onClose: () => void
   onSubtitleDownloaded: () => void
+}
+
+function subtitleFormatPriority(format: string): number {
+  switch (format.trim().toLowerCase()) {
+    case 'srt':
+    case 'subrip':
+    case 'vtt':
+    case 'webvtt':
+    case 'ass':
+    case 'ssa':
+      return 0
+    case 'pgs':
+    case 'sup':
+      return 1
+    default:
+      return 2
+  }
 }
 
 export function SubtitleSearchModal({
@@ -37,7 +86,7 @@ export function SubtitleSearchModal({
   onClose,
   onSubtitleDownloaded,
 }: SubtitleSearchModalProps) {
-  const [lang, setLang] = useState(defaultLang || 'en')
+  const [lang, setLang] = useState(normalizeLangCode(defaultLang))
   const [downloaded, setDownloaded] = useState<Set<string>>(new Set())
 
   const { data: results, isLoading, refetch } = useSubtitleSearch(mediaId, lang)
@@ -68,6 +117,11 @@ export function SubtitleSearchModal({
   const downloadingKey = downloadMutation.isPending
     ? `${downloadMutation.variables?.provider}:${downloadMutation.variables?.external_id}`
     : null
+  const sortedResults = [...(results ?? [])].sort((a, b) => {
+    const fmt = subtitleFormatPriority(a.format) - subtitleFormatPriority(b.format)
+    if (fmt !== 0) return fmt
+    return (b.downloads || 0) - (a.downloads || 0)
+  })
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -117,9 +171,8 @@ export function SubtitleSearchModal({
           )}
 
           {!isLoading &&
-            results &&
-            results.length > 0 &&
-            results.map((result) => {
+            sortedResults.length > 0 &&
+            sortedResults.map((result) => {
               const key = `${result.provider}:${result.external_id}`
               const isDownloaded = downloaded.has(key)
               const isDownloading = downloadingKey === key
@@ -139,7 +192,7 @@ export function SubtitleSearchModal({
         {/* Footer */}
         <div className="border-t border-white/10 px-5 py-2.5">
           <p className="text-[10px] text-white/30">
-            {results?.length ?? 0} results from OpenSubtitles + Podnapisi
+            {results?.length ?? 0} results from OpenSubtitles + Subdl + Podnapisi
           </p>
         </div>
       </div>
@@ -158,11 +211,15 @@ function ResultRow({
   isDownloading: boolean
   onDownload: () => void
 }) {
-  const providerColor =
-    result.provider === 'opensubtitles'
-      ? 'bg-green-500/15 text-green-400'
-      : 'bg-blue-500/15 text-blue-400'
-  const providerLabel = result.provider === 'opensubtitles' ? 'OpenSub' : 'Podnapisi'
+  const providerStyles: Record<string, { color: string; label: string }> = {
+    opensubtitles: { color: 'bg-green-500/15 text-green-400', label: 'OpenSub' },
+    subdl: { color: 'bg-amber-500/15 text-amber-400', label: 'Subdl' },
+    podnapisi: { color: 'bg-blue-500/15 text-blue-400', label: 'Podnapisi' },
+  }
+  const { color: providerColor, label: providerLabel } = providerStyles[result.provider] ?? {
+    color: 'bg-white/10 text-white/60',
+    label: result.provider,
+  }
 
   return (
     <div className="flex items-start gap-3 border-b border-white/5 px-5 py-3 transition-colors hover:bg-white/5">

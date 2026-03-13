@@ -248,12 +248,13 @@ func runServer() {
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(authSvc)
 	profileHandler := handler.NewProfileHandler(authSvc, prefsRepo, userDataSvc)
-	playbackHandler := handler.NewPlaybackHandler(mediaSvc, streamSvc, userDataSvc, subtitleSvc, audioTrackSvc, prefsRepo)
+	playbackHandler := handler.NewPlaybackHandler(mediaSvc, streamSvc, userDataSvc, subtitleSvc, audioTrackSvc, prefsRepo, appSettingsRepo)
 	subtitleHandler := handler.NewSubtitleHandler(subtitleSvc, mediaFileRepo, cfg.SubtitleCachePath)
 	audioTrackHandler := handler.NewAudioTrackHandler(audioTrackSvc)
 	settingsHandler := handler.NewSettingsHandler(appSettingsRepo)
-	subtitleSearchSvc := service.NewSubtitleSearchService(mediaRepo, mediaFileRepo, subtitleRepo, appSettingsRepo, cfg.SubtitleCachePath)
+	subtitleSearchSvc := service.NewSubtitleSearchService(mediaRepo, mediaFileRepo, subtitleRepo, appSettingsRepo, episodeRepo, seasonRepo, seriesRepo, cfg.SubtitleCachePath)
 	subtitleSearchHandler := handler.NewSubtitleSearchHandler(subtitleSearchSvc)
+	pipeline.SetSubtitleAutoDownloader(subtitleSearchSvc)
 
 	// Trickplay (Plan E Phase 03) — nil when disabled, handlers return 404 gracefully
 	var trickplayGen *trickplay.Generator
@@ -311,6 +312,12 @@ func runServer() {
 	mux.Handle("PUT /api/admin/settings/tvdb", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdateTVDB)))
 	mux.Handle("GET /api/admin/settings/fanart", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.GetFanart)))
 	mux.Handle("PUT /api/admin/settings/fanart", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdateFanart)))
+	mux.Handle("GET /api/admin/settings/subdl", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.GetSubdl)))
+	mux.Handle("PUT /api/admin/settings/subdl", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdateSubdl)))
+	mux.Handle("GET /api/admin/settings/auto-subtitles", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.GetAutoSubtitles)))
+	mux.Handle("PUT /api/admin/settings/auto-subtitles", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdateAutoSubtitles)))
+	mux.Handle("GET /api/admin/settings/playback", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.GetPlayback)))
+	mux.Handle("PUT /api/admin/settings/playback", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdatePlayback)))
 
 	// Admin dashboard routes (Plan F)
 	mux.Handle("GET /api/admin/activity", middleware.RequireAdmin(http.HandlerFunc(activityHandler.List)))

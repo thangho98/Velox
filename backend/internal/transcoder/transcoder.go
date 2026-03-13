@@ -28,6 +28,22 @@ var defaultABRVariants = []ABRVariant{
 	{Height: 1080, Bitrate: 8000, Bandwidth: 8_000_000},
 }
 
+// hasSubtitlesFilter is set once at init — true when FFmpeg was built with libass.
+var hasSubtitlesFilter = detectSubtitlesFilter()
+
+// SupportsSubtitleBurnIn reports whether the local FFmpeg build can burn subtitles.
+func SupportsSubtitleBurnIn() bool {
+	return hasSubtitlesFilter
+}
+
+func detectSubtitlesFilter() bool {
+	out, err := exec.Command("ffmpeg", "-filters").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), "subtitles")
+}
+
 // Transcoder manages FFmpeg-based HLS transcoding and remuxing.
 type Transcoder struct {
 	outputDir string
@@ -45,6 +61,9 @@ func New(outputDir string, hwAccel string, maxConcurrent int) *Transcoder {
 	sem := make(chan struct{}, maxConcurrent)
 	for i := 0; i < maxConcurrent; i++ {
 		sem <- struct{}{}
+	}
+	if !hasSubtitlesFilter {
+		log.Println("WARN: FFmpeg missing 'subtitles' filter (libass not linked) — subtitle burn-in disabled, using client-side rendering")
 	}
 	return &Transcoder{
 		outputDir: outputDir,
@@ -539,9 +558,9 @@ func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string)
 	if hdr {
 		filters = append(filters, hdrToneMapFilter())
 	}
-	if siIdx >= 0 {
+	if siIdx >= 0 && hasSubtitlesFilter {
 		escaped := escapeFFmpegSubtitlePath(inputPath)
-		filters = append(filters, fmt.Sprintf("subtitles='%s':si=%d", escaped, siIdx))
+		filters = append(filters, fmt.Sprintf("subtitles=filename='%s':si=%d", escaped, siIdx))
 	}
 
 	var args []string
@@ -557,12 +576,18 @@ func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string)
 	return args
 }
 
-// escapeFFmpegSubtitlePath escapes a file path for use in FFmpeg's subtitles filter.
-// The path is wrapped in single quotes in the filter string; only backslash and
-// single-quote characters need to be escaped inside the single-quoted section.
+// escapeFFmpegSubtitlePath escapes a file path for FFmpeg's subtitles filter.
+// The subtitles filter uses libass which requires escaping at two levels:
+//  1. Filter option level: : ; [ ] ' \
+//  2. The path is NOT wrapped in quotes — all special chars are backslash-escaped.
 func escapeFFmpegSubtitlePath(path string) string {
+	// Order matters: escape backslash first
 	path = strings.ReplaceAll(path, `\`, `\\`)
 	path = strings.ReplaceAll(path, `'`, `\'`)
+	path = strings.ReplaceAll(path, `:`, `\:`)
+	path = strings.ReplaceAll(path, `[`, `\[`)
+	path = strings.ReplaceAll(path, `]`, `\]`)
+	path = strings.ReplaceAll(path, `;`, `\;`)
 	return path
 }
 

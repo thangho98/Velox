@@ -33,3 +33,22 @@ const (
 const (
 	SettingFanartAPIKey = "fanart_api_key"
 )
+
+// Known setting keys for Subdl integration.
+const (
+	SettingSubdlAPIKey = "subdl_api_key"
+)
+
+// Known setting keys for subtitle auto-download.
+const (
+	// SettingAutoSubLanguages is a comma-separated list of language codes to auto-download.
+	// Example: "en,vi". Empty string disables auto-download.
+	SettingAutoSubLanguages = "auto_sub_languages"
+)
+
+// Known setting keys for playback policy.
+const (
+	// SettingPlaybackMode controls server-wide playback behavior.
+	// Values: "auto" (default, decide based on client), "direct_play" (force direct play, never transcode)
+	SettingPlaybackMode = "playback_mode"
+)

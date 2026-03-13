@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router'
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
 import {
   LuChevronLeft,
@@ -26,6 +27,9 @@ import {
   LuExpand,
   LuLock,
   LuLockOpen,
+  LuChevronRight,
+  LuCheck,
+  LuX,
 } from 'react-icons/lu'
 import {
   useMediaWithFiles,
@@ -35,7 +39,9 @@ import {
   useAudioTracks,
   useEpisodes,
   usePlaybackInfo,
+  streamingKeys,
 } from '@/hooks/stores/useMedia'
+import { usePreferences } from '@/hooks/stores/useAuth'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { getCapabilities } from '@/lib/capabilities'
@@ -49,10 +55,61 @@ import type { PlaybackSubtitleTrack } from '@/types/api'
 const SEEK_STEP = 10
 const VOLUME_STEP = 0.1
 
+const QUALITY_OPTIONS = [
+  { height: 1080, bitrateKbps: 60000, label: '1080p - 60 Mbps' },
+  { height: 1080, bitrateKbps: 50000, label: '1080p - 50 Mbps' },
+  { height: 1080, bitrateKbps: 40000, label: '1080p - 40 Mbps' },
+  { height: 1080, bitrateKbps: 30000, label: '1080p - 30 Mbps' },
+  { height: 1080, bitrateKbps: 25000, label: '1080p - 25 Mbps' },
+  { height: 1080, bitrateKbps: 20000, label: '1080p - 20 Mbps' },
+  { height: 1080, bitrateKbps: 15000, label: '1080p - 15 Mbps' },
+  { height: 1080, bitrateKbps: 12000, label: '1080p - 12 Mbps' },
+  { height: 1080, bitrateKbps: 10000, label: '1080p - 10 Mbps' },
+  { height: 1080, bitrateKbps: 8000, label: '1080p - 8 Mbps' },
+  { height: 1080, bitrateKbps: 6000, label: '1080p - 6 Mbps' },
+  { height: 1080, bitrateKbps: 5000, label: '1080p - 5 Mbps' },
+  { height: 1080, bitrateKbps: 4000, label: '1080p - 4 Mbps' },
+  { height: 720, bitrateKbps: 4000, label: '720p - 4 Mbps' },
+  { height: 720, bitrateKbps: 3000, label: '720p - 3 Mbps' },
+  { height: 720, bitrateKbps: 2000, label: '720p - 2 Mbps' },
+  { height: 720, bitrateKbps: 1500, label: '720p - 1.5 Mbps' },
+  { height: 720, bitrateKbps: 1000, label: '720p - 1 Mbps' },
+  { height: 480, bitrateKbps: 1000, label: '480p - 1 Mbps' },
+  { height: 480, bitrateKbps: 720, label: '480p - 720 Kbps' },
+  { height: 480, bitrateKbps: 420, label: '480p - 420 Kbps' },
+  { height: 360, bitrateKbps: 420, label: '360p' },
+  { height: 240, bitrateKbps: 250, label: '240p' },
+  { height: 144, bitrateKbps: 120, label: '144p' },
+]
+
+function normalizeLanguageCode(language: string | null | undefined): string {
+  const value = (language ?? '').trim().toLowerCase()
+  switch (value) {
+    case 'en':
+    case 'eng':
+      return 'eng'
+    case 'vi':
+    case 'vie':
+      return 'vie'
+    case 'zh':
+    case 'zho':
+    case 'chi':
+      return 'zho'
+    default:
+      return value
+  }
+}
+
+function languageMatches(lhs: string | null | undefined, rhs: string | null | undefined): boolean {
+  if (!lhs || !rhs) return false
+  return normalizeLanguageCode(lhs) === normalizeLanguageCode(rhs)
+}
+
 export function WatchPage() {
   const { id } = useParams<{ id: string }>()
   const mediaId = Number(id)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -64,6 +121,7 @@ export function WatchPage() {
   const lowBandwidthToastShown = useRef(false)
 
   const { data: media, isLoading: mediaLoading } = useMediaWithFiles(mediaId)
+  const { data: preferences } = usePreferences()
   const { mutate: updateProgress } = useUpdateProgress()
   const { accessToken } = useAuthStore()
   const { info: showToastInfo } = useToast()
@@ -76,7 +134,6 @@ export function WatchPage() {
     playbackRate,
     setPlaybackRate,
     setLastPosition,
-    getLastPosition,
     subtitleLanguage,
     setSubtitleLanguage,
     secondarySubtitleLanguage,
@@ -90,8 +147,8 @@ export function WatchPage() {
     audioLanguage,
     audioTrackId,
     setAudioTrack,
-    maxStreamingQuality,
-    setMaxStreamingQuality,
+    maxQuality,
+    setMaxQuality,
     aspectRatio,
     setAspectRatio,
     repeatMode,
@@ -99,21 +156,15 @@ export function WatchPage() {
   } = usePlayerStore()
 
   const clientCaps = getCapabilities()
-  const qualityMaxHeight =
-    maxStreamingQuality === '1080p'
-      ? 1080
-      : maxStreamingQuality === '720p'
-        ? 720
-        : maxStreamingQuality === '480p'
-          ? 480
-          : undefined
+  const effectiveSubtitleLanguage = subtitleLanguage ?? preferences?.subtitle_language ?? null
+  const qualityMaxHeight = maxQuality === 'auto' ? undefined : maxQuality.height
 
   const playbackRequest = {
     video_codecs: clientCaps.videoCodecs,
     audio_codecs: clientCaps.audioCodecs,
     containers: clientCaps.containers,
     max_height: qualityMaxHeight,
-    selected_subtitle: subtitleLanguage ?? 'off',
+    selected_subtitle: effectiveSubtitleLanguage ?? 'off',
     selected_audio_track: audioTrackId ?? 0,
   }
   const { data: streamUrls, isLoading: streamLoading } = useStreamUrls(mediaId, playbackRequest)
@@ -138,17 +189,30 @@ export function WatchPage() {
   })()
   const nextEpisodeMediaId = nextEpisode?.media_files?.[0]?.media_id
 
+  useEffect(() => {
+    setAudioTrack(audioLanguage, null)
+    // audio track IDs are file-specific; never carry them across media items
+  }, [mediaId, audioLanguage, setAudioTrack])
+
+  useEffect(() => {
+    if (audioTrackId == null || audioTracks.length === 0) return
+    const selectedTrack = audioTracks.find((track) => track.id === audioTrackId)
+    if (!selectedTrack || selectedTrack.is_default) {
+      setAudioTrack(audioLanguage, null)
+    }
+  }, [audioLanguage, audioTrackId, audioTracks, setAudioTrack])
+
   const primaryFileId = streamUrls?.primary_file_id ?? media?.files[0]?.id
   const subtitleServeUrl = (sub: PlaybackSubtitleTrack | undefined) => {
     if (!sub || !primaryFileId) return null
     const base = `/api/media-files/${primaryFileId}/subtitles/${sub.id}/serve`
     return accessToken ? `${base}?token=${encodeURIComponent(accessToken)}` : base
   }
-  const primarySub = subtitleLanguage
-    ? subtitles.find((s) => s.language === subtitleLanguage && !s.is_image)
+  const primarySub = effectiveSubtitleLanguage
+    ? subtitles.find((s) => languageMatches(s.language, effectiveSubtitleLanguage) && !s.is_image)
     : undefined
   const secondarySub = secondarySubtitleLanguage
-    ? subtitles.find((s) => s.language === secondarySubtitleLanguage && !s.is_image)
+    ? subtitles.find((s) => languageMatches(s.language, secondarySubtitleLanguage) && !s.is_image)
     : undefined
 
   // Player state
@@ -160,10 +224,14 @@ export function WatchPage() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isBuffering, setIsBuffering] = useState(true)
-  const [availableLevels, setAvailableLevels] = useState<{ level: number; height: number }[]>([])
+  const [availableLevels, setAvailableLevels] = useState<
+    { level: number; height: number; bitrate: number }[]
+  >([])
   const [currentLevel, setCurrentLevel] = useState(-1)
   const [bandwidth, setBandwidth] = useState<number | null>(null)
   const [showQualityIndicator, setShowQualityIndicator] = useState(false)
+  const allowsImageSubtitles =
+    playbackInfo?.method === 'FullTranscode' || playbackInfo?.method === 'TranscodeAudio'
 
   // Wall clock
   const [wallClock, setWallClock] = useState(() => getWallClock())
@@ -186,6 +254,7 @@ export function WatchPage() {
   const [showAudioMenu, setShowAudioMenu] = useState(false)
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [settingsView, setSettingsView] = useState<'main' | 'quality'>('main')
   const [showStats, setShowStats] = useState(false)
 
   // Bottom tab: 'none' | 'info' | 'chapters'
@@ -207,9 +276,20 @@ export function WatchPage() {
   const togglePlay = useCallback(() => {
     const video = videoRef.current
     if (!video) return
+    const willPlay = !isPlaying
     if (isPlaying) video.pause()
     else video.play().catch(() => setError('Playback failed'))
-    setIsPlaying(!isPlaying)
+    setIsPlaying(willPlay)
+    // Close all overlay menus
+    setShowSubtitleMenu(false)
+    setShowAudioMenu(false)
+    setShowSpeedMenu(false)
+    setShowSettings(false)
+    // Start controls auto-hide timer when playing
+    if (willPlay) {
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
+      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3500)
+    }
   }, [isPlaying])
 
   const showSeekFeedback = useCallback((dir: 'back' | 'fwd', n: number) => {
@@ -344,14 +424,16 @@ export function WatchPage() {
       hlsRef.current = null
     }
 
-    const rawUrl = streamUrls.abr || streamUrls.hls || streamUrls.direct
+    const useHls =
+      playbackInfo?.method === 'FullTranscode' || playbackInfo?.method === 'TranscodeAudio'
+    const rawUrl = useHls ? streamUrls.abr || streamUrls.hls : streamUrls.direct
     if (!rawUrl) return
     setIsBuffering(true)
     const streamUrl = accessToken
       ? rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(accessToken)
       : rawUrl
 
-    if ((streamUrls.abr || streamUrls.hls) && Hls.isSupported()) {
+    if (useHls && (streamUrls.abr || streamUrls.hls) && Hls.isSupported()) {
       const token = accessToken
       const hls = new Hls({
         maxBufferLength: 30,
@@ -363,7 +445,9 @@ export function WatchPage() {
       })
       hlsRef.current = hls
       hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
-        setAvailableLevels(data.levels.map((l, i) => ({ level: i, height: l.height || 0 })))
+        setAvailableLevels(
+          data.levels.map((l, i) => ({ level: i, height: l.height || 0, bitrate: l.bitrate || 0 })),
+        )
         setCurrentLevel(hls.currentLevel)
         if (audioLanguage && hls.audioTracks.length > 1) {
           const idx = hls.audioTracks.findIndex(
@@ -376,6 +460,14 @@ export function WatchPage() {
         const v = videoRef.current
         if (v && v.duration && isFinite(v.duration)) {
           setDuration(v.duration)
+        }
+        // Resume position (initial load or after subtitle/quality change)
+        const seekTo = usePlayerStore.getState().lastPositions[mediaId] ?? 0
+        if (seekTo > 0 && v) {
+          const dur = v.duration
+          if (!dur || !isFinite(dur) || seekTo < dur * 0.95) {
+            v.currentTime = seekTo
+          }
         }
         // Auto-play when ready
         v?.play().catch(() => {})
@@ -423,6 +515,11 @@ export function WatchPage() {
       hls.attachMedia(video)
     } else {
       video.src = streamUrl
+      // Resume position (initial load or after subtitle/quality change)
+      const seekTo = usePlayerStore.getState().lastPositions[mediaId] ?? 0
+      if (seekTo > 0) {
+        video.currentTime = seekTo
+      }
       video.play().catch(() => {})
     }
     return () => {
@@ -431,26 +528,10 @@ export function WatchPage() {
         hlsRef.current = null
       }
     }
-  }, [streamUrls, accessToken, audioLanguage])
+  }, [streamUrls, playbackInfo?.method, accessToken, audioLanguage])
 
-  // Resume: seek to saved position. Use a ref to snapshot the position before
-  // timeupdate overwrites it, and a flag to ensure we only seek once per mount.
-  const resumePosition = useRef<number | null>(null)
-  const hasResumed = useRef(false)
-
-  // Snapshot saved position on mount (before any timeupdate can overwrite it)
-  useEffect(() => {
-    resumePosition.current = getLastPosition(mediaId)
-    hasResumed.current = false
-  }, [mediaId, getLastPosition])
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video || duration === 0 || hasResumed.current) return
-    const saved = resumePosition.current ?? 0
-    hasResumed.current = true
-    if (saved > 0 && saved < duration * 0.95) video.currentTime = saved
-  }, [duration])
+  // Resume position is read from usePlayerStore.getState().lastPositions[mediaId]
+  // directly in the HLS init effect — no cross-effect refs needed.
 
   useEffect(() => {
     const video = videoRef.current
@@ -496,9 +577,6 @@ export function WatchPage() {
       if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
         setDuration(video.duration)
       }
-      // Don't save progress until resume seek has completed, otherwise
-      // timeupdate fires with position ~0 and overwrites the saved position.
-      if (!hasResumed.current) return
       setLastPosition(mediaId, video.currentTime)
       const now = Date.now()
       if (now - lastProgressUpdate.current >= 10000 || video.currentTime >= video.duration * 0.95) {
@@ -635,16 +713,16 @@ export function WatchPage() {
     }
   }, [])
 
-  const changeQualityLevel = (level: number) => {
-    if (hlsRef.current) {
-      hlsRef.current.currentLevel = level
-      setCurrentLevel(level)
-    }
-  }
+  const currentQualityLabel =
+    maxQuality === 'auto'
+      ? 'Auto'
+      : (QUALITY_OPTIONS.find(
+          (q) => q.height === maxQuality.height && q.bitrateKbps === maxQuality.bitrateKbps,
+        )?.label ?? `${maxQuality.height}p`)
 
   const getActiveSubtitleTrack = (): PlaybackSubtitleTrack | null => {
-    if (!subtitleLanguage) return null
-    return subtitles.find((s) => s.language === subtitleLanguage) || null
+    if (!effectiveSubtitleLanguage) return null
+    return subtitles.find((s) => languageMatches(s.language, effectiveSubtitleLanguage)) || null
   }
 
   const progressPercent = duration ? (currentTime / duration) * 100 : 0
@@ -765,106 +843,156 @@ export function WatchPage() {
         </div>
       )}
 
-      {/* Stats for nerds */}
+      {/* Playback Info overlay (Emby-style) */}
       {showStats && (
-        <div className="pointer-events-none absolute left-4 top-20 z-30 w-72 rounded-xl bg-black/80 backdrop-blur-sm ring-1 ring-white/10 overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-              Stats for nerds
-            </span>
-          </div>
+        <div
+          className="absolute left-4 top-20 z-30 w-80 rounded-xl bg-black/70 backdrop-blur-md ring-1 ring-white/10 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Close button */}
+          <button
+            onClick={() => setShowStats(false)}
+            className="absolute right-2.5 top-2.5 rounded-lg p-1 text-white/40 hover:bg-white/10 hover:text-white"
+          >
+            <LuX size={16} />
+          </button>
 
-          {/* Stream section */}
-          {playbackInfo && (
-            <div className="border-b border-white/10 px-4 py-2.5">
-              <p className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-white/35">
-                Stream
-              </p>
-              <p className="font-mono text-xs text-white/80">
-                {playbackInfo.container?.toUpperCase() || '—'}
-                {playbackInfo.bitrate > 0 && ` · ${(playbackInfo.bitrate / 1e6).toFixed(1)} Mbps`}
-              </p>
-              <p className="mt-0.5 font-mono text-xs text-green-400">{playbackInfo.method}</p>
-              {bandwidth !== null && (
-                <p className="mt-0.5 font-mono text-[11px] text-white/50">
-                  Live: {bandwidth.toFixed(1)} Mbps
+          {playbackInfo ? (
+            <div className="space-y-0">
+              {/* Stream */}
+              <div className="border-b border-white/10 px-4 py-3">
+                <p className="mb-2 text-sm font-bold text-white">Stream</p>
+                <p className="font-mono text-xs leading-relaxed text-white/80">
+                  {playbackInfo.container?.toUpperCase() || '—'}
+                  {playbackInfo.bitrate > 0 &&
+                    ` (${playbackInfo.bitrate >= 1000 ? `${(playbackInfo.bitrate / 1000).toFixed(1)} mbps` : `${playbackInfo.bitrate} kbps`})`}
                 </p>
-              )}
-            </div>
-          )}
-
-          {/* Video section */}
-          {playbackInfo && (
-            <div className="border-b border-white/10 px-4 py-2.5">
-              <p className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-white/35">
-                Video
-              </p>
-              <p className="font-mono text-xs text-white/80">
-                {playbackInfo.width > 0 && playbackInfo.height > 0
-                  ? `${playbackInfo.width}×${playbackInfo.height}`
-                  : (() => {
-                      const h = availableLevels.find(
-                        (l) =>
-                          l.level ===
-                          (currentLevel === -1 ? hlsRef.current?.currentLevel : currentLevel),
-                      )?.height
-                      return h ? `${h}p` : '—'
-                    })()}{' '}
-                {playbackInfo.video_codec?.toUpperCase() || ''}
-              </p>
-              <p className="mt-0.5 font-mono text-xs text-green-400">
-                {playbackInfo.method === 'DirectPlay' || playbackInfo.method === 'DirectStream'
-                  ? 'Direct Play'
-                  : 'Transcode'}
-              </p>
-              <p className="mt-0.5 font-mono text-[11px] text-white/50">
-                Buffer: {Math.max(0, buffered - currentTime).toFixed(1)}s ahead
-              </p>
-              {(() => {
-                const quality = videoRef.current?.getVideoPlaybackQuality?.()
-                const dropped = quality?.droppedVideoFrames ?? 0
-                return (
-                  <p
-                    className={`mt-0.5 font-mono text-[11px] ${dropped > 0 ? 'text-yellow-400' : 'text-white/50'}`}
-                  >
-                    Dropped frames: {dropped}
+                {playbackInfo.method === 'DirectPlay' && (
+                  <p className="font-mono text-xs leading-relaxed text-white/80">
+                    <span className="text-white/50">→ </span>Direct Play
                   </p>
+                )}
+                {playbackInfo.method !== 'DirectPlay' && (
+                  <p className="font-mono text-xs leading-relaxed text-white/80">
+                    <span className="text-white/50">→ </span>
+                    HLS
+                    {playbackInfo.estimated_bitrate > 0
+                      ? ` (${playbackInfo.estimated_bitrate >= 1000 ? `${(playbackInfo.estimated_bitrate / 1000).toFixed(1)} mbps` : `${playbackInfo.estimated_bitrate} kbps`})`
+                      : playbackInfo.bitrate > 0
+                        ? ` (${playbackInfo.bitrate >= 1000 ? `${(playbackInfo.bitrate / 1000).toFixed(1)} mbps` : `${playbackInfo.bitrate} kbps`})`
+                        : ''}
+                  </p>
+                )}
+                {playbackInfo.method === 'TranscodeAudio' && (
+                  <p className="mt-1 text-[11px] text-white/50">
+                    Converting audio to compatible codec
+                  </p>
+                )}
+              </div>
+
+              {/* Video */}
+              <div className="border-b border-white/10 px-4 py-3">
+                <p className="mb-2 text-sm font-bold text-white">Video</p>
+                <p className="font-mono text-xs leading-relaxed text-white/80">
+                  {playbackInfo.height > 0 ? `${playbackInfo.height}p` : '—'}{' '}
+                  {playbackInfo.video_codec?.toUpperCase() || ''}
+                </p>
+                <p className="font-mono text-xs leading-relaxed text-white/80">
+                  {playbackInfo.video_profile && `${playbackInfo.video_profile} `}
+                  {playbackInfo.video_level > 0 && `${playbackInfo.video_level} `}
+                  {playbackInfo.bitrate > 0 &&
+                    `${playbackInfo.bitrate >= 1000 ? `${(playbackInfo.bitrate / 1000).toFixed(0)} mbps` : `${playbackInfo.bitrate} kbps`} `}
+                  {(() => {
+                    if (playbackInfo.video_fps > 0) {
+                      return `${Number.isInteger(playbackInfo.video_fps) ? playbackInfo.video_fps : playbackInfo.video_fps.toFixed(3)} fps`
+                    }
+                    // Fallback: estimate from decoded frames / currentTime
+                    const v = videoRef.current
+                    if (v && 'getVideoPlaybackQuality' in v && v.currentTime > 2) {
+                      const q = v.getVideoPlaybackQuality()
+                      if (q.totalVideoFrames > 0) {
+                        return `${(q.totalVideoFrames / v.currentTime).toFixed(3)} fps`
+                      }
+                    }
+                    return ''
+                  })()}
+                </p>
+                {playbackInfo.method === 'FullTranscode' && (
+                  <p className="font-mono text-xs leading-relaxed text-white/80">
+                    <span className="text-white/50">→ </span>
+                    Transcode ({playbackInfo.video_codec?.toUpperCase() || 'H264'}
+                    {playbackInfo.estimated_bitrate > 0 &&
+                      ` ${playbackInfo.estimated_bitrate >= 1000 ? `${(playbackInfo.estimated_bitrate / 1000).toFixed(0)} mbps` : `${playbackInfo.estimated_bitrate} kbps`}`}
+                    )
+                  </p>
+                )}
+                {(playbackInfo.method === 'DirectPlay' ||
+                  playbackInfo.method === 'DirectStream' ||
+                  playbackInfo.method === 'TranscodeAudio') && (
+                  <p className="font-mono text-xs leading-relaxed text-white/80">
+                    <span className="text-white/50">→ </span>Direct Play
+                  </p>
+                )}
+                <p className="mt-1.5 font-mono text-xs text-white/80">
+                  Dropped Frames{' '}
+                  <span
+                    className={(() => {
+                      const dropped =
+                        videoRef.current?.getVideoPlaybackQuality?.()?.droppedVideoFrames ?? 0
+                      return dropped > 0 ? 'text-yellow-400' : 'text-white/80'
+                    })()}
+                  >
+                    {videoRef.current?.getVideoPlaybackQuality?.()?.droppedVideoFrames ?? 0}
+                  </span>
+                </p>
+              </div>
+
+              {/* Audio */}
+              {(() => {
+                const selectedAudio =
+                  playbackInfo.audio_tracks?.find((t) => t.selected) ??
+                  playbackInfo.audio_tracks?.find((t) => t.is_default) ??
+                  playbackInfo.audio_tracks?.[0]
+                if (!selectedAudio) return null
+                const isTranscoding =
+                  playbackInfo.method === 'FullTranscode' ||
+                  playbackInfo.method === 'TranscodeAudio'
+                const channelLabel =
+                  selectedAudio.channels >= 6
+                    ? selectedAudio.channels === 6
+                      ? '5.1'
+                      : selectedAudio.channels === 8
+                        ? '7.1'
+                        : `${selectedAudio.channels}ch`
+                    : selectedAudio.channels > 0
+                      ? `${selectedAudio.channels}.0`
+                      : ''
+                return (
+                  <div className="px-4 py-3">
+                    <p className="mb-2 text-sm font-bold text-white">Audio</p>
+                    <p className="font-mono text-xs leading-relaxed text-white/80">
+                      {selectedAudio.language || 'Unknown'}{' '}
+                      {selectedAudio.codec?.toUpperCase() || ''} {channelLabel}
+                      {selectedAudio.is_default && ' (Default)'}
+                    </p>
+                    <p className="font-mono text-xs leading-relaxed text-white/80">
+                      {selectedAudio.bitrate > 0 &&
+                        `${selectedAudio.bitrate >= 1000 ? `${Math.round(selectedAudio.bitrate / 1000)} kbps` : `${selectedAudio.bitrate} bps`} `}
+                      {selectedAudio.sample_rate > 0 && `${selectedAudio.sample_rate} Hz`}
+                    </p>
+                    <p className="font-mono text-xs leading-relaxed text-white/80">
+                      <span className="text-white/50">→ </span>
+                      {isTranscoding
+                        ? `Transcode (${playbackInfo.audio_codec?.toUpperCase() || 'AAC'})`
+                        : 'Direct Play'}
+                    </p>
+                  </div>
                 )
               })()}
             </div>
-          )}
-
-          {/* Audio section */}
-          {playbackInfo &&
-            (() => {
-              const selectedAudio =
-                playbackInfo.audio_tracks?.find((t) => t.selected) ??
-                playbackInfo.audio_tracks?.find((t) => t.is_default) ??
-                playbackInfo.audio_tracks?.[0]
-              return selectedAudio ? (
-                <div className="px-4 py-2.5">
-                  <p className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-white/35">
-                    Audio
-                  </p>
-                  <p className="font-mono text-xs text-white/80">
-                    {selectedAudio.language || 'Unknown'} {selectedAudio.codec?.toUpperCase() || ''}{' '}
-                    {selectedAudio.channels > 0 && `${selectedAudio.channels}ch`}
-                    {selectedAudio.is_default && ' (Default)'}
-                  </p>
-                  <p className="mt-0.5 font-mono text-xs text-green-400">
-                    {playbackInfo.method === 'FullTranscode' ||
-                    playbackInfo.method === 'TranscodeAudio'
-                      ? 'Transcode'
-                      : 'Direct Play'}
-                  </p>
-                </div>
-              ) : null
-            })()}
-
-          {!playbackInfo && (
-            <div className="px-4 py-3">
-              <p className="font-mono text-xs text-white/40">Loading stream info…</p>
+          ) : (
+            <div className="px-4 py-4">
+              <p className="text-xs text-white/40">Loading stream info…</p>
             </div>
           )}
         </div>
@@ -942,7 +1070,7 @@ export function WatchPage() {
             className="flex items-center gap-1.5 text-white/80 transition-colors hover:text-white"
           >
             <LuChevronLeft size={22} />
-            <span className="text-sm font-medium">{isEpisode ? 'Season' : 'Back'}</span>
+            <span className="text-sm font-medium">Back</span>
           </button>
 
           {/* Volume (top right) */}
@@ -1029,7 +1157,7 @@ export function WatchPage() {
                     <div className="absolute bottom-full right-0 mb-2">
                       <SubtitlePicker
                         subtitles={subtitles}
-                        primaryLanguage={subtitleLanguage}
+                        primaryLanguage={effectiveSubtitleLanguage}
                         secondaryLanguage={secondarySubtitleLanguage}
                         onSelectPrimary={(lang) => {
                           setSubtitleLanguage(lang)
@@ -1037,7 +1165,11 @@ export function WatchPage() {
                         }}
                         onSelectSecondary={setSecondarySubtitleLanguage}
                         dualMode={true}
+                        allowImageSubtitles={allowsImageSubtitles}
                         mediaId={mediaId}
+                        onSubtitleAdded={() => {
+                          queryClient.invalidateQueries({ queryKey: streamingKeys.all })
+                        }}
                       />
                     </div>
                   )}
@@ -1126,7 +1258,9 @@ export function WatchPage() {
                 <div className="relative">
                   <button
                     onClick={() => {
-                      setShowSettings(!showSettings)
+                      const willShow = !showSettings
+                      setShowSettings(willShow)
+                      if (willShow) setSettingsView('main')
                       setShowSubtitleMenu(false)
                       setShowAudioMenu(false)
                       setShowSpeedMenu(false)
@@ -1141,185 +1275,207 @@ export function WatchPage() {
                     <LuSettings size={17} />
                   </button>
                   {showSettings && (
-                    <div className="absolute bottom-full right-0 mb-2 w-56 rounded-xl bg-[#1e1e1e] p-3 shadow-2xl ring-1 ring-white/10 space-y-3">
-                      {/* Aspect Ratio */}
-                      <div>
-                        <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                          <LuExpand size={10} /> Aspect Ratio
-                        </p>
-                        <div className="grid grid-cols-3 gap-1">
-                          {(['contain', 'cover', 'fill'] as const).map((r) => (
+                    <div className="absolute bottom-full right-0 mb-2 w-56 rounded-xl bg-[#1e1e1e] shadow-2xl ring-1 ring-white/10 overflow-hidden">
+                      {settingsView === 'quality' ? (
+                        /* Quality submenu */
+                        <div className="flex flex-col">
+                          <button
+                            onClick={() => setSettingsView('main')}
+                            className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5 text-xs font-semibold text-white/70 hover:text-white"
+                          >
+                            <LuChevronLeft size={14} />
+                            Quality
+                          </button>
+                          <div className="max-h-[50vh] overflow-y-auto py-1">
+                            {QUALITY_OPTIONS.map((q) => {
+                              const isSelected =
+                                maxQuality !== 'auto' &&
+                                maxQuality.height === q.height &&
+                                maxQuality.bitrateKbps === q.bitrateKbps
+                              return (
+                                <button
+                                  key={`${q.height}-${q.bitrateKbps}`}
+                                  onClick={() => {
+                                    setMaxQuality({
+                                      height: q.height,
+                                      bitrateKbps: q.bitrateKbps,
+                                    })
+                                    setSettingsView('main')
+                                  }}
+                                  className={`flex w-full items-center justify-between px-4 py-2 text-xs ${
+                                    isSelected
+                                      ? 'bg-white/10 text-white'
+                                      : 'text-white/70 hover:bg-white/5 hover:text-white'
+                                  }`}
+                                >
+                                  {q.label}
+                                  {isSelected && <LuCheck size={14} className="text-white" />}
+                                </button>
+                              )
+                            })}
                             <button
-                              key={r}
-                              onClick={() => setAspectRatio(r)}
-                              className={`rounded-lg py-1.5 text-xs font-medium capitalize ${
-                                aspectRatio === r
-                                  ? 'bg-white/20 text-white'
-                                  : 'bg-white/5 text-white/70 hover:bg-white/15 hover:text-white'
-                              }`}
-                            >
-                              {r === 'contain' ? 'Auto' : r.charAt(0).toUpperCase() + r.slice(1)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Subtitle Appearance */}
-                      <div className="border-t border-white/10 pt-3">
-                        <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                          <LuCaptions size={10} /> Subtitles
-                        </p>
-                        {/* Size */}
-                        <div className="grid grid-cols-3 gap-1 mb-2">
-                          {(['small', 'medium', 'large'] as const).map((s) => (
-                            <button
-                              key={s}
-                              onClick={() => setSubtitleSize(s)}
-                              className={`rounded-lg py-1.5 text-xs font-medium capitalize ${
-                                subtitleSize === s
-                                  ? 'bg-white/20 text-white'
-                                  : 'bg-white/5 text-white/70 hover:bg-white/15 hover:text-white'
-                              }`}
-                            >
-                              {s === 'small' ? 'S' : s === 'medium' ? 'M' : 'L'}
-                            </button>
-                          ))}
-                        </div>
-                        {/* Background style */}
-                        <div className="grid grid-cols-3 gap-1 mb-2">
-                          {[
-                            { value: 'none' as const, label: 'None' },
-                            { value: 'semi' as const, label: 'Semi' },
-                            { value: 'solid' as const, label: 'Solid' },
-                          ].map(({ value, label }) => (
-                            <button
-                              key={value}
-                              onClick={() => setSubtitleBackground(value)}
-                              className={`rounded-lg py-1.5 text-xs font-medium ${
-                                subtitleBackground === value
-                                  ? 'bg-white/20 text-white'
-                                  : 'bg-white/5 text-white/70 hover:bg-white/15 hover:text-white'
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {/* Color */}
-                        <div className="flex items-center gap-1.5">
-                          {['#ffffff', '#fde047', '#4ade80', '#60a5fa'].map((c) => (
-                            <button
-                              key={c}
-                              onClick={() => setSubtitleColor(c)}
-                              className={`h-5 w-5 rounded-full border-2 ${
-                                subtitleColor === c ? 'border-white' : 'border-white/20'
-                              }`}
-                              style={{ background: c }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Quality */}
-                      <div className="border-t border-white/10 pt-3">
-                        <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                          <LuZap size={10} /> Quality
-                        </p>
-                        {availableLevels.length > 0 && (
-                          <div className="mb-1">
-                            {availableLevels.map((l) => (
-                              <button
-                                key={l.level}
-                                onClick={() => changeQualityLevel(l.level)}
-                                className={`flex w-full items-center justify-between rounded-lg px-3 py-1 text-xs ${
-                                  currentLevel === l.level
-                                    ? 'bg-white/15 text-white'
-                                    : 'text-white/70 hover:bg-white/10 hover:text-white'
-                                }`}
-                              >
-                                {l.height}p
-                              </button>
-                            ))}
-                            <button
-                              onClick={() => changeQualityLevel(-1)}
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-1 text-xs ${
-                                currentLevel === -1
-                                  ? 'bg-white/15 text-white'
-                                  : 'text-white/70 hover:bg-white/10 hover:text-white'
+                              onClick={() => {
+                                setMaxQuality('auto')
+                                setSettingsView('main')
+                              }}
+                              className={`flex w-full items-center justify-between px-4 py-2 text-xs ${
+                                maxQuality === 'auto'
+                                  ? 'bg-white/10 text-white'
+                                  : 'text-white/70 hover:bg-white/5 hover:text-white'
                               }`}
                             >
                               Auto
+                              {maxQuality === 'auto' && (
+                                <LuCheck size={14} className="text-white" />
+                              )}
                             </button>
                           </div>
-                        )}
-                        {(['auto', '1080p', '720p', '480p'] as const).map((q) => (
-                          <button
-                            key={q}
-                            onClick={() => setMaxStreamingQuality(q)}
-                            className={`flex w-full items-center justify-between rounded-lg px-3 py-1 text-xs ${
-                              maxStreamingQuality === q
-                                ? 'bg-white/15 text-white'
-                                : 'text-white/70 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            {q === 'auto' ? 'Max: Auto' : `Max: ${q}`}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Repeat Mode */}
-                      <div className="border-t border-white/10 pt-3">
-                        <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                          <LuRepeat size={10} /> Repeat
-                        </p>
-                        <div className="grid grid-cols-3 gap-1">
-                          {(['none', 'one', 'all'] as const).map((m) => (
-                            <button
-                              key={m}
-                              onClick={() => setRepeatMode(m)}
-                              className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-medium ${
-                                repeatMode === m
-                                  ? 'bg-white/20 text-white'
-                                  : 'bg-white/5 text-white/70 hover:bg-white/15 hover:text-white'
-                              }`}
-                            >
-                              {m === 'none' && <LuRepeat size={12} />}
-                              {m === 'one' && <LuRepeat2 size={12} />}
-                              {m === 'all' && <LuRepeat size={12} />}
-                              <span className="capitalize">{m}</span>
-                            </button>
-                          ))}
                         </div>
-                      </div>
+                      ) : (
+                        /* Main settings view */
+                        <div className="space-y-3 p-3">
+                          {/* Aspect Ratio */}
+                          <div>
+                            <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                              <LuExpand size={10} /> Aspect Ratio
+                            </p>
+                            <div className="grid grid-cols-3 gap-1">
+                              {(['contain', 'cover', 'fill'] as const).map((r) => (
+                                <button
+                                  key={r}
+                                  onClick={() => setAspectRatio(r)}
+                                  className={`rounded-lg py-1.5 text-xs font-medium capitalize ${
+                                    aspectRatio === r
+                                      ? 'bg-white/20 text-white'
+                                      : 'bg-white/5 text-white/70 hover:bg-white/15 hover:text-white'
+                                  }`}
+                                >
+                                  {r === 'contain'
+                                    ? 'Auto'
+                                    : r.charAt(0).toUpperCase() + r.slice(1)}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
 
-                      {/* Stats for nerds */}
-                      <div className="border-t border-white/10 pt-3">
-                        <button
-                          onClick={() => setShowStats(!showStats)}
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs ${
-                            showStats
-                              ? 'bg-white/15 text-white'
-                              : 'text-white/70 hover:bg-white/10 hover:text-white'
-                          }`}
-                        >
-                          <span className="flex items-center gap-1.5">
-                            <LuActivity size={13} /> Stats for nerds
-                          </span>
-                          <span
-                            className={`h-3 w-3 rounded-full ${showStats ? 'bg-green-400' : 'bg-white/20'}`}
-                          />
-                        </button>
-                      </div>
+                          {/* Subtitle Appearance */}
+                          <div className="border-t border-white/10 pt-3">
+                            <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                              <LuCaptions size={10} /> Subtitles
+                            </p>
+                            <div className="grid grid-cols-3 gap-1 mb-2">
+                              {(['small', 'medium', 'large'] as const).map((s) => (
+                                <button
+                                  key={s}
+                                  onClick={() => setSubtitleSize(s)}
+                                  className={`rounded-lg py-1.5 text-xs font-medium capitalize ${
+                                    subtitleSize === s
+                                      ? 'bg-white/20 text-white'
+                                      : 'bg-white/5 text-white/70 hover:bg-white/15 hover:text-white'
+                                  }`}
+                                >
+                                  {s === 'small' ? 'S' : s === 'medium' ? 'M' : 'L'}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-3 gap-1 mb-2">
+                              {[
+                                { value: 'none' as const, label: 'None' },
+                                { value: 'semi' as const, label: 'Semi' },
+                                { value: 'solid' as const, label: 'Solid' },
+                              ].map(({ value, label }) => (
+                                <button
+                                  key={value}
+                                  onClick={() => setSubtitleBackground(value)}
+                                  className={`rounded-lg py-1.5 text-xs font-medium ${
+                                    subtitleBackground === value
+                                      ? 'bg-white/20 text-white'
+                                      : 'bg-white/5 text-white/70 hover:bg-white/15 hover:text-white'
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {['#ffffff', '#fde047', '#4ade80', '#60a5fa'].map((c) => (
+                                <button
+                                  key={c}
+                                  onClick={() => setSubtitleColor(c)}
+                                  className={`h-5 w-5 rounded-full border-2 ${
+                                    subtitleColor === c ? 'border-white' : 'border-white/20'
+                                  }`}
+                                  style={{ background: c }}
+                                />
+                              ))}
+                            </div>
+                          </div>
 
-                      {/* More */}
-                      <div className="border-t border-white/10 pt-3">
-                        <button
-                          onClick={() => navigate(-1)}
-                          className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
-                        >
-                          <LuExternalLink size={13} /> Back
-                        </button>
-                      </div>
+                          {/* Quality — clickable row that opens submenu */}
+                          <div className="border-t border-white/10 pt-3">
+                            <button
+                              onClick={() => setSettingsView('quality')}
+                              className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <LuZap size={13} /> Quality
+                              </span>
+                              <span className="flex items-center gap-1 text-white/50">
+                                {currentQualityLabel}
+                                <LuChevronRight size={14} />
+                              </span>
+                            </button>
+                          </div>
+
+                          {/* Repeat Mode */}
+                          <div className="border-t border-white/10 pt-3">
+                            <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                              <LuRepeat size={10} /> Repeat
+                            </p>
+                            <div className="grid grid-cols-3 gap-1">
+                              {(['none', 'one', 'all'] as const).map((m) => (
+                                <button
+                                  key={m}
+                                  onClick={() => setRepeatMode(m)}
+                                  className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-medium ${
+                                    repeatMode === m
+                                      ? 'bg-white/20 text-white'
+                                      : 'bg-white/5 text-white/70 hover:bg-white/15 hover:text-white'
+                                  }`}
+                                >
+                                  {m === 'none' && <LuRepeat size={12} />}
+                                  {m === 'one' && <LuRepeat2 size={12} />}
+                                  {m === 'all' && <LuRepeat size={12} />}
+                                  <span className="capitalize">{m}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Playback Info */}
+                          <div className="border-t border-white/10 pt-3">
+                            <button
+                              onClick={() => {
+                                setShowStats(true)
+                                setShowSettings(false)
+                              }}
+                              className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
+                            >
+                              <LuActivity size={13} /> Playback Info
+                            </button>
+                          </div>
+
+                          {/* More */}
+                          <div className="border-t border-white/10 pt-3">
+                            <button
+                              onClick={() => navigate(-1)}
+                              className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
+                            >
+                              <LuExternalLink size={13} /> Back
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

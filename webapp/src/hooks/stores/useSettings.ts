@@ -29,6 +29,18 @@ interface FanartSettings {
   api_key: string
 }
 
+interface SubdlSettings {
+  api_key: string
+}
+
+interface PlaybackSettings {
+  playback_mode: 'auto' | 'direct_play'
+}
+
+interface AutoSubSettings {
+  languages: string
+}
+
 const settingsKeys = {
   all: ['settings'] as const,
   openSubs: () => [...settingsKeys.all, 'opensubtitles'] as const,
@@ -36,6 +48,9 @@ const settingsKeys = {
   omdb: () => [...settingsKeys.all, 'omdb'] as const,
   tvdb: () => [...settingsKeys.all, 'tvdb'] as const,
   fanart: () => [...settingsKeys.all, 'fanart'] as const,
+  subdl: () => [...settingsKeys.all, 'subdl'] as const,
+  playback: () => [...settingsKeys.all, 'playback'] as const,
+  autoSub: () => [...settingsKeys.all, 'auto-subtitles'] as const,
 }
 
 export function useOpenSubsSettings() {
@@ -125,6 +140,62 @@ export function useUpdateFanartSettings() {
     mutationFn: (data: FanartSettings) => api.put<FanartSettings>('/admin/settings/fanart', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.fanart() })
+    },
+  })
+}
+
+export function useSubdlSettings() {
+  return useQuery({
+    queryKey: settingsKeys.subdl(),
+    queryFn: () => api.get<SubdlSettings>('/admin/settings/subdl'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useUpdateSubdlSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: SubdlSettings) => api.put<SubdlSettings>('/admin/settings/subdl', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: settingsKeys.subdl() })
+    },
+  })
+}
+
+export function usePlaybackSettings() {
+  return useQuery({
+    queryKey: settingsKeys.playback(),
+    queryFn: () => api.get<PlaybackSettings>('/admin/settings/playback'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useUpdatePlaybackSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: PlaybackSettings) =>
+      api.put<PlaybackSettings>('/admin/settings/playback', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: settingsKeys.playback() })
+    },
+  })
+}
+
+export function useAutoSubSettings() {
+  return useQuery({
+    queryKey: settingsKeys.autoSub(),
+    queryFn: () => api.get<AutoSubSettings>('/admin/settings/auto-subtitles'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useUpdateAutoSubSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: AutoSubSettings) =>
+      api.put<AutoSubSettings>('/admin/settings/auto-subtitles', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: settingsKeys.autoSub() })
     },
   })
 }

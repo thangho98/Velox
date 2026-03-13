@@ -147,6 +147,7 @@ function LibraryContent({ libraryId, libraryName }: { libraryId: number; library
               title={item.title}
               posterPath={item.poster_path}
               type={item.media_type === 'episode' ? 'series' : 'movie'}
+              seriesId={item.series_id}
               year={item.release_date ? new Date(item.release_date).getFullYear() : undefined}
               rating={item.rating}
             />
@@ -157,7 +158,11 @@ function LibraryContent({ libraryId, libraryName }: { libraryId: number; library
           {media?.map((item) => (
             <Link
               key={item.id}
-              to={item.media_type === 'episode' ? `/series/${item.id}` : `/movies/${item.id}`}
+              to={
+                item.media_type === 'episode'
+                  ? `/series/${item.series_id || item.id}`
+                  : `/movies/${item.id}`
+              }
               className="flex items-center gap-4 rounded-lg bg-netflix-dark p-3 transition-colors hover:bg-netflix-gray"
             >
               <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded bg-netflix-gray">

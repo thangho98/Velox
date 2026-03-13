@@ -88,6 +88,7 @@ type AudioTrack struct {
 	Channels      int    `json:"channels"`       // 2=stereo, 6=5.1, 8=7.1
 	ChannelLayout string `json:"channel_layout"` // "stereo", "5.1"
 	Bitrate       int    `json:"bitrate"`
+	SampleRate    int    `json:"sample_rate,omitempty"`
 	Title         string `json:"title"`
 	IsDefault     bool   `json:"is_default"`
 }

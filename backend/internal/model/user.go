@@ -40,9 +40,9 @@ type UserData struct {
 	UpdatedAt    string   `json:"updated_at"`
 
 	// JOIN fields (populated by queries with media)
-	MediaTitle    string `json:"media_title,omitempty"`
-	MediaPoster   string `json:"media_poster,omitempty"`
-	MediaDuration int    `json:"media_duration,omitempty"`
+	MediaTitle    string  `json:"media_title,omitempty"`
+	MediaPoster   string  `json:"media_poster,omitempty"`
+	MediaDuration float64 `json:"media_duration,omitempty"`
 }
 
 // UserSeriesData represents series-level favorite/rating

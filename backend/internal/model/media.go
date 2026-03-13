@@ -34,6 +34,9 @@ type MediaFile struct {
 	Width          int     `json:"width"`
 	Height         int     `json:"height"`
 	VideoCodec     string  `json:"video_codec"`
+	VideoProfile   string  `json:"video_profile,omitempty"`
+	VideoLevel     int     `json:"video_level,omitempty"`
+	VideoFPS       float64 `json:"video_fps,omitempty"`
 	AudioCodec     string  `json:"audio_codec"`
 	Container      string  `json:"container"`
 	Bitrate        int     `json:"bitrate"`
@@ -63,4 +66,5 @@ type MediaListItem struct {
 	PosterPath string   `json:"poster_path"`
 	MediaType  string   `json:"media_type"`
 	Genres     []string `json:"genres"`
+	SeriesID   int64    `json:"series_id,omitempty"`
 }

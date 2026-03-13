@@ -58,6 +58,12 @@ import {
   useFanartSettings,
   useUpdateFanartSettings,
   useBulkRefreshRatings,
+  useSubdlSettings,
+  useUpdateSubdlSettings,
+  usePlaybackSettings,
+  useUpdatePlaybackSettings,
+  useAutoSubSettings,
+  useUpdateAutoSubSettings,
 } from '@/hooks/stores/useSettings'
 import {
   useServerInfo,
@@ -106,6 +112,13 @@ const ALL_SECTIONS: Section[] = [
     id: 'subtitles',
     label: 'Subtitles',
     icon: <LuCaptions size={18} />,
+    group: 'Admin Preferences',
+    adminOnly: true,
+  },
+  {
+    id: 'playback',
+    label: 'Playback',
+    icon: <LuPlay size={18} />,
     group: 'Admin Preferences',
     adminOnly: true,
   },
@@ -214,6 +227,7 @@ export function SettingsPage() {
         {activeSection === 'activity' && <ActivitySection />}
         {activeSection === 'tasks' && <TasksSection />}
         {activeSection === 'webhooks' && <WebhooksSection />}
+        {activeSection === 'playback' && <PlaybackSection />}
       </main>
     </div>
   )
@@ -990,6 +1004,9 @@ function SubtitlesSection() {
         </form>
       </div>
 
+      {/* Subdl */}
+      <SubdlCard />
+
       {/* Podnapisi */}
       <div className="rounded-lg bg-netflix-dark p-5">
         <div className="mb-1 flex items-center gap-2">
@@ -1002,6 +1019,179 @@ function SubtitlesSection() {
           No configuration needed. Podnapisi is always available as a subtitle source.
         </p>
       </div>
+
+      {/* Auto-Download */}
+      <AutoSubCard />
+    </div>
+  )
+}
+
+function SubdlCard() {
+  const { data: settings, isLoading } = useSubdlSettings()
+  const { mutate: updateSettings, isPending: isSaving } = useUpdateSubdlSettings()
+  const [editedApiKey, setEditedApiKey] = useState<string | null>(null)
+  const apiKey = editedApiKey ?? settings?.api_key ?? ''
+  const [saved, setSaved] = useState(false)
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault()
+    updateSettings(
+      { api_key: apiKey },
+      {
+        onSuccess: () => {
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2000)
+        },
+      },
+    )
+  }
+
+  if (isLoading) return <Spinner />
+
+  return (
+    <div className="rounded-lg bg-netflix-dark p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-white">Subdl</h3>
+        <span className="rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
+          {settings?.api_key ? 'Custom Key' : 'Built-in Key'}
+        </span>
+      </div>
+      <p className="mb-5 text-xs text-gray-400">
+        Free subtitle provider with large database. Uses a built-in API key by default (override
+        below).
+      </p>
+
+      <form onSubmit={handleSave} className="space-y-4">
+        <div>
+          <input
+            type="text"
+            value={apiKey}
+            onChange={(e) => setEditedApiKey(e.target.value)}
+            placeholder="Your Subdl API key"
+            className={inputClass}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={isSaving}
+          className="flex items-center gap-2 rounded bg-netflix-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-netflix-red-hover disabled:opacity-50"
+        >
+          {saved ? (
+            <>
+              <LuCheck size={14} /> Saved
+            </>
+          ) : (
+            <>
+              <LuSave size={14} /> {isSaving ? 'Saving...' : 'Save'}
+            </>
+          )}
+        </button>
+      </form>
+    </div>
+  )
+}
+
+const COMMON_LANGUAGES = [
+  { code: 'en', label: 'English' },
+  { code: 'vi', label: 'Vietnamese' },
+  { code: 'fr', label: 'French' },
+  { code: 'de', label: 'German' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'pt', label: 'Portuguese' },
+  { code: 'ja', label: 'Japanese' },
+  { code: 'ko', label: 'Korean' },
+  { code: 'zh', label: 'Chinese' },
+  { code: 'th', label: 'Thai' },
+]
+
+function AutoSubCard() {
+  const { data: settings, isLoading } = useAutoSubSettings()
+  const { mutate: updateSettings, isPending: isSaving } = useUpdateAutoSubSettings()
+  const [edited, setEdited] = useState<string[] | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const selected =
+    edited ?? (settings?.languages ? settings.languages.split(',').filter(Boolean) : [])
+
+  const toggleLang = (code: string) => {
+    const current = [...selected]
+    const idx = current.indexOf(code)
+    if (idx >= 0) {
+      current.splice(idx, 1)
+    } else {
+      current.push(code)
+    }
+    setEdited(current)
+  }
+
+  const handleSave = () => {
+    updateSettings(
+      { languages: selected.join(',') },
+      {
+        onSuccess: () => {
+          setEdited(null)
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2000)
+        },
+      },
+    )
+  }
+
+  if (isLoading) return <Spinner />
+
+  return (
+    <div className="rounded-lg bg-netflix-dark p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-white">Auto-Download Subtitles</h3>
+        {selected.length > 0 && (
+          <span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] font-medium text-blue-400">
+            {selected.length} language{selected.length > 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+      <p className="mb-4 text-xs text-gray-400">
+        Automatically download subtitles when new media is scanned. Select which languages to fetch.
+      </p>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        {COMMON_LANGUAGES.map((lang) => (
+          <button
+            key={lang.code}
+            type="button"
+            onClick={() => toggleLang(lang.code)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              selected.includes(lang.code)
+                ? 'bg-netflix-red text-white'
+                : 'bg-netflix-gray text-gray-300 hover:bg-netflix-gray/80'
+            }`}
+          >
+            {lang.label}
+          </button>
+        ))}
+      </div>
+
+      {selected.length === 0 && (
+        <p className="mb-4 text-[11px] text-gray-500">
+          No languages selected. Auto-download is disabled.
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={isSaving || edited === null}
+        className="flex items-center gap-2 rounded bg-netflix-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-netflix-red-hover disabled:opacity-50"
+      >
+        {saved ? (
+          <>
+            <LuCheck size={14} /> Saved
+          </>
+        ) : (
+          <>
+            <LuSave size={14} /> {isSaving ? 'Saving...' : 'Save'}
+          </>
+        )}
+      </button>
     </div>
   )
 }
@@ -1026,6 +1216,88 @@ function timeAgo(dateStr: string): string {
   if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`
   const days = Math.floor(hours / 24)
   return `${days} day${days > 1 ? 's' : ''} ago`
+}
+
+function PlaybackSection() {
+  const { data: settings, isLoading } = usePlaybackSettings()
+  const { mutate: updateSettings, isPending: isSaving } = useUpdatePlaybackSettings()
+  const [saved, setSaved] = useState(false)
+
+  const handleChange = (mode: 'auto' | 'direct_play') => {
+    updateSettings(
+      { playback_mode: mode },
+      {
+        onSuccess: () => {
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2000)
+        },
+      },
+    )
+  }
+
+  if (isLoading) return <Spinner />
+
+  const current = settings?.playback_mode || 'auto'
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <SectionHeader title="Playback" description="Server-wide playback policy" />
+
+      <div className="rounded-lg bg-netflix-dark p-6">
+        <h3 className="mb-1 text-base font-semibold text-white">Playback Mode</h3>
+        <p className="mb-4 text-sm text-gray-400">
+          Control how media is delivered to clients. Direct Play sends the original file without
+          transcoding — best for compatible devices and saves server resources.
+        </p>
+
+        <div className="space-y-3">
+          {[
+            {
+              value: 'auto' as const,
+              label: 'Auto (Recommended)',
+              description:
+                'Automatically decide based on client capabilities. Transcodes when the client cannot play the original format.',
+            },
+            {
+              value: 'direct_play' as const,
+              label: 'Force Direct Play',
+              description:
+                'Always send the original file. No transcoding. Best when all your devices support your media formats.',
+            },
+          ].map((option) => (
+            <button
+              key={option.value}
+              onClick={() => handleChange(option.value)}
+              disabled={isSaving}
+              className={`flex w-full items-start gap-3 rounded-lg border-2 p-4 text-left transition-colors ${
+                current === option.value
+                  ? 'border-netflix-red bg-netflix-red/10'
+                  : 'border-netflix-gray/50 bg-netflix-black/30 hover:border-white/20'
+              }`}
+            >
+              <div
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                  current === option.value ? 'border-netflix-red bg-netflix-red' : 'border-gray-500'
+                }`}
+              >
+                {current === option.value && <div className="h-2 w-2 rounded-full bg-white" />}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-white">{option.label}</p>
+                <p className="mt-0.5 text-xs text-gray-400">{option.description}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {saved && (
+          <div className="mt-3 flex items-center gap-1.5 text-sm text-green-400">
+            <LuCheck size={16} /> Saved
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function GeneralSection() {

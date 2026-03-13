@@ -18,8 +18,8 @@ interface PlayerState {
   audioLanguage: string | null
   audioTrackId: number | null // backend track ID for the selected audio track
 
-  // Quality preference (sent as max_height in playback info request)
-  maxStreamingQuality: 'auto' | '1080p' | '720p' | '480p'
+  // Quality preference (Emby-style: resolution + bitrate cap)
+  maxQuality: { height: number; bitrateKbps: number } | 'auto'
 
   // Video display
   aspectRatio: 'contain' | 'cover' | 'fill'
@@ -42,7 +42,7 @@ interface PlayerState {
   setSubtitleBackground: (bg: 'solid' | 'semi' | 'none') => void
 
   setAudioTrack: (lang: string | null, id: number | null) => void
-  setMaxStreamingQuality: (quality: 'auto' | '1080p' | '720p' | '480p') => void
+  setMaxQuality: (quality: { height: number; bitrateKbps: number } | 'auto') => void
   setAspectRatio: (ratio: 'contain' | 'cover' | 'fill') => void
   setRepeatMode: (mode: 'none' | 'one' | 'all') => void
 
@@ -68,7 +68,7 @@ export const usePlayerStore = create<PlayerState>()(
       audioLanguage: null,
       audioTrackId: null,
 
-      maxStreamingQuality: 'auto',
+      maxQuality: 'auto',
       aspectRatio: 'contain',
       repeatMode: 'none',
 
@@ -95,7 +95,7 @@ export const usePlayerStore = create<PlayerState>()(
       setAudioTrack: (lang: string | null, id: number | null) =>
         set({ audioLanguage: lang, audioTrackId: id }),
 
-      setMaxStreamingQuality: (quality) => set({ maxStreamingQuality: quality }),
+      setMaxQuality: (quality) => set({ maxQuality: quality }),
       setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
       setRepeatMode: (mode) => set({ repeatMode: mode }),
 
@@ -126,8 +126,7 @@ export const usePlayerStore = create<PlayerState>()(
         subtitleColor: state.subtitleColor,
         subtitleBackground: state.subtitleBackground,
         audioLanguage: state.audioLanguage,
-        audioTrackId: state.audioTrackId,
-        maxStreamingQuality: state.maxStreamingQuality,
+        maxQuality: state.maxQuality,
         aspectRatio: state.aspectRatio,
         repeatMode: state.repeatMode,
         lastPositions: state.lastPositions,

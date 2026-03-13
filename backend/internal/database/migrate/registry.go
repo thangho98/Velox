@@ -108,6 +108,12 @@ func All() []Migration {
 			Up:      up017,
 			Down:    down017,
 		},
+		{
+			Version: 18,
+			Name:    "media_file_video_details",
+			Up:      up018,
+			Down:    down018,
+		},
 	}
 }
 
@@ -625,4 +631,21 @@ func up010(tx *sql.Tx) error {
 func down010(tx *sql.Tx) error {
 	_, err := tx.Exec(`DROP TABLE IF EXISTS library_paths;`)
 	return err
+}
+
+// 018: Add video details (fps, profile, level) to media_files and sample_rate to audio_tracks.
+func up018(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		ALTER TABLE media_files ADD COLUMN video_profile TEXT DEFAULT '';
+		ALTER TABLE media_files ADD COLUMN video_level INTEGER DEFAULT 0;
+		ALTER TABLE media_files ADD COLUMN video_fps REAL DEFAULT 0;
+		ALTER TABLE audio_tracks ADD COLUMN sample_rate INTEGER DEFAULT 0;
+	`)
+	return err
+}
+
+func down018(tx *sql.Tx) error {
+	// SQLite doesn't support DROP COLUMN before 3.35.0; recreate would be needed.
+	// For simplicity, these columns are harmless if left.
+	return nil
 }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/thawng/velox/internal/service"
@@ -63,15 +64,11 @@ func (h *SubtitleSearchHandler) Download(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	sub, err := h.svc.Download(r.Context(), mediaID, req.Provider, req.ExternalID)
+	sub, err := h.svc.Download(r.Context(), mediaID, req.Provider, req.ExternalID, req.Language)
 	if err != nil {
+		log.Printf("subtitle download failed for media %d provider %s: %v", mediaID, req.Provider, err)
 		respondError(w, http.StatusInternalServerError, "subtitle download failed")
 		return
-	}
-
-	// Update language if provided in request
-	if req.Language != "" {
-		sub.Language = req.Language
 	}
 
 	respondJSON(w, http.StatusOK, sub)

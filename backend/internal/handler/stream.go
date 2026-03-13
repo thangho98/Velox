@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -66,19 +67,21 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 	// HLS is required. Preserve both ?fid and ?at in the redirect so HLSMaster uses
 	// the same file and the frontend knows which audio track was selected.
 	if at := r.URL.Query().Get("at"); at != "" {
-		hlsURL := "/api/stream/" + strconv.FormatInt(id, 10) + "/hls/master.m3u8?fid=" + strconv.FormatInt(mf.ID, 10) + "&at=" + at
-		http.Redirect(w, r, hlsURL, http.StatusTemporaryRedirect)
+		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
 		return
 	}
 
-	// Use permissive defaults: quality limits are enforced by the frontend via
-	// GetPlaybackInfo, which returns the HLS URL when transcoding is required.
-	profile := playback.DetectClient(r.UserAgent())
-	prefs := playback.UserPreferences{
-		MaxStreamingQuality: "original",
-		PreferDirectPlay:    true,
+	decision := playback.PlaybackDecision{Method: explicitPlaybackMethod(r.URL.Query().Get("pm"))}
+	if decision.Method == "" {
+		// Fallback for callers that hit /api/stream directly without going through
+		// POST /api/playback/{id}/info first.
+		profile := playback.DetectClient(r.UserAgent())
+		prefs := playback.UserPreferences{
+			MaxStreamingQuality: "original",
+			PreferDirectPlay:    true,
+		}
+		decision = playback.Decide(mediaInfo, profile, prefs)
 	}
-	decision := playback.Decide(mediaInfo, profile, prefs)
 
 	switch decision.Method {
 	case playback.MethodDirectPlay:
@@ -109,9 +112,7 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		// TranscodeAudio or FullTranscode: redirect client to HLS endpoint.
-		http.Redirect(w, r,
-			"/api/stream/"+strconv.FormatInt(id, 10)+"/hls/master.m3u8?fid="+strconv.FormatInt(mf.ID, 10),
-			http.StatusTemporaryRedirect)
+		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
 	}
 }
 
@@ -144,9 +145,7 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "transcoding failed: "+err.Error())
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	http.ServeFile(w, r, playlistPath)
+	serveHLSPlaylist(w, r, playlistPath)
 }
 
 // HLSABRMaster serves the adaptive bitrate HLS master playlist.
@@ -175,9 +174,7 @@ func (h *StreamHandler) HLSABRMaster(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "abr transcoding failed: "+err.Error())
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	http.ServeFile(w, r, playlistPath)
+	serveHLSPlaylist(w, r, playlistPath)
 }
 
 // HLSSegment serves individual HLS .ts segments.
@@ -197,6 +194,11 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		respondError(w, http.StatusNotFound, "segment not found")
+		return
+	}
+
+	if strings.HasSuffix(segment, ".m3u8") {
+		serveHLSPlaylist(w, r, path)
 		return
 	}
 
@@ -220,4 +222,102 @@ func isValidSegmentName(name string) bool {
 		}
 	}
 	return true
+}
+
+func buildHLSRedirectURL(mediaID, fileID int64, original url.Values) string {
+	query := make(url.Values)
+	query.Set("fid", strconv.FormatInt(fileID, 10))
+
+	for _, key := range []string{"token", "at", "si"} {
+		if value := original.Get(key); value != "" {
+			query.Set(key, value)
+		}
+	}
+
+	return "/api/stream/" + strconv.FormatInt(mediaID, 10) + "/hls/master.m3u8?" + query.Encode()
+}
+
+func explicitPlaybackMethod(raw string) playback.PlaybackMethod {
+	switch raw {
+	case "direct":
+		return playback.MethodDirectPlay
+	case "directstream":
+		return playback.MethodDirectStream
+	default:
+		return ""
+	}
+}
+
+func serveHLSPlaylist(w http.ResponseWriter, r *http.Request, playlistPath string) {
+	content, err := os.ReadFile(playlistPath)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "cannot read playlist")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Write(rewriteHLSPlaylist(content, r.URL.Query()))
+}
+
+func rewriteHLSPlaylist(content []byte, original url.Values) []byte {
+	token := original.Get("token")
+	at := original.Get("at")
+	si := original.Get("si")
+
+	lines := strings.Split(string(content), "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "#EXT-X-MEDIA:") {
+			lines[i] = rewriteExtXMediaURI(line, token, at, si)
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		lines[i] = appendQueryToPlaylistURI(line, token, at, si)
+	}
+
+	return []byte(strings.Join(lines, "\n"))
+}
+
+func rewriteExtXMediaURI(line, token, at, si string) string {
+	const marker = `URI="`
+	start := strings.Index(line, marker)
+	if start < 0 {
+		return line
+	}
+	start += len(marker)
+	end := strings.Index(line[start:], `"`)
+	if end < 0 {
+		return line
+	}
+	end += start
+
+	return line[:start] + appendQueryToPlaylistURI(line[start:end], token, at, si) + line[end:]
+}
+
+func appendQueryToPlaylistURI(rawURI, token, at, si string) string {
+	uri, err := url.Parse(rawURI)
+	if err != nil || uri == nil {
+		return rawURI
+	}
+
+	query := uri.Query()
+	if token != "" {
+		query.Set("token", token)
+	}
+	if at != "" && strings.HasSuffix(uri.Path, ".m3u8") {
+		query.Set("at", at)
+	}
+	if si != "" && strings.HasSuffix(uri.Path, ".m3u8") {
+		query.Set("si", si)
+	}
+	uri.RawQuery = query.Encode()
+	return uri.String()
 }

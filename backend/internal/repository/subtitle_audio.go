@@ -171,8 +171,8 @@ func (r *AudioTrackRepo) WithTx(tx *sql.Tx) *AudioTrackRepo {
 // Create inserts a new audio track
 func (r *AudioTrackRepo) Create(ctx context.Context, at *model.AudioTrack) error {
 	query := `INSERT INTO audio_tracks
-		(media_file_id, stream_index, codec, language, channels, channel_layout, bitrate, title, is_default)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(media_file_id, stream_index, codec, language, channels, channel_layout, bitrate, sample_rate, title, is_default)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`
 
 	isDefault := 0
@@ -182,7 +182,7 @@ func (r *AudioTrackRepo) Create(ctx context.Context, at *model.AudioTrack) error
 
 	row := r.db.QueryRowContext(ctx, query,
 		at.MediaFileID, at.StreamIndex, at.Codec, at.Language, at.Channels,
-		at.ChannelLayout, at.Bitrate, at.Title, isDefault)
+		at.ChannelLayout, at.Bitrate, at.SampleRate, at.Title, isDefault)
 	return row.Scan(&at.ID)
 }
 
@@ -192,10 +192,10 @@ func (r *AudioTrackRepo) GetByID(ctx context.Context, id int64) (*model.AudioTra
 	var isDefault int
 
 	err := r.db.QueryRowContext(ctx, `SELECT id, media_file_id, stream_index, codec,
-		language, channels, channel_layout, bitrate, title, is_default
+		language, channels, channel_layout, bitrate, sample_rate, title, is_default
 		FROM audio_tracks WHERE id = ?`, id).
 		Scan(&at.ID, &at.MediaFileID, &at.StreamIndex, &at.Codec,
-			&at.Language, &at.Channels, &at.ChannelLayout, &at.Bitrate, &at.Title, &isDefault)
+			&at.Language, &at.Channels, &at.ChannelLayout, &at.Bitrate, &at.SampleRate, &at.Title, &isDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func (r *AudioTrackRepo) GetByID(ctx context.Context, id int64) (*model.AudioTra
 // ListByMediaFileID retrieves all audio tracks for a media file
 func (r *AudioTrackRepo) ListByMediaFileID(ctx context.Context, mediaFileID int64) ([]model.AudioTrack, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id, media_file_id, stream_index, codec,
-		language, channels, channel_layout, bitrate, title, is_default
+		language, channels, channel_layout, bitrate, sample_rate, title, is_default
 		FROM audio_tracks WHERE media_file_id = ?
 		ORDER BY is_default DESC, stream_index`, mediaFileID)
 	if err != nil {
@@ -220,7 +220,7 @@ func (r *AudioTrackRepo) ListByMediaFileID(ctx context.Context, mediaFileID int6
 		var isDefault int
 
 		if err := rows.Scan(&at.ID, &at.MediaFileID, &at.StreamIndex, &at.Codec,
-			&at.Language, &at.Channels, &at.ChannelLayout, &at.Bitrate, &at.Title, &isDefault); err != nil {
+			&at.Language, &at.Channels, &at.ChannelLayout, &at.Bitrate, &at.SampleRate, &at.Title, &isDefault); err != nil {
 			return nil, fmt.Errorf("scanning audio track: %w", err)
 		}
 		at.IsDefault = isDefault == 1
