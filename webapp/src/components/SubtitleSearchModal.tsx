@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { LuX, LuDownload, LuCheck, LuLoaderCircle, LuSearch } from 'react-icons/lu'
 import { useSubtitleSearch, useDownloadSubtitle } from '@/hooks/stores/useMedia'
+import { useToast } from '@/components/Toast'
+import { ApiError } from '@/lib/fetch'
 import type { SubtitleSearchResult } from '@/types/api'
 
 const LANGUAGES = [
@@ -88,17 +90,21 @@ export function SubtitleSearchModal({
 }: SubtitleSearchModalProps) {
   const [lang, setLang] = useState(normalizeLangCode(defaultLang))
   const [downloaded, setDownloaded] = useState<Set<string>>(new Set())
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const { error: showToastError } = useToast()
 
   const { data: results, isLoading, refetch } = useSubtitleSearch(mediaId, lang)
   const downloadMutation = useDownloadSubtitle(mediaId)
 
   // Re-search when language changes
   useEffect(() => {
+    setDownloadError(null)
     refetch()
   }, [lang, refetch])
 
   function handleDownload(result: SubtitleSearchResult) {
     const key = `${result.provider}:${result.external_id}`
+    setDownloadError(null)
     downloadMutation.mutate(
       {
         provider: result.provider,
@@ -109,6 +115,12 @@ export function SubtitleSearchModal({
         onSuccess: () => {
           setDownloaded((prev) => new Set(prev).add(key))
           onSubtitleDownloaded()
+        },
+        onError: (error) => {
+          const message = error instanceof ApiError ? error.message : 'Subtitle download failed'
+          const fullMessage = `${providerLabel(result.provider)}: ${message}`
+          setDownloadError(fullMessage)
+          showToastError(fullMessage)
         },
       },
     )
@@ -156,6 +168,12 @@ export function SubtitleSearchModal({
           </select>
         </div>
 
+        {downloadError && (
+          <div className="border-b border-red-500/20 bg-red-500/10 px-5 py-3 text-sm text-red-300">
+            {downloadError}
+          </div>
+        )}
+
         {/* Results */}
         <div className="flex-1 overflow-y-auto">
           {isLoading && (
@@ -192,12 +210,23 @@ export function SubtitleSearchModal({
         {/* Footer */}
         <div className="border-t border-white/10 px-5 py-2.5">
           <p className="text-[10px] text-white/30">
-            {results?.length ?? 0} results from OpenSubtitles + Subdl + Podnapisi
+            {results?.length ?? 0} results from OpenSubtitles + Subdl
           </p>
         </div>
       </div>
     </div>
   )
+}
+
+function providerLabel(provider: string): string {
+  switch (provider) {
+    case 'opensubtitles':
+      return 'OpenSubtitles'
+    case 'subdl':
+      return 'Subdl'
+    default:
+      return provider
+  }
 }
 
 function ResultRow({
@@ -214,7 +243,6 @@ function ResultRow({
   const providerStyles: Record<string, { color: string; label: string }> = {
     opensubtitles: { color: 'bg-green-500/15 text-green-400', label: 'OpenSub' },
     subdl: { color: 'bg-amber-500/15 text-amber-400', label: 'Subdl' },
-    podnapisi: { color: 'bg-blue-500/15 text-blue-400', label: 'Podnapisi' },
   }
   const { color: providerColor, label: providerLabel } = providerStyles[result.provider] ?? {
     color: 'bg-white/10 text-white/60',

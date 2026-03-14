@@ -2,7 +2,7 @@ package subprovider
 
 // Result represents a subtitle search result from any external provider.
 type Result struct {
-	Provider        string  `json:"provider"`         // "opensubtitles" | "podnapisi"
+	Provider        string  `json:"provider"`         // "opensubtitles" | "subdl"
 	ExternalID      string  `json:"external_id"`      // provider's file/subtitle ID
 	Title           string  `json:"title"`            // release name
 	Language        string  `json:"language"`         // ISO 639-1 ("en", "vi")

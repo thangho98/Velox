@@ -296,9 +296,11 @@ export function useDismissProgress() {
 
   return useMutation({
     mutationFn: (mediaId: number) => continueWatchingApi.dismiss(mediaId),
-    onSuccess: () => {
-      // Invalidate continue watching list when an item is dismissed
+    onSuccess: (_, mediaId) => {
+      queryClient.invalidateQueries({ queryKey: userDataKeys.progress(mediaId) })
+      queryClient.invalidateQueries({ queryKey: userDataKeys.recentlyWatched({}) })
       queryClient.invalidateQueries({ queryKey: continueWatchingKeys.all })
+      queryClient.invalidateQueries({ queryKey: nextUpKeys.all })
     },
   })
 }

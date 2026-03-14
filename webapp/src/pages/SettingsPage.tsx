@@ -1007,19 +1007,6 @@ function SubtitlesSection() {
       {/* Subdl */}
       <SubdlCard />
 
-      {/* Podnapisi */}
-      <div className="rounded-lg bg-netflix-dark p-5">
-        <div className="mb-1 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-white">Podnapisi</h3>
-          <span className="rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
-            Active
-          </span>
-        </div>
-        <p className="text-xs text-gray-400">
-          No configuration needed. Podnapisi is always available as a subtitle source.
-        </p>
-      </div>
-
       {/* Auto-Download */}
       <AutoSubCard />
     </div>

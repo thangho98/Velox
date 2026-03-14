@@ -59,6 +59,7 @@ type PlaybackInfoRequest struct {
 	MediaFileID        int64    `json:"media_file_id,omitempty"`        // specific file version
 	SelectedAudioTrack int      `json:"selected_audio_track,omitempty"` // 0 = default
 	SelectedSubtitle   string   `json:"selected_subtitle,omitempty"`    // language code or "off"
+	SelectedSubtitleID int      `json:"selected_subtitle_id,omitempty"` // exact subtitle track ID
 }
 
 // PlaybackInfoResponse represents playback decision response
@@ -192,7 +193,10 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	hasSubtitles := subtitleErr == nil && len(subtitles) > 0
 	audioTracks, audioTrackErr := h.audioTrackSvc.ListByMediaFile(ctx, primaryFile.ID)
 	effectiveAudioTrackID := resolveSelectedAudioTrackID(prefs.SelectedAudioTrack, audioTracks)
-	selectedSubtitle := findSubtitleByLanguage(subtitles, prefs.SelectedSubtitle)
+	selectedSubtitle := findSubtitleByID(subtitles, clientCaps.SelectedSubtitleID)
+	if selectedSubtitle == nil {
+		selectedSubtitle = findSubtitleByLanguage(subtitles, prefs.SelectedSubtitle)
+	}
 
 	// subType: use the selected subtitle's codec (not always the first one)
 	// Priority: language match for selected subtitle → default subtitle → first subtitle
@@ -486,6 +490,18 @@ func findSubtitleByLanguage(subtitles []model.Subtitle, language string) *model.
 		}
 	}
 
+	return nil
+}
+
+func findSubtitleByID(subtitles []model.Subtitle, subtitleID int) *model.Subtitle {
+	if subtitleID <= 0 {
+		return nil
+	}
+	for i := range subtitles {
+		if int(subtitles[i].ID) == subtitleID {
+			return &subtitles[i]
+		}
+	}
 	return nil
 }
 

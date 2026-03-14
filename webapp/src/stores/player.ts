@@ -9,10 +9,13 @@ interface PlayerState {
 
   // Subtitle preferences
   subtitleLanguage: string | null // 'vi', 'en', null = off
+  subtitleTrackId: number | null // exact subtitle track ID for source selection
   secondarySubtitleLanguage: string | null // dual-subtitle secondary track, null = off
+  secondarySubtitleTrackId: number | null
   subtitleSize: 'small' | 'medium' | 'large'
   subtitleColor: string
   subtitleBackground: 'solid' | 'semi' | 'none' // solid=black box, semi=translucent, none=text-stroke only
+  subtitleOffsets: Record<number, number> // mediaId -> offset in seconds
 
   // Audio preferences
   audioLanguage: string | null
@@ -35,11 +38,16 @@ interface PlayerState {
   toggleMute: () => void
   setPlaybackRate: (rate: number) => void
 
-  setSubtitleLanguage: (lang: string | null) => void
-  setSecondarySubtitleLanguage: (lang: string | null) => void
+  setSubtitleLanguage: (lang: string | null, trackId?: number | null) => void
+  setSecondarySubtitleLanguage: (lang: string | null, trackId?: number | null) => void
+  setSubtitleTrackId: (trackId: number | null) => void
+  setSecondarySubtitleTrackId: (trackId: number | null) => void
   setSubtitleSize: (size: 'small' | 'medium' | 'large') => void
   setSubtitleColor: (color: string) => void
   setSubtitleBackground: (bg: 'solid' | 'semi' | 'none') => void
+  setSubtitleOffset: (mediaId: number, seconds: number) => void
+  getSubtitleOffset: (mediaId: number) => number
+  resetSubtitleOffset: (mediaId: number) => void
 
   setAudioTrack: (lang: string | null, id: number | null) => void
   setMaxQuality: (quality: { height: number; bitrateKbps: number } | 'auto') => void
@@ -60,10 +68,13 @@ export const usePlayerStore = create<PlayerState>()(
       playbackRate: 1.0,
 
       subtitleLanguage: null,
+      subtitleTrackId: null,
       secondarySubtitleLanguage: null,
+      secondarySubtitleTrackId: null,
       subtitleSize: 'large',
       subtitleColor: '#ffffff',
       subtitleBackground: 'none',
+      subtitleOffsets: {},
 
       audioLanguage: null,
       audioTrackId: null,
@@ -82,15 +93,38 @@ export const usePlayerStore = create<PlayerState>()(
       setPlaybackRate: (rate) =>
         set({ playbackRate: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].includes(rate) ? rate : 1.0 }),
 
-      setSubtitleLanguage: (lang) => set({ subtitleLanguage: lang }),
+      setSubtitleLanguage: (lang, trackId = null) =>
+        set({ subtitleLanguage: lang, subtitleTrackId: lang ? trackId : null }),
 
-      setSecondarySubtitleLanguage: (lang) => set({ secondarySubtitleLanguage: lang }),
+      setSecondarySubtitleLanguage: (lang, trackId = null) =>
+        set({ secondarySubtitleLanguage: lang, secondarySubtitleTrackId: lang ? trackId : null }),
+
+      setSubtitleTrackId: (trackId) => set({ subtitleTrackId: trackId }),
+
+      setSecondarySubtitleTrackId: (trackId) => set({ secondarySubtitleTrackId: trackId }),
 
       setSubtitleSize: (size) => set({ subtitleSize: size }),
 
       setSubtitleColor: (color) => set({ subtitleColor: color }),
 
       setSubtitleBackground: (bg) => set({ subtitleBackground: bg }),
+
+      setSubtitleOffset: (mediaId, seconds) =>
+        set((state) => ({
+          subtitleOffsets: {
+            ...state.subtitleOffsets,
+            [mediaId]: Math.max(-10, Math.min(10, seconds)),
+          },
+        })),
+
+      getSubtitleOffset: (mediaId) => get().subtitleOffsets[mediaId] || 0,
+
+      resetSubtitleOffset: (mediaId) =>
+        set((state) => {
+          const subtitleOffsets = { ...state.subtitleOffsets }
+          delete subtitleOffsets[mediaId]
+          return { subtitleOffsets }
+        }),
 
       setAudioTrack: (lang: string | null, id: number | null) =>
         set({ audioLanguage: lang, audioTrackId: id }),
@@ -121,10 +155,13 @@ export const usePlayerStore = create<PlayerState>()(
         isMuted: state.isMuted,
         playbackRate: state.playbackRate,
         subtitleLanguage: state.subtitleLanguage,
+        subtitleTrackId: state.subtitleTrackId,
         secondarySubtitleLanguage: state.secondarySubtitleLanguage,
+        secondarySubtitleTrackId: state.secondarySubtitleTrackId,
         subtitleSize: state.subtitleSize,
         subtitleColor: state.subtitleColor,
         subtitleBackground: state.subtitleBackground,
+        subtitleOffsets: state.subtitleOffsets,
         audioLanguage: state.audioLanguage,
         maxQuality: state.maxQuality,
         aspectRatio: state.aspectRatio,

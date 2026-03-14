@@ -6,9 +6,13 @@ import type { PlaybackSubtitleTrack } from '@/types/api'
 interface SubtitlePickerProps {
   subtitles: PlaybackSubtitleTrack[]
   primaryLanguage: string | null
+  primaryTrackId?: number | null
   secondaryLanguage?: string | null
-  onSelectPrimary: (language: string | null) => void
-  onSelectSecondary?: (language: string | null) => void
+  secondaryTrackId?: number | null
+  onSelectPrimary: (language: string | null, trackId?: number | null) => void
+  onSelectPrimarySource?: (trackId: number | null) => void
+  onSelectSecondary?: (language: string | null, trackId?: number | null) => void
+  onSelectSecondarySource?: (trackId: number | null) => void
   dualMode?: boolean
   allowImageSubtitles?: boolean
   mediaId: number
@@ -122,9 +126,13 @@ function buildVisibleSubtitles(
 export function SubtitlePicker({
   subtitles,
   primaryLanguage,
+  primaryTrackId = null,
   secondaryLanguage = null,
+  secondaryTrackId = null,
   onSelectPrimary,
+  onSelectPrimarySource,
   onSelectSecondary,
+  onSelectSecondarySource,
   dualMode = false,
   allowImageSubtitles = false,
   mediaId,
@@ -132,6 +140,10 @@ export function SubtitlePicker({
 }: SubtitlePickerProps) {
   const [showSearch, setShowSearch] = useState(false)
   const allSubs = buildVisibleSubtitles(subtitles, allowImageSubtitles)
+  const primarySources = buildSubtitleSources(subtitles, primaryLanguage, allowImageSubtitles)
+  const secondarySources = buildSubtitleSources(subtitles, secondaryLanguage, false)
+  const effectivePrimaryTrackId = primaryTrackId ?? primarySources[0]?.id ?? null
+  const effectiveSecondaryTrackId = secondaryTrackId ?? secondarySources[0]?.id ?? null
 
   return (
     <div className="w-72 rounded-xl bg-[#242424] shadow-2xl ring-1 ring-white/10 overflow-hidden">
@@ -148,7 +160,7 @@ export function SubtitlePicker({
           name="Off"
           fmt=""
           selected={primaryLanguage === null}
-          onClick={() => onSelectPrimary(null)}
+          onClick={() => onSelectPrimary(null, null)}
         />
 
         {allSubs.map((sub) => {
@@ -160,11 +172,20 @@ export function SubtitlePicker({
               name={name}
               fmt={fmt || sub.format}
               selected={languageMatches(primaryLanguage, sub.language)}
-              onClick={() => onSelectPrimary(sub.language)}
+              onClick={() => onSelectPrimary(sub.language, sub.id)}
             />
           )
         })}
       </div>
+
+      {primarySources.length > 1 && onSelectPrimarySource && (
+        <SourceSelector
+          title="Subtitle Source"
+          sources={primarySources}
+          selectedTrackId={effectivePrimaryTrackId}
+          onSelect={onSelectPrimarySource}
+        />
+      )}
 
       {/* Secondary subtitle section (dual mode) */}
       {dualMode && onSelectSecondary && (
@@ -180,7 +201,7 @@ export function SubtitlePicker({
               name="Off"
               fmt=""
               selected={secondaryLanguage === null}
-              onClick={() => onSelectSecondary(null)}
+              onClick={() => onSelectSecondary(null, null)}
             />
             {allSubs
               .filter((s) => !s.is_image)
@@ -193,11 +214,19 @@ export function SubtitlePicker({
                     name={name}
                     fmt={fmt || sub.format}
                     selected={languageMatches(secondaryLanguage, sub.language)}
-                    onClick={() => onSelectSecondary(sub.language)}
+                    onClick={() => onSelectSecondary(sub.language, sub.id)}
                   />
                 )
               })}
           </div>
+          {secondarySources.length > 1 && onSelectSecondarySource && (
+            <SourceSelector
+              title="Secondary Source"
+              sources={secondarySources}
+              selectedTrackId={effectiveSecondaryTrackId}
+              onSelect={onSelectSecondarySource}
+            />
+          )}
         </>
       )}
 
@@ -222,6 +251,59 @@ export function SubtitlePicker({
           }}
         />
       )}
+    </div>
+  )
+}
+
+function buildSubtitleSources(
+  subtitles: PlaybackSubtitleTrack[],
+  language: string | null,
+  allowImageSubtitles: boolean,
+): PlaybackSubtitleTrack[] {
+  if (!language) return []
+  return subtitles.filter((subtitle) => {
+    if (!allowImageSubtitles && subtitle.is_image) return false
+    return languageMatches(subtitle.language, language)
+  })
+}
+
+function buildSourceLabel(subtitle: PlaybackSubtitleTrack): string {
+  const { name, fmt } = parseLabel(subtitle.label, subtitle.language)
+  const sourceName = name || subtitle.language || `Track ${subtitle.id}`
+  const meta = [
+    `#${subtitle.id}`,
+    fmt || subtitle.format?.toUpperCase(),
+    subtitle.is_default ? 'Default' : null,
+  ]
+    .filter(Boolean)
+    .join(' • ')
+  return meta ? `${sourceName} (${meta})` : sourceName
+}
+
+interface SourceSelectorProps {
+  title: string
+  sources: PlaybackSubtitleTrack[]
+  selectedTrackId: number | null
+  onSelect: (trackId: number | null) => void
+}
+
+function SourceSelector({ title, sources, selectedTrackId, onSelect }: SourceSelectorProps) {
+  return (
+    <div className="border-t border-white/10 px-4 py-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+        {title}
+      </p>
+      <select
+        value={selectedTrackId ?? ''}
+        onChange={(e) => onSelect(e.target.value ? Number(e.target.value) : null)}
+        className="w-full rounded-lg bg-white/6 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 transition-colors hover:bg-white/10 focus:ring-white/20"
+      >
+        {sources.map((source) => (
+          <option key={source.id} value={source.id} className="bg-[#242424] text-white">
+            {buildSourceLabel(source)}
+          </option>
+        ))}
+      </select>
     </div>
   )
 }

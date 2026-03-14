@@ -41,5 +41,6 @@ backend/data/transcode/
 backend/tmp/
 
 backend/.cache/
+backend/.gocache/
 
 .Velox

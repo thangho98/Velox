@@ -216,7 +216,7 @@ func (r *UserDataRepo) DismissProgress(ctx context.Context, userID, mediaID int6
 // ListContinueWatching returns in-progress items (position > 0 AND completed = 0)
 func (r *UserDataRepo) ListContinueWatching(ctx context.Context, userID int64, limit int) ([]*model.ContinueWatchingItem, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT ud.media_id, ud.position, ud.completed, ud.last_played_at,
+		SELECT ud.media_id, COALESCE(e.series_id, 0) as series_id, ud.position, ud.completed, ud.last_played_at,
 			   m.title, m.poster_path, m.backdrop_path, m.media_type,
 			   COALESCE(mf.duration, 0) as media_duration,
 			   e.episode_number,
@@ -249,7 +249,7 @@ func (r *UserDataRepo) ListContinueWatching(ctx context.Context, userID int64, l
 		var seasonNumber sql.NullInt64
 
 		if err := rows.Scan(
-			&item.MediaID, &item.Position, &completed, &lastPlayedAt,
+			&item.MediaID, &item.SeriesID, &item.Position, &completed, &lastPlayedAt,
 			&item.Title, &item.PosterPath, &item.BackdropPath, &item.MediaType,
 			&item.MediaDuration,
 			&episodeNumber,
@@ -303,6 +303,7 @@ func (r *UserDataRepo) ListNextUp(ctx context.Context, userID int64, limit int) 
 			  AND COALESCE(ud.position, 0) = 0  -- Exclude in-progress (already in Continue Watching)
 		)
 		SELECT m.id as media_id, m.title, m.media_type, m.backdrop_path,
+			   c.series_id,
 			   e.episode_number, e.title as episode_title, e.still_path,
 			   c.season_number, s.title as series_title, s.poster_path as series_poster,
 			   c.last_watched,
@@ -328,6 +329,7 @@ func (r *UserDataRepo) ListNextUp(ctx context.Context, userID int64, limit int) 
 
 		if err := rows.Scan(
 			&item.MediaID, &item.Title, &item.MediaType, &item.BackdropPath,
+			&item.SeriesID,
 			&item.EpisodeNumber, &item.EpisodeTitle, &item.StillPath,
 			&item.SeasonNumber, &item.SeriesTitle, &item.SeriesPoster,
 			&lastWatched, &item.Duration); err != nil {

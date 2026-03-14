@@ -17,6 +17,8 @@ interface DualSubtitleOverlayProps {
   primaryUrl: string | null // VTT URL for primary subtitle (rendered at bottom)
   secondaryUrl?: string | null // VTT URL for secondary subtitle (rendered above primary)
   currentTime: number // synced from parent to avoid an extra timeupdate listener
+  offsetSeconds?: number // positive values delay the subtitle, negative values show it earlier
+  primaryRenderedInVideo?: boolean
   style?: SubtitleStyle
 }
 
@@ -130,22 +132,36 @@ export function DualSubtitleOverlay({
   primaryUrl,
   secondaryUrl,
   currentTime,
+  offsetSeconds = 0,
+  primaryRenderedInVideo = false,
   style = DEFAULT_STYLE,
 }: DualSubtitleOverlayProps) {
   const primaryCues = useVTTCues(primaryUrl)
   const secondaryCues = useVTTCues(secondaryUrl)
+  const adjustedTime = currentTime - offsetSeconds
 
-  const primaryText = activeCue(primaryCues, currentTime)
-  const secondaryText = activeCue(secondaryCues, currentTime)
+  const primaryText = activeCue(primaryCues, adjustedTime)
+  const secondaryText = activeCue(secondaryCues, adjustedTime)
 
   if (!primaryText && !secondaryText) return null
 
   const primarySizeClass = SIZE_MAP[style.size]
   const secondarySizeClass = SECONDARY_SIZE_MAP[style.size]
   const needsBoxPadding = style.background !== 'none'
+  const secondaryLineCount = secondaryText ? secondaryText.split('\n').length : 0
+  const secondaryLineOffsetClass =
+    secondaryLineCount >= 3
+      ? 'bottom-[19rem] md:bottom-[19rem]'
+      : secondaryLineCount === 2
+        ? 'bottom-[17rem] md:bottom-[17rem]'
+        : 'bottom-[15rem] md:bottom-[15rem]'
+  const overlayPositionClass =
+    primaryRenderedInVideo && !primaryText ? secondaryLineOffsetClass : 'bottom-28'
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-28 flex flex-col items-center gap-1.5 px-8">
+    <div
+      className={`pointer-events-none absolute inset-x-0 ${overlayPositionClass} flex flex-col items-center gap-1.5 px-8`}
+    >
       {/* Secondary subtitle — smaller, yellow, above primary */}
       {secondaryText && (
         <p
@@ -176,6 +192,8 @@ interface SubtitleOverlayProps {
   videoRef: React.RefObject<HTMLVideoElement | null>
   subtitleUrl: string | null
   currentTime: number
+  offsetSeconds?: number
+  primaryRenderedInVideo?: boolean
   style?: SubtitleStyle
 }
 
@@ -183,6 +201,8 @@ export function SubtitleOverlay({
   videoRef,
   subtitleUrl,
   currentTime,
+  offsetSeconds,
+  primaryRenderedInVideo,
   style,
 }: SubtitleOverlayProps) {
   return (
@@ -190,6 +210,8 @@ export function SubtitleOverlay({
       videoRef={videoRef}
       primaryUrl={subtitleUrl}
       currentTime={currentTime}
+      offsetSeconds={offsetSeconds}
+      primaryRenderedInVideo={primaryRenderedInVideo}
       style={style}
     />
   )

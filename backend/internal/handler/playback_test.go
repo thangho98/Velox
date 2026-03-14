@@ -106,6 +106,20 @@ func TestFindSubtitleByLanguagePrefersTextOverImage(t *testing.T) {
 	}
 }
 
+func TestFindSubtitleByID(t *testing.T) {
+	subtitles := []model.Subtitle{
+		{ID: 11, Language: "eng", Codec: "subrip"},
+		{ID: 12, Language: "eng", Codec: "subrip"},
+	}
+
+	if got := findSubtitleByID(subtitles, 12); got == nil || got.ID != 12 {
+		t.Fatalf("findSubtitleByID(12) = %+v, want subtitle ID 12", got)
+	}
+	if got := findSubtitleByID(subtitles, 999); got != nil {
+		t.Fatalf("findSubtitleByID(999) = %+v, want nil", got)
+	}
+}
+
 func TestFilterPlayableSubtitlesHidesImageTracksWithoutBurnInSupport(t *testing.T) {
 	subtitles := []model.Subtitle{
 		{ID: 1, Language: "eng", Codec: "hdmv_pgs_subtitle"},

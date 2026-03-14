@@ -3,6 +3,8 @@ import {
   useMediaWithFiles,
   useToggleFavorite,
   useProgress,
+  useUpdateProgress,
+  useDismissProgress,
   useRefreshMetadata,
   useSubtitles,
 } from '@/hooks/stores/useMedia'
@@ -26,6 +28,8 @@ export function MediaDetailPage() {
   const { data: media, isLoading } = useMediaWithFiles(mediaId)
   const { data: progress } = useProgress(mediaId)
   const { mutate: toggleFavorite } = useToggleFavorite()
+  const { mutate: updateProgress } = useUpdateProgress()
+  const { mutate: dismissProgress } = useDismissProgress()
   const { mutate: refreshMetadata, isPending: isRefreshing } = useRefreshMetadata(mediaId)
   const { user } = useAuthStore()
   const { subtitleLanguage, setSubtitleLanguage } = usePlayerStore()
@@ -55,6 +59,22 @@ export function MediaDetailPage() {
   const duration = primaryFile?.duration || media.media.duration || 0
   const progressPercent =
     progress && duration > 0 ? Math.min(100, (progress.position / duration) * 100) : 0
+  const canResume = !!progress && progress.position > 0 && !progress.completed
+
+  const handleToggleWatched = () => {
+    if (progress?.completed) {
+      dismissProgress(mediaId)
+      return
+    }
+
+    updateProgress({
+      mediaId,
+      data: {
+        position: duration > 0 ? duration : 0,
+        completed: true,
+      },
+    })
+  }
 
   return (
     <div className="min-h-screen bg-netflix-black">
@@ -187,7 +207,7 @@ export function MediaDetailPage() {
               {/* Actions */}
               <div className="mb-6 flex flex-wrap items-center gap-3">
                 {/* Primary action */}
-                {progress?.position && progress.position > 0 ? (
+                {canResume ? (
                   <>
                     <Link
                       to={`/watch/${mediaId}`}
@@ -216,10 +236,11 @@ export function MediaDetailPage() {
 
                 {/* Icon actions */}
                 <button
+                  onClick={handleToggleWatched}
                   className={`p-2 transition-colors ${
                     progress?.completed ? 'text-green-500' : 'text-gray-400 hover:text-white'
                   }`}
-                  title={progress?.completed ? 'Watched' : 'Mark as watched'}
+                  title={progress?.completed ? 'Mark as unwatched' : 'Mark as watched'}
                 >
                   <LuCheck size={22} />
                 </button>
@@ -251,7 +272,7 @@ export function MediaDetailPage() {
                     <span className="text-sm text-gray-400">Subtitles</span>
                     <select
                       value={subtitleLanguage ?? ''}
-                      onChange={(e) => setSubtitleLanguage(e.target.value || null)}
+                      onChange={(e) => setSubtitleLanguage(e.target.value || null, null)}
                       className="rounded-full bg-[#2a2a2a] px-4 py-2 pr-8 text-sm text-white outline-none appearance-none cursor-pointer hover:bg-[#333] transition-colors"
                       style={{
                         backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,

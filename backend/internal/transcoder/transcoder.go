@@ -154,9 +154,13 @@ func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr 
 	segPattern := filepath.Join(dir, prefix+"seg_%04d.ts")
 
 	args := []string{"-hide_banner", "-loglevel", "warning"}
-	args = append(args, hwInputArgs(hwAccel)...)
+	args = append(args, buildFFmpegInputArgs(hwAccel)...)
 	args = append(args, "-i", inputPath)
-	args = append(args, buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)...)
+	if siIdx >= 0 {
+		args = append(args, buildImageSubtitleBurnInArgs(hwAccel, hdr, siIdx)...)
+	} else {
+		args = append(args, buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)...)
+	}
 	args = append(args,
 		"-c:a", "aac", "-b:a", "128k", "-ac", "2",
 		"-f", "hls",
@@ -237,6 +241,8 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 		// Use absolute stream index (0:N), not relative audio index (0:a:N).
 		cmd := exec.Command("ffmpeg",
 			"-hide_banner", "-loglevel", "warning",
+			"-probesize", "50000000",
+			"-analyzeduration", "100000000",
 			"-i", inputPath,
 			"-map", fmt.Sprintf("0:%d", v.StreamIndex),
 			"-c:a", "aac", "-b:a", "128k", "-ac", "2",
@@ -256,9 +262,14 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 	// Generate video-only playlist (no audio), optionally with subtitle burn-in
 	videoPlaylist := filepath.Join(dir, prefix+"video.m3u8")
 	videoArgs := []string{"-hide_banner", "-loglevel", "warning"}
-	videoArgs = append(videoArgs, hwInputArgs(t.hwAccel)...)
-	videoArgs = append(videoArgs, "-i", inputPath, "-map", "0:v:0")
-	videoArgs = append(videoArgs, buildVideoEncodeArgs(t.hwAccel, hdr, subtitleStreamIndex, inputPath)...)
+	videoArgs = append(videoArgs, buildFFmpegInputArgs(t.hwAccel)...)
+	videoArgs = append(videoArgs, "-i", inputPath)
+	if subtitleStreamIndex >= 0 {
+		videoArgs = append(videoArgs, buildImageSubtitleBurnInVideoOnlyArgs(t.hwAccel, hdr, subtitleStreamIndex)...)
+	} else {
+		videoArgs = append(videoArgs, "-map", "0:v:0")
+		videoArgs = append(videoArgs, buildVideoEncodeArgs(t.hwAccel, hdr, subtitleStreamIndex, inputPath)...)
+	}
 	videoArgs = append(videoArgs,
 		"-an",
 		"-f", "hls",
@@ -274,8 +285,18 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 	if err := cmd.Run(); err != nil {
 		if t.hwAccel != "" {
 			log.Printf("transcoder: HW encode failed for video track (%v), retrying with software", err)
-			swArgs := []string{"-hide_banner", "-loglevel", "warning", "-i", inputPath, "-map", "0:v:0"}
-			swArgs = append(swArgs, buildVideoEncodeArgs("", hdr, subtitleStreamIndex, inputPath)...)
+			swArgs := []string{
+				"-hide_banner", "-loglevel", "warning",
+				"-probesize", "50000000",
+				"-analyzeduration", "100000000",
+				"-i", inputPath,
+			}
+			if subtitleStreamIndex >= 0 {
+				swArgs = append(swArgs, buildImageSubtitleBurnInVideoOnlyArgs("", hdr, subtitleStreamIndex)...)
+			} else {
+				swArgs = append(swArgs, "-map", "0:v:0")
+				swArgs = append(swArgs, buildVideoEncodeArgs("", hdr, subtitleStreamIndex, inputPath)...)
+			}
 			swArgs = append(swArgs,
 				"-an", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
 				"-hls_segment_filename", filepath.Join(dir, prefix+"video_%04d.ts"),
@@ -404,7 +425,7 @@ func (t *Transcoder) generateABRVariant(inputPath, playlistPath, segPattern stri
 	bufsizeStr := fmt.Sprintf("%dk", v.Bitrate*2)
 
 	args := []string{"-hide_banner", "-loglevel", "warning"}
-	args = append(args, hwInputArgs(hwAccel)...)
+	args = append(args, buildFFmpegInputArgs(hwAccel)...)
 	args = append(args, "-i", inputPath)
 	args = append(args,
 		"-vf", fmt.Sprintf("scale=-2:%d", v.Height),
@@ -535,6 +556,21 @@ func hwInputArgs(hwAccel string) []string {
 	return nil
 }
 
+// ffmpegInputProbeArgs increases demux probing so image-based subtitle streams
+// like PGS are discovered reliably before we attempt burn-in.
+func ffmpegInputProbeArgs() []string {
+	return []string{
+		"-probesize", "50000000",
+		"-analyzeduration", "100000000",
+	}
+}
+
+func buildFFmpegInputArgs(hwAccel string) []string {
+	args := ffmpegInputProbeArgs()
+	args = append(args, hwInputArgs(hwAccel)...)
+	return args
+}
+
 // hwVideoCodec returns the FFmpeg video encoder for the given HW accelerator.
 // Falls back to libx264 when hwAccel is empty.
 func hwVideoCodec(hwAccel string) string {
@@ -574,6 +610,47 @@ func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string)
 	}
 	args = append(args, "-pix_fmt", "yuv420p")
 	return args
+}
+
+// buildImageSubtitleBurnInArgs burns a bitmap subtitle stream (PGS/VobSub) into
+// the primary video using filter_complex overlay. The selected subtitle stream is
+// referenced by absolute stream index on input 0.
+func buildImageSubtitleBurnInArgs(hwAccel string, hdr bool, subtitleStreamIndex int) []string {
+	complexFilter := buildImageSubtitleBurnInFilter(hdr, subtitleStreamIndex)
+	args := []string{
+		"-filter_complex", complexFilter,
+		"-map", "[vout]",
+		"-map", "0:a:0?",
+		"-c:v", hwVideoCodec(hwAccel),
+	}
+	if hwAccel == "" {
+		args = append(args, "-preset", "fast", "-crf", "22")
+	}
+	args = append(args, "-pix_fmt", "yuv420p")
+	return args
+}
+
+// buildImageSubtitleBurnInVideoOnlyArgs is the same burn-in path as
+// buildImageSubtitleBurnInArgs, but only maps the filtered video output.
+func buildImageSubtitleBurnInVideoOnlyArgs(hwAccel string, hdr bool, subtitleStreamIndex int) []string {
+	complexFilter := buildImageSubtitleBurnInFilter(hdr, subtitleStreamIndex)
+	args := []string{
+		"-filter_complex", complexFilter,
+		"-map", "[vout]",
+		"-c:v", hwVideoCodec(hwAccel),
+	}
+	if hwAccel == "" {
+		args = append(args, "-preset", "fast", "-crf", "22")
+	}
+	args = append(args, "-pix_fmt", "yuv420p")
+	return args
+}
+
+func buildImageSubtitleBurnInFilter(hdr bool, subtitleStreamIndex int) string {
+	if hdr {
+		return fmt.Sprintf("[0:v:0]%s[base];[base][0:%d]overlay[vout]", hdrToneMapFilter(), subtitleStreamIndex)
+	}
+	return fmt.Sprintf("[0:v:0][0:%d]overlay[vout]", subtitleStreamIndex)
 }
 
 // escapeFFmpegSubtitlePath escapes a file path for FFmpeg's subtitles filter.

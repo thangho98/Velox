@@ -165,11 +165,25 @@ func (c *Client) Download(ctx context.Context, subtitlePath string) ([]byte, str
 		return nil, "", fmt.Errorf("reading download: %w", err)
 	}
 
+	data, filename, err := extractDownloadedSubtitlePayload(body)
+	if err != nil {
+		return nil, "", err
+	}
+	return data, filename, nil
+}
+
+func extractDownloadedSubtitlePayload(body []byte) ([]byte, string, error) {
+	if looksLikeHTMLDocument(body) {
+		return nil, "", fmt.Errorf("subdl returned HTML instead of a subtitle file")
+	}
+
 	// Subdl returns a .zip file — extract the first subtitle file
 	zipReader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
-		// Not a zip — return as-is
-		return body, "subtitle.srt", nil
+		if looksLikeSubtitleText(body) {
+			return body, "subtitle.srt", nil
+		}
+		return nil, "", fmt.Errorf("subdl returned an unexpected payload")
 	}
 
 	for _, f := range zipReader.File {
@@ -189,6 +203,29 @@ func (c *Client) Download(ctx context.Context, subtitlePath string) ([]byte, str
 	}
 
 	return nil, "", fmt.Errorf("no subtitle file found in archive")
+}
+
+func looksLikeHTMLDocument(body []byte) bool {
+	snippet := strings.ToLower(strings.TrimSpace(string(body)))
+	if len(snippet) > 2048 {
+		snippet = snippet[:2048]
+	}
+	return strings.HasPrefix(snippet, "<!doctype html") ||
+		strings.HasPrefix(snippet, "<html") ||
+		(strings.Contains(snippet, "<head") && strings.Contains(snippet, "<body"))
+}
+
+func looksLikeSubtitleText(body []byte) bool {
+	snippet := strings.TrimSpace(string(body))
+	if snippet == "" {
+		return false
+	}
+	lower := strings.ToLower(snippet)
+	if strings.HasPrefix(lower, "webvtt") {
+		return true
+	}
+	return strings.Contains(snippet, "-->") &&
+		(strings.Contains(snippet, "00:") || strings.Contains(snippet, "0:"))
 }
 
 // API response types

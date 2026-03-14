@@ -1,6 +1,12 @@
 import { useParams, Link } from 'react-router'
-import { useState } from 'react'
-import { useSeriesDetail, useSeasons, useEpisodes } from '@/hooks/stores/useMedia'
+import { useEffect, useState } from 'react'
+import {
+  useSeriesDetail,
+  useSeasons,
+  useEpisodes,
+  useContinueWatching,
+  useNextUp,
+} from '@/hooks/stores/useMedia'
 import { EpisodeCard } from '@/components/EpisodeCard'
 import { LuChevronLeft, LuFilm, LuPlay, LuTv } from 'react-icons/lu'
 import { tmdbImage } from '@/lib/image'
@@ -12,15 +18,18 @@ export function SeriesDetailPage() {
 
   const { data: series, isLoading: seriesLoading } = useSeriesDetail(id)
   const { data: seasons, isLoading: seasonsLoading } = useSeasons(id)
+  const { data: continueWatchingData } = useContinueWatching({ limit: 100 })
+  const { data: nextUpData } = useNextUp({ limit: 100 })
   const { data: episodes, isLoading: episodesLoading } = useEpisodes(
     id,
     selectedSeasonId || seasons?.[0]?.id || 0,
   )
 
-  // Auto-select first season on load
-  if (seasons && seasons.length > 0 && !selectedSeasonId) {
+  useEffect(() => {
+    if (!seasons?.length) return
+    if (selectedSeasonId && seasons.some((season) => season.id === selectedSeasonId)) return
     setSelectedSeasonId(seasons[0].id)
-  }
+  }, [selectedSeasonId, seasons])
 
   if (seriesLoading) {
     return (
@@ -42,7 +51,22 @@ export function SeriesDetailPage() {
     )
   }
 
-  const firstEpisode = episodes?.[0]
+  const continueWatching = continueWatchingData ?? []
+  const nextUp = nextUpData ?? []
+
+  const resumeItem = continueWatching.find((item) => item.series_id === id)
+  const nextUpItem = nextUp.find((item) => item.series_id === id)
+  const playTargetMediaId = resumeItem?.media_id ?? nextUpItem?.media_id ?? episodes?.[0]?.media_id
+  const playLabel = resumeItem
+    ? 'Resume'
+    : nextUpItem
+      ? `Play S${nextUpItem.season_number}E${nextUpItem.episode_number}`
+      : 'Play First Episode'
+  const playSubtitle = resumeItem
+    ? `Continue ${resumeItem.title}`
+    : nextUpItem
+      ? nextUpItem.episode_title
+      : null
   const seriesYear = series.first_air_date ? new Date(series.first_air_date).getFullYear() : null
 
   return (
@@ -114,15 +138,16 @@ export function SeriesDetailPage() {
               )}
 
               {/* Play Button */}
-              {firstEpisode && (
+              {playTargetMediaId && (
                 <div className="mb-6 flex flex-wrap items-center gap-3">
                   <Link
-                    to={`/watch/${firstEpisode.media_id}`}
+                    to={`/watch/${playTargetMediaId}`}
                     className="flex items-center gap-2 rounded bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
                   >
                     <LuPlay size={18} className="fill-current" />
-                    Play First Episode
+                    {playLabel}
                   </Link>
+                  {playSubtitle && <p className="text-sm text-gray-400">{playSubtitle}</p>}
                 </div>
               )}
             </div>

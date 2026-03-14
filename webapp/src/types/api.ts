@@ -320,6 +320,7 @@ export interface PlaybackInfoRequest {
   media_file_id?: number
   selected_audio_track?: number // 0 = default
   selected_subtitle?: string // language code or 'off'
+  selected_subtitle_id?: number // exact subtitle track id
 }
 
 // Playback Info Types (from POST /api/playback/{id}/info)
@@ -346,7 +347,7 @@ export interface PlaybackAudioTrack {
 
 // External Subtitle Search Types
 export interface SubtitleSearchResult {
-  provider: 'opensubtitles' | 'podnapisi'
+  provider: 'opensubtitles' | 'subdl'
   external_id: string
   title: string
   language: string
@@ -391,6 +392,7 @@ export interface PlaybackInfo {
 // Continue Watching / Next Up Types
 export interface ContinueWatchingItem {
   media_id: number
+  series_id?: number
   position: number
   completed: boolean
   last_played_at?: string
@@ -406,6 +408,7 @@ export interface ContinueWatchingItem {
 
 export interface NextUpItem {
   media_id: number
+  series_id: number
   title: string
   episode_title: string
   media_type: 'episode'

@@ -31,6 +31,10 @@ import (
 )
 
 func main() {
+	if err := config.LoadDotEnv(); err != nil {
+		log.Fatalf("failed to load .env: %v", err)
+	}
+
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "migrate":
@@ -231,7 +235,7 @@ func runServer() {
 	streamSvc := service.NewStreamService(mediaFileRepo, audioTrackRepo, transcoderSvc)
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, sessionRepo, jwtManager, db)
 	userDataSvc := service.NewUserDataService(userDataRepo)
-	subtitleSvc := service.NewSubtitleService(subtitleRepo)
+	subtitleSvc := service.NewSubtitleService(subtitleRepo, mediaFileRepo)
 	audioTrackSvc := service.NewAudioTrackService(audioTrackRepo)
 
 	// Plan F: Admin & Operations services

@@ -58,6 +58,7 @@ type UserSeriesData struct {
 type ContinueWatchingItem struct {
 	// UserData fields
 	MediaID      int64   `json:"media_id"`
+	SeriesID     int64   `json:"series_id,omitempty"`
 	Position     float64 `json:"position"`
 	Completed    bool    `json:"completed"`
 	LastPlayedAt *string `json:"last_played_at"`
@@ -78,6 +79,7 @@ type ContinueWatchingItem struct {
 // NextUpItem represents the next unwatched episode for a series
 type NextUpItem struct {
 	MediaID       int64   `json:"media_id"`
+	SeriesID      int64   `json:"series_id"`
 	Title         string  `json:"title"`
 	EpisodeTitle  string  `json:"episode_title"`
 	MediaType     string  `json:"media_type"`

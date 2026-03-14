@@ -6,13 +6,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/pkg/opensubs"
-	"github.com/thawng/velox/pkg/podnapisi"
 	"github.com/thawng/velox/pkg/subdl"
 	"github.com/thawng/velox/pkg/subprovider"
 )
@@ -26,7 +27,6 @@ type SubtitleSearchService struct {
 	episodeRepo  *repository.EpisodeRepo
 	seasonRepo   *repository.SeasonRepo
 	seriesRepo   *repository.SeriesRepo
-	podClient    *podnapisi.Client
 	downloadDir  string // e.g. ~/.velox/subtitles/downloaded
 }
 
@@ -49,7 +49,6 @@ func NewSubtitleSearchService(
 		episodeRepo:  episodeRepo,
 		seasonRepo:   seasonRepo,
 		seriesRepo:   seriesRepo,
-		podClient:    podnapisi.New(),
 		downloadDir:  downloadDir,
 	}
 }
@@ -155,67 +154,29 @@ func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang 
 		log.Printf("subdl not configured: %v", err)
 	}
 	if subdlClient != nil {
-		sdParams := subdl.SearchParams{
-			FilmName: media.Title,
-			FileName: query,
-			Language: lang,
-		}
-		// For episodes, use series-level IDs and pass season/episode numbers
-		if epInfo != nil {
-			sdParams.FilmName = epInfo.seriesTitle
-			if epInfo.seriesTmdbID > 0 {
-				sdParams.TmdbID = epInfo.seriesTmdbID
-			}
-			if epInfo.seriesImdbID != "" {
-				sdParams.ImdbID = epInfo.seriesImdbID
-			}
-			sdParams.SeasonNumber = epInfo.seasonNumber
-			sdParams.EpisodeNumber = epInfo.episodeNumber
-			sdParams.Type = "tv"
-		} else {
-			if media.ImdbID != nil && *media.ImdbID != "" {
-				sdParams.ImdbID = *media.ImdbID
-			}
-			if media.TmdbID != nil && *media.TmdbID > 0 {
-				sdParams.TmdbID = int(*media.TmdbID)
-			}
-		}
-		if year := extractYear(media.ReleaseDate); year > 0 {
-			sdParams.Year = year
-		}
-
+		sdParams := buildSubdlSearchParams(media, epInfo, lang, "")
 		sdResults, err := subdlClient.Search(ctx, sdParams)
 		if err != nil {
 			log.Printf("subdl search error: %v", err)
-		} else {
+		}
+		if len(sdResults) == 0 && shouldFallbackToSubdlFileNameSearch(media, epInfo) {
+			fallbackParams := buildSubdlSearchParams(media, epInfo, lang, query)
+			fallbackResults, fallbackErr := subdlClient.Search(ctx, fallbackParams)
+			if fallbackErr != nil {
+				log.Printf("subdl fallback search error: %v", fallbackErr)
+			} else {
+				sdResults = fallbackResults
+			}
+		}
+		if len(sdResults) > 0 {
 			results = append(results, sdResults...)
 		}
-	}
-
-	// Podnapisi (always available)
-	podParams := podnapisi.SearchParams{
-		Keywords: query,
-		Language: lang,
-	}
-	if year := extractYear(media.ReleaseDate); year > 0 {
-		podParams.Year = year
-	}
-	// For episodes, pass season/episode to Podnapisi too
-	if epInfo != nil {
-		podParams.Season = epInfo.seasonNumber
-		podParams.Episode = epInfo.episodeNumber
-	}
-
-	podResults, err := s.podClient.SearchJSON(ctx, podParams)
-	if err != nil {
-		log.Printf("podnapisi search error: %v", err)
-	} else {
-		results = append(results, podResults...)
 	}
 
 	if results == nil {
 		results = []subprovider.Result{}
 	}
+	results = filterAndRankSubtitleSearchResults(results, epInfo, query)
 	return results, nil
 }
 
@@ -240,12 +201,6 @@ func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, pro
 		data, filename, err = osClient.Download(ctx, externalID)
 		if err != nil {
 			return nil, fmt.Errorf("downloading from opensubtitles: %w", err)
-		}
-
-	case "podnapisi":
-		data, filename, err = s.podClient.Download(ctx, externalID)
-		if err != nil {
-			return nil, fmt.Errorf("downloading from podnapisi: %w", err)
 		}
 
 	case "subdl":
@@ -414,6 +369,167 @@ func subtitleTitle(langCode, provider string) string {
 		name = langCode
 	}
 	return fmt.Sprintf("%s (%s)", name, provider)
+}
+
+func buildSubdlSearchParams(
+	media *model.Media,
+	epInfo *episodeInfo,
+	lang string,
+	fileName string,
+) subdl.SearchParams {
+	params := subdl.SearchParams{
+		FilmName: media.Title,
+		Language: lang,
+		FileName: fileName,
+	}
+
+	if epInfo != nil {
+		params.FilmName = epInfo.seriesTitle
+		params.SeasonNumber = epInfo.seasonNumber
+		params.EpisodeNumber = epInfo.episodeNumber
+		params.Type = "tv"
+		params.ImdbID = epInfo.seriesImdbID
+		params.TmdbID = epInfo.seriesTmdbID
+	} else {
+		if media.ImdbID != nil && *media.ImdbID != "" {
+			params.ImdbID = *media.ImdbID
+		}
+		if media.TmdbID != nil && *media.TmdbID > 0 {
+			params.TmdbID = int(*media.TmdbID)
+		}
+	}
+
+	if year := extractYear(media.ReleaseDate); year > 0 {
+		params.Year = year
+	}
+
+	// When no canonical IDs exist, fall back to filename-driven search immediately.
+	if !shouldFallbackToSubdlFileNameSearch(media, epInfo) && params.FileName == "" {
+		params.FileName = fileName
+	}
+	if !hasCanonicalSubdlIDs(media, epInfo) && params.FileName == "" {
+		params.FileName = media.Title
+	}
+
+	return params
+}
+
+func shouldFallbackToSubdlFileNameSearch(media *model.Media, epInfo *episodeInfo) bool {
+	return hasCanonicalSubdlIDs(media, epInfo)
+}
+
+func hasCanonicalSubdlIDs(media *model.Media, epInfo *episodeInfo) bool {
+	if epInfo != nil {
+		return epInfo.seriesImdbID != "" || epInfo.seriesTmdbID > 0
+	}
+	return (media.ImdbID != nil && *media.ImdbID != "") ||
+		(media.TmdbID != nil && *media.TmdbID > 0)
+}
+
+var subtitleSearchTokenSplitter = regexp.MustCompile(`[^a-z0-9]+`)
+
+func filterAndRankSubtitleSearchResults(
+	results []subprovider.Result,
+	epInfo *episodeInfo,
+	query string,
+) []subprovider.Result {
+	if len(results) == 0 || epInfo == nil {
+		return results
+	}
+
+	filtered := make([]subprovider.Result, 0, len(results))
+	for _, result := range results {
+		if !isExactEpisodeSubtitleMatch(result.Title, epInfo.seasonNumber, epInfo.episodeNumber) {
+			continue
+		}
+		filtered = append(filtered, result)
+	}
+
+	sort.SliceStable(filtered, func(i, j int) bool {
+		left := subtitleSearchScore(filtered[i], query)
+		right := subtitleSearchScore(filtered[j], query)
+		if left != right {
+			return left > right
+		}
+		return filtered[i].Title < filtered[j].Title
+	})
+
+	return filtered
+}
+
+func isExactEpisodeSubtitleMatch(title string, seasonNumber, episodeNumber int) bool {
+	normalized := normalizeSubtitleSearchText(title)
+	if normalized == "" {
+		return false
+	}
+
+	season := strconv.Itoa(seasonNumber)
+	episode := strconv.Itoa(episodeNumber)
+	seasonPadded := fmt.Sprintf("%02d", seasonNumber)
+	episodePadded := fmt.Sprintf("%02d", episodeNumber)
+
+	exactTokens := []string{
+		"s" + season + "e" + episode,
+		"s" + seasonPadded + "e" + episodePadded,
+		season + "x" + episodePadded,
+		seasonPadded + "x" + episodePadded,
+		"season " + season + " episode " + episode,
+		"season " + seasonPadded + " episode " + episodePadded,
+	}
+	for _, token := range exactTokens {
+		if strings.Contains(normalized, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func subtitleSearchScore(result subprovider.Result, query string) int {
+	score := subtitleSearchOverlapScore(query, result.Title) * 100
+	score += result.Downloads
+	if !result.HearingImpaired {
+		score += 25
+	}
+	switch result.Provider {
+	case "opensubtitles":
+		score += 10
+	case "subdl":
+		score += 5
+	}
+	return score
+}
+
+func subtitleSearchOverlapScore(query, title string) int {
+	queryTokens := subtitleSearchTokens(query)
+	if len(queryTokens) == 0 {
+		return 0
+	}
+	titleTokens := subtitleSearchTokens(title)
+	overlap := 0
+	for token := range titleTokens {
+		if _, ok := queryTokens[token]; ok {
+			overlap++
+		}
+	}
+	return overlap
+}
+
+func subtitleSearchTokens(value string) map[string]struct{} {
+	normalized := normalizeSubtitleSearchText(value)
+	parts := subtitleSearchTokenSplitter.Split(normalized, -1)
+	tokens := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		if len(part) < 2 {
+			continue
+		}
+		tokens[part] = struct{}{}
+	}
+	return tokens
+}
+
+func normalizeSubtitleSearchText(value string) string {
+	replacer := strings.NewReplacer(".", " ", "_", " ", "-", " ")
+	return strings.ToLower(strings.TrimSpace(replacer.Replace(value)))
 }
 
 // extractYear parses "2023-01-15" → 2023

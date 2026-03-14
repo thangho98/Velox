@@ -1,9 +1,36 @@
 import { Link } from 'react-router'
+import { useDismissProgress, useProgress, useUpdateProgress } from '@/hooks/stores/useMedia'
 import { LuFilm, LuPlay } from 'react-icons/lu'
+import { LuCheck } from 'react-icons/lu'
 import { tmdbImage } from '@/lib/image'
 import type { Episode } from '@/types/api'
 
 export function EpisodeCard({ episode }: { episode: Episode }) {
+  const { data: progress } = useProgress(episode.media_id)
+  const { mutate: updateProgress } = useUpdateProgress()
+  const { mutate: dismissProgress } = useDismissProgress()
+  const duration = episode.duration || 0
+  const hasProgress = !!progress && progress.position > 0 && !progress.completed && duration > 0
+  const progressPercent = hasProgress ? Math.min(100, (progress.position / duration) * 100) : 0
+
+  const handleToggleWatched = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (progress?.completed) {
+      dismissProgress(episode.media_id)
+      return
+    }
+
+    updateProgress({
+      mediaId: episode.media_id,
+      data: {
+        position: duration > 0 ? duration : 0,
+        completed: true,
+      },
+    })
+  }
+
   return (
     <div className="group flex items-center gap-4 rounded-lg bg-netflix-dark/80 p-4 backdrop-blur-sm transition-colors hover:bg-netflix-gray">
       {/* Episode Number / Thumbnail */}
@@ -35,9 +62,29 @@ export function EpisodeCard({ episode }: { episode: Episode }) {
         <div className="flex items-center gap-3">
           <span className="text-lg font-bold text-gray-500">{episode.episode_number}</span>
           <h3 className="font-semibold text-white">{episode.title}</h3>
+          <button
+            onClick={handleToggleWatched}
+            className={`rounded-full p-1.5 transition-colors ${
+              progress?.completed ? 'text-green-500' : 'text-gray-500 hover:text-white'
+            }`}
+            title={progress?.completed ? 'Mark as unwatched' : 'Mark as watched'}
+          >
+            <LuCheck size={16} />
+          </button>
         </div>
         {episode.overview && (
           <p className="mt-1 line-clamp-2 text-sm text-gray-400">{episode.overview}</p>
+        )}
+        {hasProgress && (
+          <div className="mt-2 max-w-sm">
+            <div className="h-1 rounded-full bg-gray-700">
+              <div
+                className="h-1 rounded-full bg-netflix-red"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">{Math.round(progressPercent)}% watched</p>
+          </div>
         )}
         {episode.duration && (
           <p className="mt-1 text-xs text-gray-500">{formatDuration(episode.duration)}</p>
@@ -50,7 +97,7 @@ export function EpisodeCard({ episode }: { episode: Episode }) {
         className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white opacity-0 transition-all group-hover:opacity-100 hover:bg-netflix-red"
       >
         <LuPlay size={16} />
-        Play
+        {hasProgress ? 'Resume' : 'Play'}
       </Link>
     </div>
   )

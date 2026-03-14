@@ -5,7 +5,7 @@ tmp_dir = "tmp"
   cmd = "go build -o ./tmp/velox ./cmd/server"
   bin = "./tmp/velox"
   args_bin = ["serve"]
-  full_bin = "VELOX_DATA_DIR=/Users/thawng/Desktop/source/go/Velox/.Velox VELOX_TRICKPLAY_ENABLED=true ./tmp/velox serve"
+  full_bin = "./tmp/velox serve"
   include_ext = ["go"]
   exclude_dir = ["tmp", "vendor"]
   delay = 1000
