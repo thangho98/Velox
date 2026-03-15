@@ -210,7 +210,7 @@ export function SubtitleSearchModal({
         {/* Footer */}
         <div className="border-t border-white/10 px-5 py-2.5">
           <p className="text-[10px] text-white/30">
-            {results?.length ?? 0} results from OpenSubtitles + Subdl
+            {results?.length ?? 0} results from Subdl, Podnapisi & BSPlayer
           </p>
         </div>
       </div>
@@ -224,6 +224,12 @@ function providerLabel(provider: string): string {
       return 'OpenSubtitles'
     case 'subdl':
       return 'Subdl'
+    case 'podnapisi':
+      return 'Podnapisi'
+    case 'bsplayer':
+      return 'BSPlayer'
+    case 'subscene':
+      return 'Subscene'
     default:
       return provider
   }
@@ -243,6 +249,9 @@ function ResultRow({
   const providerStyles: Record<string, { color: string; label: string }> = {
     opensubtitles: { color: 'bg-green-500/15 text-green-400', label: 'OpenSub' },
     subdl: { color: 'bg-amber-500/15 text-amber-400', label: 'Subdl' },
+    podnapisi: { color: 'bg-blue-500/15 text-blue-400', label: 'Podnapisi' },
+    bsplayer: { color: 'bg-purple-500/15 text-purple-400', label: 'BSPlayer' },
+    subscene: { color: 'bg-cyan-500/15 text-cyan-400', label: 'Subscene' },
   }
   const { color: providerColor, label: providerLabel } = providerStyles[result.provider] ?? {
     color: 'bg-white/10 text-white/60',

@@ -13,9 +13,12 @@ import (
 
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/pkg/bsplayer"
 	"github.com/thawng/velox/pkg/opensubs"
+	"github.com/thawng/velox/pkg/podnapisi"
 	"github.com/thawng/velox/pkg/subdl"
 	"github.com/thawng/velox/pkg/subprovider"
+	"github.com/thawng/velox/pkg/subscene"
 )
 
 // SubtitleSearchService orchestrates subtitle search across external providers.
@@ -120,33 +123,17 @@ func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang 
 
 	var results []subprovider.Result
 
-	// OpenSubtitles (if configured)
-	osClient, err := s.buildOpenSubsClient(ctx)
-	if err != nil {
-		log.Printf("opensubtitles not configured: %v", err)
-	}
-	if osClient != nil {
-		osParams := opensubs.SearchParams{
-			Query:    query,
-			Language: lang,
-		}
-		if media.ImdbID != nil && *media.ImdbID != "" {
-			osParams.ImdbID = *media.ImdbID
-		}
-		if media.TmdbID != nil && *media.TmdbID > 0 {
-			osParams.TmdbID = int(*media.TmdbID)
-		}
-		if year := extractYear(media.ReleaseDate); year > 0 {
-			osParams.Year = year
-		}
-
-		osResults, err := osClient.Search(ctx, osParams)
-		if err != nil {
-			log.Printf("opensubtitles search error: %v", err)
-		} else {
-			results = append(results, osResults...)
-		}
-	}
+	// OpenSubtitles — disabled: requires VIP subscription for media server apps.
+	// Re-enable by uncommenting the block below when a VIP API key is available.
+	// osClient, err := s.buildOpenSubsClient(ctx)
+	// if err == nil && osClient != nil {
+	// 	osParams := opensubs.SearchParams{Query: query, Language: lang}
+	// 	if media.ImdbID != nil && *media.ImdbID != "" { osParams.ImdbID = *media.ImdbID }
+	// 	if media.TmdbID != nil && *media.TmdbID > 0 { osParams.TmdbID = int(*media.TmdbID) }
+	// 	if year := extractYear(media.ReleaseDate); year > 0 { osParams.Year = year }
+	// 	osResults, osErr := osClient.Search(ctx, osParams)
+	// 	if osErr == nil { results = append(results, osResults...) }
+	// }
 
 	// Subdl (if configured)
 	subdlClient, err := s.buildSubdlClient(ctx)
@@ -170,6 +157,48 @@ func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang 
 		}
 		if len(sdResults) > 0 {
 			results = append(results, sdResults...)
+		}
+	}
+
+	// Podnapisi (no API key needed)
+	podClient := podnapisi.New()
+	podParams := podnapisi.SearchParams{
+		Keywords: query,
+		Language: lang,
+	}
+	if year := extractYear(media.ReleaseDate); year > 0 {
+		podParams.Year = year
+	}
+	if epInfo != nil {
+		podParams.Season = epInfo.seasonNumber
+		podParams.Episode = epInfo.episodeNumber
+		podParams.Keywords = epInfo.seriesTitle
+	}
+	podResults, err := podClient.Search(ctx, podParams)
+	if err != nil {
+		log.Printf("podnapisi search error: %v", err)
+	} else {
+		results = append(results, podResults...)
+	}
+
+	// BSPlayer (no API key needed, searches by IMDB ID)
+	if media.ImdbID != nil && *media.ImdbID != "" {
+		bsClient := bsplayer.New()
+		bsParams := bsplayer.SearchParams{
+			ImdbID:   *media.ImdbID,
+			Language: lang,
+		}
+		if epInfo != nil && epInfo.seriesImdbID != "" {
+			bsParams.ImdbID = epInfo.seriesImdbID
+		}
+		if mf != nil {
+			bsParams.FileSize = mf.FileSize
+		}
+		bsResults, err := bsClient.Search(ctx, bsParams)
+		if err != nil {
+			log.Printf("bsplayer search error: %v", err)
+		} else {
+			results = append(results, bsResults...)
 		}
 	}
 
@@ -211,6 +240,27 @@ func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, pro
 		data, filename, err = sdClient.Download(ctx, externalID)
 		if err != nil {
 			return nil, fmt.Errorf("downloading from subdl: %w", err)
+		}
+
+	case "podnapisi":
+		podClient := podnapisi.New()
+		data, filename, err = podClient.Download(ctx, externalID)
+		if err != nil {
+			return nil, fmt.Errorf("downloading from podnapisi: %w", err)
+		}
+
+	case "bsplayer":
+		bsClient := bsplayer.New()
+		data, filename, err = bsClient.Download(ctx, externalID)
+		if err != nil {
+			return nil, fmt.Errorf("downloading from bsplayer: %w", err)
+		}
+
+	case "subscene":
+		scScraper := subscene.New()
+		data, filename, err = scScraper.Download(ctx, externalID)
+		if err != nil {
+			return nil, fmt.Errorf("downloading from subscene: %w", err)
 		}
 
 	default:
@@ -261,6 +311,8 @@ func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, pro
 }
 
 // buildOpenSubsClient loads credentials from DB and creates a client.
+// Note: OpenSubtitles search is currently disabled (requires VIP subscription),
+// but download still works if results were previously obtained.
 func (s *SubtitleSearchService) buildOpenSubsClient(ctx context.Context) (*opensubs.Client, error) {
 	vals, err := s.settingsRepo.GetMulti(ctx,
 		model.SettingOpenSubsAPIKey,
@@ -313,16 +365,23 @@ func (s *SubtitleSearchService) AutoDownload(ctx context.Context, mediaID, media
 		return nil
 	}
 
-	// Check which languages already exist (embedded + sidecar)
+	// Check which languages already have text-based subtitles (srt/ass/vtt).
+	// Image-based subs (PGS, VOBSUB) can't be used with Direct Play,
+	// so they don't count as "having" a subtitle for auto-download purposes.
 	existing, err := s.subtitleRepo.ListByMediaFileID(ctx, mediaFileID)
 	if err != nil {
 		return fmt.Errorf("listing existing subtitles: %w", err)
 	}
 	haveLang := make(map[string]bool)
 	for _, sub := range existing {
-		if sub.Language != "" {
+		if sub.Language != "" && isTextBasedSubtitle(sub.Codec) {
 			haveLang[strings.ToLower(sub.Language)] = true
 		}
+	}
+
+	media, err := s.mediaRepo.GetByID(ctx, mediaID)
+	if err != nil {
+		return fmt.Errorf("auto-sub: loading media %d: %w", mediaID, err)
 	}
 
 	for _, lang := range targetLangs {
@@ -331,25 +390,53 @@ func (s *SubtitleSearchService) AutoDownload(ctx context.Context, mediaID, media
 			continue
 		}
 
+		// Phase 1: Fast API providers (Subdl, Podnapisi, BSPlayer)
 		results, err := s.Search(ctx, mediaID, lang)
 		if err != nil {
 			log.Printf("auto-sub: search failed for media %d lang %s: %v", mediaID, lang, err)
+		}
+
+		if len(results) > 0 {
+			best := results[0]
+			_, err = s.Download(ctx, mediaID, best.Provider, best.ExternalID, lang)
+			if err != nil {
+				log.Printf("auto-sub: download failed for media %d lang %s: %v", mediaID, lang, err)
+			} else {
+				log.Printf("auto-sub: downloaded %s subtitle for media %d from %s", lang, mediaID, best.Provider)
+				continue
+			}
+		}
+
+		// Phase 2: Subscene scraper (slow, DrissionPage — background only)
+		scQuery := media.Title
+		scSeason := 0
+		if epInfo := s.resolveEpisodeInfo(ctx, mediaID); epInfo != nil {
+			scQuery = epInfo.seriesTitle
+			scSeason = epInfo.seasonNumber
+		}
+		log.Printf("auto-sub: trying subscene for media %d lang %s query %q season %d", mediaID, lang, scQuery, scSeason)
+		scScraper := subscene.New()
+		scResults, scErr := scScraper.Search(ctx, subscene.SearchParams{
+			Query:    scQuery,
+			Language: lang,
+			Season:   scSeason,
+		})
+		if scErr != nil {
+			log.Printf("auto-sub: subscene search error for media %d: %v", mediaID, scErr)
 			continue
 		}
-		if len(results) == 0 {
-			log.Printf("auto-sub: no %s subtitles found for media %d", lang, mediaID)
+		if len(scResults) == 0 {
+			log.Printf("auto-sub: no %s subtitles found on subscene for media %d", lang, mediaID)
 			continue
 		}
 
-		// Pick the first (best) result
-		best := results[0]
+		best := scResults[0]
 		_, err = s.Download(ctx, mediaID, best.Provider, best.ExternalID, lang)
 		if err != nil {
-			log.Printf("auto-sub: download failed for media %d lang %s: %v", mediaID, lang, err)
+			log.Printf("auto-sub: subscene download failed for media %d lang %s: %v", mediaID, lang, err)
 			continue
 		}
-
-		log.Printf("auto-sub: downloaded %s subtitle for media %d from %s", lang, mediaID, best.Provider)
+		log.Printf("auto-sub: downloaded %s subtitle for media %d from subscene", lang, mediaID)
 	}
 
 	return nil
@@ -491,10 +578,12 @@ func subtitleSearchScore(result subprovider.Result, query string) int {
 		score += 25
 	}
 	switch result.Provider {
-	case "opensubtitles":
-		score += 10
 	case "subdl":
+		score += 10
+	case "podnapisi":
 		score += 5
+	case "bsplayer":
+		score += 3
 	}
 	return score
 }
@@ -530,6 +619,16 @@ func subtitleSearchTokens(value string) map[string]struct{} {
 func normalizeSubtitleSearchText(value string) string {
 	replacer := strings.NewReplacer(".", " ", "_", " ", "-", " ")
 	return strings.ToLower(strings.TrimSpace(replacer.Replace(value)))
+}
+
+// isTextBasedSubtitle returns true for text-based subtitle codecs (srt, ass, vtt).
+// Image-based codecs (PGS, VOBSUB) return false — they can't be used with Direct Play.
+func isTextBasedSubtitle(codec string) bool {
+	switch strings.ToLower(codec) {
+	case "subrip", "srt", "ass", "ssa", "webvtt", "vtt", "mov_text", "text":
+		return true
+	}
+	return false
 }
 
 // extractYear parses "2023-01-15" → 2023

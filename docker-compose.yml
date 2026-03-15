@@ -1,0 +1,57 @@
+services:
+  velox:
+    build: .
+    image: velox:latest
+    container_name: velox
+    restart: unless-stopped
+
+    ports:
+      - "8096:80"    # Web UI + API
+
+    volumes:
+      - velox-data:/data                    # Database, subtitles, transcode cache
+      - /path/to/your/movies:/media/movies  # <-- Change this
+      - /path/to/your/tvshows:/media/tv     # <-- Change this
+
+    environment:
+      # ---- User mapping (match your host/NAS user) ----
+      - PUID=1000           # Synology: usually 1026
+      - PGID=1000           # Synology: usually 100
+
+      # ---- Velox config ----
+      - VELOX_DATA_DIR=/data
+      - VELOX_HW_ACCEL=auto           # auto|vaapi|nvenc|qsv|none
+      - VELOX_MAX_TRANSCODES=2
+      - VELOX_FILE_WATCHER=true
+      - VELOX_TRICKPLAY_ENABLED=false
+      - TZ=Asia/Ho_Chi_Minh
+
+      # ---- Subscene scraper ----
+      - SUBSCENE_ENABLED=true          # Set false to skip Xvfb/Chrome
+
+    # GPU passthrough for hardware transcoding (uncomment as needed)
+    # ---- Intel QSV (Synology DS920+, DS923+, etc.) ----
+    # devices:
+    #   - /dev/dri:/dev/dri
+
+    # ---- NVIDIA GPU ----
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+    tmpfs:
+      - /tmp:size=256m       # Temp files (Chromium, ffmpeg)
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  velox-data:

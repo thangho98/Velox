@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Node
+webapp/node_modules
+webapp/.vite
+
+# Go
+backend/bin
+backend/vendor
+backend/cmd/subtest
+backend/subtest
+
+# Python venv (rebuilt in Docker)
+backend/scripts/.venv
+
+# Data files
+.Velox
+*.db
+*.db-wal
+*.db-shm
+
+# Docs & plans (not needed in image)
+docs
+plans
+*.md
+!webapp/README.md
+
+# OS
+.DS_Store
+Thumbs.db
