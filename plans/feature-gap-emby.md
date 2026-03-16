@@ -20,14 +20,15 @@ Status: 📋 Checklist — chờ anh chọn feature để lên plan
 - [ ] Chapter support — chapter markers từ MKV/MP4
 - [ ] Favorites / Playlists / Collections
 
-## Chưa có — Ưu tiên cao 🔴
-- [ ] **Continue Watching / Next Up** — Homepage row "Tiếp tục xem" + auto-suggest tập tiếp theo. DB đã có user_data (progress), chỉ cần query + UI.
-- [ ] **Intro/Credits skip** — Detect intro bằng audio fingerprint hoặc chapter marker → nút "Skip Intro". Emby dùng plugin ChapterAPI, Jellyfin dùng ConfusedPolarBear.
+## Đã implement (sau gap analysis) ✅
+- [x] **Continue Watching / Next Up** — Plan I ✅ Done
+- [x] **Intro/Credits skip** — Plan K ✅ Done (chapter + chromaprint + blackframe)
+- [x] **Favorites** — Done (toggle + page + filter)
 
 ## Chưa có — Ưu tiên trung bình 🟡
 - [ ] **Parental Controls** — Content rating filter per user (G/PG/PG-13/R), PIN lock cho profile. Cần thêm column vào users + filter logic.
 - [ ] **Music library** — Hỗ trợ audio-only (FLAC/MP3/AAC), album art, artist pages, gapless playback. Cần media_type='music' + scan logic riêng.
-- [ ] **Media info editor** — UI cho admin edit metadata thủ công: title, poster, overview, re-match TMDb ID. Cần PATCH endpoint + upload poster.
+- [x] **Media info editor** — Plan L 🟡 Planned (4 phases: PATCH API + image upload + editor UI + NFO write)
 - [ ] **DLNA / Chromecast** — Cast tới Smart TV, Chromecast. DLNA = UPnP server, Chromecast = Google Cast SDK.
 - [ ] **Mobile apps** — Android/iOS native. Scope hiện tại web-only, có thể wrap bằng Capacitor/Expo sau.
 

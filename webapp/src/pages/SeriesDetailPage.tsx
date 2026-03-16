@@ -6,10 +6,16 @@ import {
   useEpisodes,
   useContinueWatching,
   useNextUp,
+  useEditSeriesMetadata,
+  useUploadSeriesImage,
+  useSeriesGenres,
+  useSeriesCredits,
 } from '@/hooks/stores/useMedia'
+import { useAuthStore } from '@/stores/auth'
 import { EpisodeCard } from '@/components/EpisodeCard'
-import { LuChevronLeft, LuFilm, LuPlay, LuTv } from 'react-icons/lu'
-import { tmdbImage } from '@/lib/image'
+import { LuChevronLeft, LuFilm, LuPlay, LuTv, LuPencil, LuLock } from 'react-icons/lu'
+import { seriesImage } from '@/lib/image'
+import { MetadataEditor } from '@/components/metadata/MetadataEditor'
 
 export function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>()
@@ -18,6 +24,12 @@ export function SeriesDetailPage() {
 
   const { data: series, isLoading: seriesLoading } = useSeriesDetail(id)
   const { data: seasons, isLoading: seasonsLoading } = useSeasons(id)
+  const { mutate: editMetadata, isPending: isSaving } = useEditSeriesMetadata(id)
+  const { mutate: uploadImage, isPending: isUploadingImage } = useUploadSeriesImage(id)
+  const { data: seriesGenres = [] } = useSeriesGenres(id)
+  const { data: seriesCredits = [] } = useSeriesCredits(id)
+  const { user } = useAuthStore()
+  const [showEditor, setShowEditor] = useState(false)
   const { data: continueWatchingData } = useContinueWatching({ limit: 100 })
   const { data: nextUpData } = useNextUp({ limit: 100 })
   const { data: episodes, isLoading: episodesLoading } = useEpisodes(
@@ -75,7 +87,7 @@ export function SeriesDetailPage() {
       {series.backdrop_path && (
         <div className="fixed inset-0 h-screen">
           <img
-            src={tmdbImage(series.backdrop_path, 'w1280')!}
+            src={seriesImage(series.backdrop_path, 'w1280')!}
             alt={series.title}
             className="h-full w-full object-cover"
           />
@@ -100,7 +112,7 @@ export function SeriesDetailPage() {
             <div className="mx-auto flex-shrink-0 lg:mx-0">
               {series.poster_path ? (
                 <img
-                  src={tmdbImage(series.poster_path, 'w500')!}
+                  src={seriesImage(series.poster_path, 'w500')!}
                   alt={series.title}
                   className="w-64 rounded-lg shadow-2xl lg:w-80"
                 />
@@ -128,6 +140,23 @@ export function SeriesDetailPage() {
                     <LuTv size={14} />
                     {series.network}
                   </span>
+                )}
+                {user?.is_admin && series.metadata_locked && (
+                  <span
+                    className="flex items-center gap-1 rounded-full bg-amber-600/20 px-2 py-0.5 text-xs text-amber-400"
+                    title="Metadata locked"
+                  >
+                    <LuLock size={12} /> Locked
+                  </span>
+                )}
+                {user?.is_admin && (
+                  <button
+                    onClick={() => setShowEditor(true)}
+                    className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-0.5 text-xs text-gray-300 hover:bg-white/20"
+                    title="Edit metadata"
+                  >
+                    <LuPencil size={12} /> Edit
+                  </button>
                 )}
               </div>
 
@@ -206,6 +235,27 @@ export function SeriesDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Metadata Editor Panel */}
+      {showEditor && series && (
+        <MetadataEditor
+          type="series"
+          series={series}
+          genres={seriesGenres.map((g) => g.name)}
+          credits={seriesCredits}
+          onSave={(req) => {
+            editMetadata(req, {
+              onSuccess: () => setShowEditor(false),
+            })
+          }}
+          onUploadImage={(imageType, file) => {
+            uploadImage({ imageType, file })
+          }}
+          isSaving={isSaving}
+          isUploadingImage={isUploadingImage}
+          onClose={() => setShowEditor(false)}
+        />
+      )}
     </div>
   )
 }

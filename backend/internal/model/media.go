@@ -11,6 +11,7 @@ type Media struct {
 	ImdbID          *string `json:"imdb_id,omitempty"`
 	TvdbID          *int64  `json:"tvdb_id,omitempty"`
 	Overview        string  `json:"overview"`
+	Tagline         string  `json:"tagline"`
 	ReleaseDate     string  `json:"release_date"` // YYYY-MM-DD
 	Rating          float64 `json:"rating"`
 	IMDbRating      float64 `json:"imdb_rating"`
@@ -20,8 +21,32 @@ type Media struct {
 	BackdropPath    string  `json:"backdrop_path"`
 	LogoPath        string  `json:"logo_path"`
 	ThumbPath       string  `json:"thumb_path"`
+	MetadataLocked  bool    `json:"metadata_locked"`
 	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
+}
+
+// MetadataEditRequest represents a partial metadata edit for media.
+// Pointer fields: nil = don't change. Slice fields: nil = don't change, empty = clear all.
+type MetadataEditRequest struct {
+	Title          *string       `json:"title"`
+	SortTitle      *string       `json:"sort_title"`
+	Overview       *string       `json:"overview"`
+	Tagline        *string       `json:"tagline"`
+	ReleaseDate    *string       `json:"release_date"`
+	Rating         *float64      `json:"rating"`
+	Genres         []string      `json:"genres"`
+	Credits        []CreditInput `json:"credits"`
+	SaveNFO        bool          `json:"save_nfo"`
+	MetadataLocked *bool         `json:"metadata_locked"`
+}
+
+// CreditInput represents a credit entry in a metadata edit request.
+type CreditInput struct {
+	PersonName string `json:"person_name"`
+	Character  string `json:"character,omitempty"`
+	Role       string `json:"role"` // "cast" | "director" | "writer"
+	Order      int    `json:"order"`
 }
 
 // MediaFile represents a physical video file on disk

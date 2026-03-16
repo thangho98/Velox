@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router'
 import {
   useMediaWithFiles,
@@ -7,6 +8,10 @@ import {
   useDismissProgress,
   useRefreshMetadata,
   useSubtitles,
+  useEditMediaMetadata,
+  useUploadMediaImage,
+  useMediaGenres,
+  useMediaCredits,
 } from '@/hooks/stores/useMedia'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
@@ -18,8 +23,11 @@ import {
   LuHeart,
   LuRefreshCw,
   LuCheck,
+  LuPencil,
+  LuLock,
 } from 'react-icons/lu'
 import { tmdbImage } from '@/lib/image'
+import { MetadataEditor } from '@/components/metadata/MetadataEditor'
 
 export function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -31,9 +39,14 @@ export function MediaDetailPage() {
   const { mutate: updateProgress } = useUpdateProgress()
   const { mutate: dismissProgress } = useDismissProgress()
   const { mutate: refreshMetadata, isPending: isRefreshing } = useRefreshMetadata(mediaId)
+  const { mutate: editMetadata, isPending: isSaving } = useEditMediaMetadata(mediaId)
+  const { mutate: uploadImage, isPending: isUploadingImage } = useUploadMediaImage(mediaId)
+  const { data: mediaGenres = [] } = useMediaGenres(mediaId)
+  const { data: mediaCredits = [] } = useMediaCredits(mediaId)
   const { user } = useAuthStore()
   const { subtitleLanguage, setSubtitleLanguage } = usePlayerStore()
   const { data: subtitles = [] } = useSubtitles(mediaId)
+  const [showEditor, setShowEditor] = useState(false)
 
   if (isLoading) {
     return (
@@ -256,14 +269,31 @@ export function MediaDetailPage() {
                 </button>
 
                 {user?.is_admin && (
-                  <button
-                    onClick={() => refreshMetadata()}
-                    disabled={isRefreshing}
-                    className="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-                    title="Refresh metadata"
-                  >
-                    <LuRefreshCw size={22} className={isRefreshing ? 'animate-spin' : ''} />
-                  </button>
+                  <>
+                    {media.media.metadata_locked && (
+                      <span
+                        className="flex items-center gap-1 rounded-full bg-amber-600/20 px-2 py-1 text-xs text-amber-400"
+                        title="Metadata locked — rescan won't override"
+                      >
+                        <LuLock size={12} /> Locked
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setShowEditor(true)}
+                      className="p-2 text-gray-400 transition-colors hover:text-white"
+                      title="Edit metadata"
+                    >
+                      <LuPencil size={22} />
+                    </button>
+                    <button
+                      onClick={() => refreshMetadata()}
+                      disabled={isRefreshing}
+                      className="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+                      title="Refresh metadata"
+                    >
+                      <LuRefreshCw size={22} className={isRefreshing ? 'animate-spin' : ''} />
+                    </button>
+                  </>
                 )}
 
                 {/* Subtitle selector */}
@@ -315,6 +345,27 @@ export function MediaDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Metadata Editor Panel */}
+      {showEditor && media && (
+        <MetadataEditor
+          type="media"
+          media={media.media}
+          genres={mediaGenres.map((g) => g.name)}
+          credits={mediaCredits}
+          onSave={(req) => {
+            editMetadata(req, {
+              onSuccess: () => setShowEditor(false),
+            })
+          }}
+          onUploadImage={(imageType, file) => {
+            uploadImage({ imageType, file })
+          }}
+          isSaving={isSaving}
+          isUploadingImage={isUploadingImage}
+          onClose={() => setShowEditor(false)}
+        />
+      )}
     </div>
   )
 }

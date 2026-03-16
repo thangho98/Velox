@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/service"
+	"github.com/thawng/velox/internal/storage"
 	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/internal/trickplay"
 	"github.com/thawng/velox/internal/watcher"
@@ -276,7 +279,8 @@ func runServer() {
 	trickplayHandler := handler.NewTrickplayHandler(trickplayGen, streamSvc)
 	imageHandler := handler.NewImageHandler()
 	seriesHandler := handler.NewSeriesHandler(seriesRepo, seasonRepo, episodeRepo)
-	metadataHandler := handler.NewMetadataHandler(mediaSvc, metadataSvc)
+	imgStorage := storage.NewImageStorage(cfg.DataDir)
+	metadataHandler := handler.NewMetadataHandler(mediaSvc, metadataSvc, imgStorage)
 	activityHandler := handler.NewActivityHandler(activitySvc)
 	adminHandler := handler.NewAdminHandler(adminSvc)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc)
@@ -378,6 +382,69 @@ func runServer() {
 	mux.HandleFunc("GET /api/media/{id}/files", mediaHandler.GetWithFiles)
 	mux.HandleFunc("GET /api/media/{id}/versions", mediaHandler.GetVersions)
 
+	// API routes - Genres
+	mux.HandleFunc("GET /api/genres", func(w http.ResponseWriter, r *http.Request) {
+		genres, err := genreRepo.List(r.Context())
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": genres})
+	})
+
+	// API routes - Media genres & credits (for metadata editor)
+	mux.HandleFunc("GET /api/media/{id}/genres", func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		genres, err := genreRepo.ListByMediaID(r.Context(), id)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": genres})
+	})
+	mux.HandleFunc("GET /api/media/{id}/credits", func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		credits, err := personRepo.ListCreditsByMedia(r.Context(), id)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": credits})
+	})
+	mux.HandleFunc("GET /api/series/{id}/genres", func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		genres, err := genreRepo.ListBySeriesID(r.Context(), id)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": genres})
+	})
+	mux.HandleFunc("GET /api/series/{id}/credits", func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		credits, err := personRepo.ListCreditsBySeries(r.Context(), id)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": credits})
+	})
+
 	// API routes - Series
 	mux.HandleFunc("GET /api/series", seriesHandler.ListSeries)
 	mux.HandleFunc("GET /api/series/search", seriesHandler.SearchSeries)
@@ -390,6 +457,21 @@ func runServer() {
 		mux.Handle("PUT /api/media/{id}/identify", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.Identify)))
 		mux.Handle("POST /api/media/{id}/refresh", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.Refresh)))
 		mux.Handle("POST /api/admin/metadata/refresh-ratings", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.BulkRefreshRatings)))
+		mux.Handle("PATCH /api/media/{id}/metadata", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.EditMediaMetadata)))
+		mux.Handle("PATCH /api/series/{id}/metadata", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.EditSeriesMetadata)))
+		mux.Handle("DELETE /api/media/{id}/metadata/lock", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.UnlockMediaMetadata)))
+		mux.Handle("DELETE /api/series/{id}/metadata/lock", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.UnlockSeriesMetadata)))
+		mux.Handle("POST /api/media/{id}/images", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.UploadMediaImage)))
+		mux.Handle("POST /api/series/{id}/images", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.UploadSeriesImage)))
+		mux.Handle("DELETE /api/media/{id}/images/{imageType}", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.DeleteMediaImage)))
+		mux.Handle("DELETE /api/series/{id}/images/{imageType}", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.DeleteSeriesImage)))
+		mux.Handle("POST /api/media/{id}/nfo", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.WriteMediaNFO)))
+		mux.Handle("POST /api/series/{id}/nfo", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.WriteSeriesNFO)))
+	}
+
+	// API routes - Local images (public, no auth needed for cached images)
+	if metadataHandler != nil {
+		mux.HandleFunc("GET /api/images/local/{type}/{id}/{filename}", metadataHandler.ServeLocalImage)
 	}
 
 	// API routes - Streaming

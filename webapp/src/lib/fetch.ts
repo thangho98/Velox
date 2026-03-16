@@ -80,8 +80,12 @@ async function fetchWithAuth<T>(endpoint: string, options: RequestInit = {}): Pr
   const token = getAccessToken()
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) || {}),
+  }
+
+  // Only set Content-Type for non-FormData bodies (browser sets multipart boundary automatically)
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json'
   }
 
   if (token) {
@@ -124,9 +128,11 @@ async function fetchWithAuth<T>(endpoint: string, options: RequestInit = {}): Pr
       refreshSubscribers.push({
         resolve: (newToken) => {
           const retryHeaders: Record<string, string> = {
-            'Content-Type': 'application/json',
             ...((options.headers as Record<string, string>) || {}),
             Authorization: `Bearer ${newToken}`,
+          }
+          if (!(options.body instanceof FormData)) {
+            retryHeaders['Content-Type'] = retryHeaders['Content-Type'] || 'application/json'
           }
           fetch(url, { ...options, headers: retryHeaders })
             .then(async (res) => {
@@ -191,6 +197,9 @@ export const api = {
     }),
 
   delete: (endpoint: string) => fetchWithAuth<void>(endpoint, { method: 'DELETE' }),
+
+  uploadFormData: <T>(endpoint: string, formData: FormData): Promise<T> =>
+    fetchWithAuth<T>(endpoint, { method: 'POST', body: formData }),
 }
 
 // Stream URL helpers (for video streaming)

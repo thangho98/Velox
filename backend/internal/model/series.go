@@ -2,23 +2,38 @@ package model
 
 // Series represents a TV show
 type Series struct {
-	ID           int64   `json:"id"`
-	LibraryID    int64   `json:"library_id"`
-	Title        string  `json:"title"`
-	SortTitle    string  `json:"sort_title"`
-	TmdbID       *int64  `json:"tmdb_id,omitempty"`
-	ImdbID       *string `json:"imdb_id,omitempty"`
-	TvdbID       *int64  `json:"tvdb_id,omitempty"`
-	Overview     string  `json:"overview"`
-	Status       string  `json:"status"`         // "Returning Series" | "Ended" | "Canceled"
-	Network      string  `json:"network"`        // "CBS", "Netflix", etc.
-	FirstAirDate string  `json:"first_air_date"` // YYYY-MM-DD
-	PosterPath   string  `json:"poster_path"`
-	BackdropPath string  `json:"backdrop_path"`
-	LogoPath     string  `json:"logo_path"`
-	ThumbPath    string  `json:"thumb_path"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
+	ID             int64   `json:"id"`
+	LibraryID      int64   `json:"library_id"`
+	Title          string  `json:"title"`
+	SortTitle      string  `json:"sort_title"`
+	TmdbID         *int64  `json:"tmdb_id,omitempty"`
+	ImdbID         *string `json:"imdb_id,omitempty"`
+	TvdbID         *int64  `json:"tvdb_id,omitempty"`
+	Overview       string  `json:"overview"`
+	Status         string  `json:"status"`         // "Returning Series" | "Ended" | "Canceled"
+	Network        string  `json:"network"`        // "CBS", "Netflix", etc.
+	FirstAirDate   string  `json:"first_air_date"` // YYYY-MM-DD
+	PosterPath     string  `json:"poster_path"`
+	BackdropPath   string  `json:"backdrop_path"`
+	LogoPath       string  `json:"logo_path"`
+	ThumbPath      string  `json:"thumb_path"`
+	MetadataLocked bool    `json:"metadata_locked"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+}
+
+// SeriesMetadataEditRequest represents a partial metadata edit for series.
+type SeriesMetadataEditRequest struct {
+	Title          *string       `json:"title"`
+	SortTitle      *string       `json:"sort_title"`
+	Overview       *string       `json:"overview"`
+	Status         *string       `json:"status"`
+	Network        *string       `json:"network"`
+	FirstAirDate   *string       `json:"first_air_date"`
+	Genres         []string      `json:"genres"`
+	Credits        []CreditInput `json:"credits"`
+	SaveNFO        bool          `json:"save_nfo"`
+	MetadataLocked *bool         `json:"metadata_locked"`
 }
 
 // Season represents a season of a series

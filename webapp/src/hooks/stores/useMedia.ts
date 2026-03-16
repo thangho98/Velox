@@ -28,6 +28,9 @@ import type {
   NextUpItem,
   ContinueWatchingParams,
   NextUpParams,
+  MetadataEditRequest,
+  SeriesMetadataEditRequest,
+  CreditWithPerson,
 } from '@/types/api'
 
 // Filesystem browser API (admin only)
@@ -495,5 +498,118 @@ export function useRefreshMetadata(mediaId: number) {
       queryClient.invalidateQueries({ queryKey: mediaKeys.withFiles(mediaId) })
       queryClient.invalidateQueries({ queryKey: mediaKeys.detail(mediaId) })
     },
+  })
+}
+
+// --- Metadata Editor hooks ---
+
+export function useEditMediaMetadata(mediaId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (req: MetadataEditRequest) => api.patch<Media>(`/media/${mediaId}/metadata`, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: mediaKeys.withFiles(mediaId) })
+      queryClient.invalidateQueries({ queryKey: mediaKeys.detail(mediaId) })
+    },
+  })
+}
+
+export function useEditSeriesMetadata(seriesId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (req: SeriesMetadataEditRequest) =>
+      api.patch<unknown>(`/series/${seriesId}/metadata`, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: seriesKeys.detail(seriesId) })
+    },
+  })
+}
+
+export function useUploadMediaImage(mediaId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ imageType, file }: { imageType: string; file: File }) => {
+      const form = new FormData()
+      form.append('image_type', imageType)
+      form.append('file', file)
+      return api.uploadFormData<{ path: string }>(`/media/${mediaId}/images`, form)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: mediaKeys.withFiles(mediaId) })
+      queryClient.invalidateQueries({ queryKey: mediaKeys.detail(mediaId) })
+    },
+  })
+}
+
+export function useUploadSeriesImage(seriesId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ imageType, file }: { imageType: string; file: File }) => {
+      const form = new FormData()
+      form.append('image_type', imageType)
+      form.append('file', file)
+      return api.uploadFormData<{ path: string }>(`/series/${seriesId}/images`, form)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: seriesKeys.detail(seriesId) })
+    },
+  })
+}
+
+export function useUnlockMetadata(type: 'media' | 'series', id: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.delete(`/${type === 'media' ? 'media' : 'series'}/${id}/metadata/lock`),
+    onSuccess: () => {
+      if (type === 'media') {
+        queryClient.invalidateQueries({ queryKey: mediaKeys.withFiles(id) })
+      } else {
+        queryClient.invalidateQueries({ queryKey: seriesKeys.detail(id) })
+      }
+    },
+  })
+}
+
+export function useAllGenres() {
+  return useQuery({
+    queryKey: ['genres'],
+    queryFn: () => api.get<{ id: number; name: string }[]>('/genres'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useMediaGenres(mediaId: number) {
+  return useQuery({
+    queryKey: ['media', mediaId, 'genres'],
+    queryFn: () => api.get<{ id: number; name: string }[]>(`/media/${mediaId}/genres`),
+    enabled: mediaId > 0,
+    select: (data) => data ?? [],
+  })
+}
+
+export function useMediaCredits(mediaId: number) {
+  return useQuery({
+    queryKey: ['media', mediaId, 'credits'],
+    queryFn: () => api.get<CreditWithPerson[]>(`/media/${mediaId}/credits`),
+    enabled: mediaId > 0,
+    select: (data) => data ?? [],
+  })
+}
+
+export function useSeriesGenres(seriesId: number) {
+  return useQuery({
+    queryKey: ['series', seriesId, 'genres'],
+    queryFn: () => api.get<{ id: number; name: string }[]>(`/series/${seriesId}/genres`),
+    enabled: seriesId > 0,
+    select: (data) => data ?? [],
+  })
+}
+
+export function useSeriesCredits(seriesId: number) {
+  return useQuery({
+    queryKey: ['series', seriesId, 'credits'],
+    queryFn: () => api.get<CreditWithPerson[]>(`/series/${seriesId}/credits`),
+    enabled: seriesId > 0,
+    select: (data) => data ?? [],
   })
 }

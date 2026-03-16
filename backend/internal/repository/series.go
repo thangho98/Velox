@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/thawng/velox/internal/model"
 )
@@ -38,29 +39,115 @@ func (r *SeriesRepo) GetByID(ctx context.Context, id int64) (*model.Series, erro
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
 		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
-		created_at, updated_at
+		metadata_locked, created_at, updated_at
 		FROM series WHERE id = ?`, id).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
 			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt)
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &s, nil
 }
 
-// Update updates a series
+// Update updates a series (full update — used by metadata enrichment pipeline).
 func (r *SeriesRepo) Update(ctx context.Context, s *model.Series) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE series SET
 		title = ?, sort_title = ?, tmdb_id = ?, imdb_id = ?, tvdb_id = ?,
 		overview = ?, status = ?, network = ?, first_air_date = ?,
 		poster_path = ?, backdrop_path = ?, logo_path = ?, thumb_path = ?,
+		metadata_locked = ?,
 		updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
 		s.Title, s.SortTitle, s.TmdbID, s.ImdbID, s.TvdbID,
 		s.Overview, s.Status, s.Network, s.FirstAirDate,
-		s.PosterPath, s.BackdropPath, s.LogoPath, s.ThumbPath, s.ID)
+		s.PosterPath, s.BackdropPath, s.LogoPath, s.ThumbPath,
+		s.MetadataLocked, s.ID)
 	return err
+}
+
+// UpdateMetadata performs a partial metadata update for a series.
+// Returns ErrNotFound if the series ID does not exist.
+func (r *SeriesRepo) UpdateMetadata(ctx context.Context, id int64, req model.SeriesMetadataEditRequest) error {
+	setClauses := []string{}
+	args := []any{}
+
+	if req.Title != nil {
+		setClauses = append(setClauses, "title = ?")
+		args = append(args, *req.Title)
+	}
+	if req.SortTitle != nil {
+		setClauses = append(setClauses, "sort_title = ?")
+		args = append(args, *req.SortTitle)
+	}
+	if req.Overview != nil {
+		setClauses = append(setClauses, "overview = ?")
+		args = append(args, *req.Overview)
+	}
+	if req.Status != nil {
+		setClauses = append(setClauses, "status = ?")
+		args = append(args, *req.Status)
+	}
+	if req.Network != nil {
+		setClauses = append(setClauses, "network = ?")
+		args = append(args, *req.Network)
+	}
+	if req.FirstAirDate != nil {
+		setClauses = append(setClauses, "first_air_date = ?")
+		args = append(args, *req.FirstAirDate)
+	}
+	if req.MetadataLocked != nil {
+		setClauses = append(setClauses, "metadata_locked = ?")
+		args = append(args, *req.MetadataLocked)
+	}
+
+	if len(setClauses) == 0 {
+		return nil
+	}
+
+	setClauses = append(setClauses, "updated_at = CURRENT_TIMESTAMP")
+	query := fmt.Sprintf("UPDATE series SET %s WHERE id = ?", strings.Join(setClauses, ", "))
+	args = append(args, id)
+	res, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	return checkRowsAffected(res)
+}
+
+// UpdateImagePath updates poster_path or backdrop_path for a series.
+// Returns ErrNotFound if the series ID does not exist.
+func (r *SeriesRepo) UpdateImagePath(ctx context.Context, id int64, imageType, path string) error {
+	col := "poster_path"
+	if imageType == "backdrop" {
+		col = "backdrop_path"
+	}
+	res, err := r.db.ExecContext(ctx, fmt.Sprintf("UPDATE series SET %s = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", col), path, id)
+	if err != nil {
+		return err
+	}
+	return checkRowsAffected(res)
+}
+
+// SetMetadataLocked sets the metadata_locked flag for a series.
+func (r *SeriesRepo) SetMetadataLocked(ctx context.Context, id int64, locked bool) error {
+	res, err := r.db.ExecContext(ctx, "UPDATE series SET metadata_locked = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", locked, id)
+	if err != nil {
+		return err
+	}
+	return checkRowsAffected(res)
+}
+
+// checkRowsAffected returns ErrNotFound when an UPDATE hit zero rows.
+func checkRowsAffected(res sql.Result) error {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete removes a series and its seasons/episodes (CASCADE)
@@ -73,7 +160,7 @@ func (r *SeriesRepo) Delete(ctx context.Context, id int64) error {
 func (r *SeriesRepo) List(ctx context.Context, libraryID int64, limit, offset int) ([]model.Series, error) {
 	query := `SELECT id, library_id, title, sort_title,
 		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
-		created_at, updated_at
+		metadata_locked, created_at, updated_at
 		FROM series WHERE 1=1`
 	args := []any{}
 
@@ -104,7 +191,7 @@ func (r *SeriesRepo) List(ctx context.Context, libraryID int64, limit, offset in
 		var s model.Series
 		if err := rows.Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
 			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanning series: %w", err)
 		}
 		items = append(items, s)
@@ -117,11 +204,11 @@ func (r *SeriesRepo) GetByTmdbID(ctx context.Context, tmdbID int64) (*model.Seri
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
 		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
-		created_at, updated_at
+		metadata_locked, created_at, updated_at
 		FROM series WHERE tmdb_id = ?`, tmdbID).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
 			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt)
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -133,11 +220,11 @@ func (r *SeriesRepo) GetByTvdbID(ctx context.Context, tvdbID int64) (*model.Seri
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
 		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
-		created_at, updated_at
+		metadata_locked, created_at, updated_at
 		FROM series WHERE tvdb_id = ?`, tvdbID).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
 			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt)
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -149,11 +236,11 @@ func (r *SeriesRepo) GetByImdbID(ctx context.Context, imdbID string) (*model.Ser
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
 		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
-		created_at, updated_at
+		metadata_locked, created_at, updated_at
 		FROM series WHERE imdb_id = ?`, imdbID).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
 			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt)
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +251,7 @@ func (r *SeriesRepo) GetByImdbID(ctx context.Context, imdbID string) (*model.Ser
 func (r *SeriesRepo) Search(ctx context.Context, query string, limit int) ([]model.Series, error) {
 	q := `SELECT id, library_id, title, sort_title,
 		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
-		created_at, updated_at
+		metadata_locked, created_at, updated_at
 		FROM series WHERE title LIKE ? OR sort_title LIKE ?
 		ORDER BY sort_title LIMIT ?`
 
@@ -180,7 +267,7 @@ func (r *SeriesRepo) Search(ctx context.Context, query string, limit int) ([]mod
 		var s model.Series
 		if err := rows.Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
 			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
-			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanning series: %w", err)
 		}
 		items = append(items, s)

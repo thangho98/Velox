@@ -118,6 +118,7 @@ export interface Media {
   imdb_id?: string
   tvdb_id?: number
   overview: string
+  tagline: string
   release_date: string
   rating: number
   imdb_rating: number
@@ -127,6 +128,7 @@ export interface Media {
   backdrop_path: string
   logo_path: string
   thumb_path: string
+  metadata_locked: boolean
   duration?: number // from media_files join
   series_id?: number // for episodes
   season_id?: number // for episodes
@@ -193,8 +195,58 @@ export interface Series {
   backdrop_path: string
   logo_path: string
   thumb_path: string
+  metadata_locked: boolean
   created_at: string
   updated_at: string
+}
+
+// Metadata editing types
+export interface MetadataEditRequest {
+  title?: string
+  sort_title?: string
+  overview?: string
+  tagline?: string
+  release_date?: string
+  rating?: number
+  genres?: string[]
+  credits?: CreditInput[]
+  save_nfo?: boolean
+  metadata_locked?: boolean
+}
+
+export interface SeriesMetadataEditRequest {
+  title?: string
+  sort_title?: string
+  overview?: string
+  status?: string
+  network?: string
+  first_air_date?: string
+  genres?: string[]
+  credits?: CreditInput[]
+  save_nfo?: boolean
+  metadata_locked?: boolean
+}
+
+export interface CreditInput {
+  person_name: string
+  character?: string
+  role: 'cast' | 'director' | 'writer'
+  order: number
+}
+
+export interface CreditWithPerson {
+  credit: {
+    id: number
+    person_id: number
+    character: string
+    role: string
+    display_order: number
+  }
+  person: {
+    id: number
+    name: string
+    profile_path: string
+  }
 }
 
 export interface SeriesWithSeasons {

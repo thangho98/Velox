@@ -28,6 +28,11 @@ Frontend: Vite + Tailwind scaffolded, no UI yet.
 | E | Streaming Enhancement | HW accel, ABR, trickplay, session management | ⬜ |
 | F | Admin & Operations | Dashboard, scheduler, health, webhooks | ⬜ |
 | G | Nice-to-have | SyncPlay, chapters, plugin system | ⬜ |
+| H | Subtitle Search | Multi-provider subtitle search + download | ✅ |
+| I | Continue Watching | Homepage continue watching + next up | ✅ |
+| J | Series Grouping | Netflix-style series + URL routing | ✅ |
+| K | Intro/Credits Skip | Chapter + chromaprint + blackframe detection | ✅ |
+| L | Metadata Editor | Emby-style edit metadata + image upload + NFO write | ⬜ |
 
 ## Execution Order & Milestones
 

@@ -126,6 +126,12 @@ func All() []Migration {
 			Up:      up020,
 			Down:    down020,
 		},
+		{
+			Version: 21,
+			Name:    "metadata_lock",
+			Up:      up021,
+			Down:    down021,
+		},
 	}
 }
 
@@ -722,5 +728,25 @@ func up020(tx *sql.Tx) error {
 
 func down020(tx *sql.Tx) error {
 	_, err := tx.Exec(`DROP TABLE IF EXISTS audio_fingerprints;`)
+	return err
+}
+
+// 021: Metadata lock — allow admin to lock metadata from rescan override + add tagline field.
+func up021(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		ALTER TABLE media ADD COLUMN tagline TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media ADD COLUMN metadata_locked INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE series ADD COLUMN metadata_locked INTEGER NOT NULL DEFAULT 0;
+	`)
+	return err
+}
+
+func down021(tx *sql.Tx) error {
+	// SQLite 3.35.0+ supports DROP COLUMN
+	_, err := tx.Exec(`
+		ALTER TABLE media DROP COLUMN tagline;
+		ALTER TABLE media DROP COLUMN metadata_locked;
+		ALTER TABLE series DROP COLUMN metadata_locked;
+	`)
 	return err
 }

@@ -1,7 +1,7 @@
 {
   "meta": {
     "schema_version": "1.1.0",
-    "updated_at": "2026-03-15",
+    "updated_at": "2026-03-16",
     "plan_status": {
       "A": "✅ Done — Core Domain & Ingestion (all 5 phases 100%)",
       "B": "✅ Done — Auth & Sessions",
@@ -10,7 +10,8 @@
       "E": "✅ Done — Streaming Enhancement (HW transcode, ABR HLS, Trickplay)",
       "F": "✅ Done — Admin Operations (Activity Logging, Dashboard, Scheduler, Webhooks)",
       "G": "⬜ Pending — Nice-to-have",
-      "J": "✅ Done — Netflix-style Series Grouping + URL Routing (4 phases)"
+      "J": "✅ Done — Netflix-style Series Grouping + URL Routing (4 phases)",
+      "K": "✅ Done — Intro/Credits Skip (4 phases: chapter regex, chromaprint, blackframe)"
     }
   },
   "project": {
@@ -26,7 +27,8 @@
       "database": "SQLite (WAL mode, foreign_keys=on, MaxOpenConns=1)",
       "driver": "mattn/go-sqlite3 v1.14.34",
       "transcoding": "FFmpeg 8.0 / FFprobe",
-      "file_watcher": "fsnotify v1.9.0"
+      "file_watcher": "fsnotify v1.9.0",
+      "chromaprint": "fpcalc CLI (brew install chromaprint / apk add chromaprint)"
     },
     "frontend": {
       "framework": "React 19",
@@ -52,7 +54,7 @@
     }
   },
   "database_schema": {
-    "summary": "22 tables across 18 migrations. Media server stores: libraries, movies/episodes (logical), video files (physical) with video profile/level/fps, series/seasons, genres, people/credits, subtitles, audio tracks (with sample_rate), users, watch progress, favorites, sessions, app settings.",
+    "summary": "24 tables across 20 migrations. Media server stores: libraries, movies/episodes (logical), video files (physical), series/seasons, genres, people/credits, subtitles, audio tracks, users, watch progress, favorites, sessions, app settings, media markers (skip intro/credits), audio fingerprints (chromaprint cache).",
     "design_doc": "docs/database-design.md",
     "tables_by_migration": {
       "001_initial": ["libraries", "media (old)", "progress (old)"],
@@ -72,7 +74,9 @@
       "015_series_network": ["series (ALTER +network)"],
       "016_subtitle_search": ["app_settings used for OpenSubtitles/Podnapisi API keys"],
       "017_metadata_providers": ["app_settings used for OMDb/TVDB/Fanart.tv API keys"],
-      "018_media_file_video_details": ["media_files (ALTER +video_profile, video_level, video_fps)", "audio_tracks (ALTER +sample_rate)"]
+      "018_media_file_video_details": ["media_files (ALTER +video_profile, video_level, video_fps)", "audio_tracks (ALTER +sample_rate)"],
+      "019_media_markers": ["media_markers (intro/credits skip segments)"],
+      "020_audio_fingerprints": ["audio_fingerprints (chromaprint cache per file+region)"]
     },
     "key_patterns": [
       "Logical vs Physical: media (content) ↔ media_files (file on disk)",
@@ -82,7 +86,9 @@
       "Fingerprint: {file_size}:{xxhash64_first_64KB} for rename detection",
       "XOR polymorphic: media_genres/credits CHECK exactly one of media_id/series_id",
       "Provider IDs: tmdb_id + imdb_id + tvdb_id indexed directly",
-      "App settings: key-value JSON store for provider API keys + admin config"
+      "App settings: key-value JSON store for provider API keys + admin config",
+      "Media markers: per media_file, source priority manual(3) > chapter(2) > fingerprint(1)",
+      "Audio fingerprints: BLOB cache per (media_file_id, region), ON DELETE CASCADE"
     ]
   },
   "metadata_providers": {
@@ -94,27 +100,41 @@
     "NFO": "Local override — NFO files take priority over TMDb search."
   },
   "subtitle_providers": {
-    "OpenSubtitles": "⚠️ DISABLED — requires VIP API key ($2-3/mo) for media server apps. Developer key triggers warning.",
-    "Podnapisi": "XML API. No API key. Currently returning 429 (overloaded) on all requests.",
-    "Subdl": "REST API. API key via admin settings. Best for TV (episode→series resolution). Primary provider.",
-    "BSPlayer": "SOAP/XML API. Anonymous auth (no API key). Search by file hash + IMDb ID. Good for sync accuracy.",
-    "Subscene": "Web scraper via Python (DrissionPage + Chrome). Bypasses Cloudflare. Needs Xvfb in Docker. Slowest (~30s) but large Vietnamese subtitle database. Fallback provider."
+    "OpenSubtitles_v2": "REST v2 API. Requires API key + username + password. Used when user configures settings. VIP needed for media servers.",
+    "OpenSubtitles_legacy": "Legacy REST API (rest.opensubtitles.org). Free, no key needed. Search by IMDB ID + season/episode. Default when v2 not configured.",
+    "Subdl": "REST API. API key via admin settings (built-in fallback). Best for TV (episode→series resolution). Primary provider.",
+    "BSPlayer": "SOAP/XML API. Anonymous auth (no API key). Search by file hash + IMDb ID.",
+    "Podnapisi": "XML API. No API key. Often returns 429 (overloaded).",
+    "Subscene": "Web scraper via Python (DrissionPage + Chrome). Bypasses Cloudflare. Slowest (~30s). Used in AutoDownload Phase 2 fallback only."
+  },
+  "intro_credits_detection": {
+    "tier1_chapter": "Enhanced regex (Jellyfin patterns: OP/ED, recap, cold open, outro). Timing: intro 15-120s, credits 15-450s. Unnamed chapter heuristic for BluRay (source=fingerprint, low confidence for chromaprint override).",
+    "tier2_chromaprint": "Audio fingerprint via fpcalc CLI. Per-season pairwise comparison (XOR + popcount Hamming distance). Shift histogram + contiguous region detection. ~1s/episode extraction, <1s comparison. Confidence 0.7-0.9.",
+    "tier3_blackframe": "FFmpeg blackframe + silencedetect filters on last 10 minutes. Credits only. Cluster detection + co-occurrence heuristic (±5s tolerance). Confidence 0.55-0.75.",
+    "source_priority": "manual(3) > chapter(2) > fingerprint(1). GetBestByType SQL ORDER BY source priority → confidence.",
+    "admin_api": "POST /api/admin/markers/backfill (file_ids or season_id). POST /api/admin/markers/detect (file_id + detector_name). GET /api/admin/markers/detectors."
+  },
+  "subtitle_translation": {
+    "primary": "DeepL API (free tier 500K chars/month). API key stored in app_settings (deepl_api_key).",
+    "fallback": "Google Translate (unofficial, free, unlimited). Used when DeepL key not configured or quota exceeded.",
+    "flow": "On-demand: POST /api/subtitles/{id}/translate {target_language}. Extracts embedded subs via FFmpeg if needed. Batch translation (50 cues/batch for DeepL, 4500 chars/batch for Google). Saves as new SRT file + DB record.",
+    "ui": "SubtitlePicker → TranslateRow component. Settings → DeepL API key card."
   },
   "architecture": {
     "layers": [
       "handler (HTTP) → service (business logic) → repository (SQL) → model (structs)",
-      "Migrations via internal/database/migrate/registry.go (18 migrations)",
+      "Migrations via internal/database/migrate/registry.go (20 migrations)",
       "DBTX interface (repository/db.go) — repos accept *sql.DB or *sql.Tx",
       "WithTx() on repos for transaction-scoped operations",
       "service.ErrNotFound sentinel wrapping sql.ErrNoRows (service/errors.go)",
       "respondJSON wraps success in {\"data\": ...}, logs encode errors"
     ],
-    "scan_pipeline": "Pipeline (scanner/pipeline.go) — CreateJob (sync) + RunJob (async goroutine). Stages: discover → fingerprint → probe → parse → persist.",
+    "scan_pipeline": "Pipeline (scanner/pipeline.go) — CreateJob (sync) + RunJob (async goroutine). Stages: discover → fingerprint → probe → parse → persist. Chapter markers extracted inside transaction. Backfill chapter markers for existing files on rescan.",
     "file_watcher": "watcher/watcher.go — fsnotify recursive, 5s debounce, rename tracking. Config: VELOX_FILE_WATCHER=true.",
     "playback_strategy": "Direct Play → Direct Stream → Transcode Audio → Full Transcode. Admin override via app_settings.",
     "auth": "JWT (15min access + 7-day refresh + session_id), bcrypt cost 12, atomic refresh token rotation.",
-    "subtitle_search": "Multi-provider: Subdl (primary) → BSPlayer (hash-based) → Subscene (scraper fallback). OpenSubtitles disabled. Podnapisi available but often 429.",
-    "docker": "Multi-stage Dockerfile: Node 22 (frontend) → Go 1.24+GOTOOLCHAIN=auto (backend) → Alpine 3.21 (runtime). Nginx serves SPA + proxies /api/. Xvfb for Subscene scraper. PUID/PGID for Synology NAS."
+    "subtitle_search": "Multi-provider: OpenSubtitles (v2 if configured, legacy fallback) → Subdl → Podnapisi → BSPlayer. Subscene in AutoDownload Phase 2 only.",
+    "docker": "Multi-stage Dockerfile: Node 22 (frontend) → Go 1.24+GOTOOLCHAIN=auto (backend) → Alpine 3.21 (runtime). Nginx serves SPA + proxies /api/. chromaprint + Xvfb for scraper. PUID/PGID for Synology NAS."
   },
   "deployment": {
     "dockerfile": "Dockerfile (root)",
@@ -147,7 +167,8 @@
     "E": "Streaming Enhancement (3 phases: HW transcode, ABR HLS, Trickplay)",
     "F": "Admin Operations (3 phases)",
     "G": "Nice-to-have (3 phases)",
-    "J": "Netflix-style Series Grouping + URL Routing (4 phases)"
+    "J": "Netflix-style Series Grouping + URL Routing (4 phases)",
+    "K": "Intro/Credits Skip (4 phases: chapter, chromaprint, blackframe, player UX)"
   },
   "conventions": {
     "language": "Vietnamese in plans, English in code/commits",
