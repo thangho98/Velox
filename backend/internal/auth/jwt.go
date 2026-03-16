@@ -15,6 +15,7 @@ import (
 const (
 	AccessTokenExpiry  = 15 * time.Minute
 	RefreshTokenExpiry = 7 * 24 * time.Hour // 7 days
+	StreamTokenExpiry  = 2 * time.Hour
 )
 
 // Claims represents JWT claims
@@ -86,6 +87,22 @@ func (m *JWTManager) GenerateAccessToken(userID int64, isAdmin bool, sessionID i
 		},
 	}
 
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(m.secret)
+}
+
+// GenerateStreamToken creates a token for external player URLs (2-hour expiry).
+func (m *JWTManager) GenerateStreamToken(userID int64, isAdmin bool) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		UserID:  userID,
+		IsAdmin: isAdmin,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(StreamTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+		},
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(m.secret)
 }

@@ -12,6 +12,7 @@ import {
   useUploadMediaImage,
   useMediaGenres,
   useMediaCredits,
+  useStreamUrl,
 } from '@/hooks/stores/useMedia'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
@@ -25,7 +26,10 @@ import {
   LuCheck,
   LuPencil,
   LuLock,
+  LuLink,
 } from 'react-icons/lu'
+import { ActionMenu } from '@/components/ActionMenu'
+import type { ActionMenuItem } from '@/components/ActionMenu'
 import { tmdbImage } from '@/lib/image'
 import { MetadataEditor } from '@/components/metadata/MetadataEditor'
 
@@ -43,6 +47,8 @@ export function MediaDetailPage() {
   const { mutate: uploadImage, isPending: isUploadingImage } = useUploadMediaImage(mediaId)
   const { data: mediaGenres = [] } = useMediaGenres(mediaId)
   const { data: mediaCredits = [] } = useMediaCredits(mediaId)
+  const { mutate: getStreamUrl } = useStreamUrl(mediaId)
+  const [copied, setCopied] = useState(false)
   const { user } = useAuthStore()
   const { subtitleLanguage, setSubtitleLanguage } = usePlayerStore()
   const { data: subtitles = [] } = useSubtitles(mediaId)
@@ -268,33 +274,51 @@ export function MediaDetailPage() {
                   <LuHeart size={22} className={progress?.is_favorite ? 'fill-current' : ''} />
                 </button>
 
-                {user?.is_admin && (
-                  <>
-                    {media.media.metadata_locked && (
-                      <span
-                        className="flex items-center gap-1 rounded-full bg-amber-600/20 px-2 py-1 text-xs text-amber-400"
-                        title="Metadata locked — rescan won't override"
-                      >
-                        <LuLock size={12} /> Locked
-                      </span>
-                    )}
-                    <button
-                      onClick={() => setShowEditor(true)}
-                      className="p-2 text-gray-400 transition-colors hover:text-white"
-                      title="Edit metadata"
-                    >
-                      <LuPencil size={22} />
-                    </button>
-                    <button
-                      onClick={() => refreshMetadata()}
-                      disabled={isRefreshing}
-                      className="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-                      title="Refresh metadata"
-                    >
-                      <LuRefreshCw size={22} className={isRefreshing ? 'animate-spin' : ''} />
-                    </button>
-                  </>
+                {media.media.metadata_locked && (
+                  <span
+                    className="flex items-center gap-1 rounded-full bg-amber-600/20 px-2 py-1 text-xs text-amber-400"
+                    title="Metadata locked — rescan won't override"
+                  >
+                    <LuLock size={12} /> Locked
+                  </span>
                 )}
+
+                <ActionMenu
+                  isAdmin={user?.is_admin}
+                  items={
+                    [
+                      {
+                        label: copied ? 'Copied!' : 'Copy stream URL',
+                        icon: <LuLink size={16} className={copied ? 'text-green-400' : ''} />,
+                        onClick: () => {
+                          getStreamUrl(undefined, {
+                            onSuccess: (data) => {
+                              navigator.clipboard.writeText(data.direct_url)
+                              setCopied(true)
+                              setTimeout(() => setCopied(false), 2000)
+                            },
+                          })
+                        },
+                      },
+                      {
+                        label: 'Edit metadata',
+                        icon: <LuPencil size={16} />,
+                        onClick: () => setShowEditor(true),
+                        adminOnly: true,
+                        separator: true,
+                      },
+                      {
+                        label: 'Refresh metadata',
+                        icon: (
+                          <LuRefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                        ),
+                        onClick: () => refreshMetadata(),
+                        disabled: isRefreshing,
+                        adminOnly: true,
+                      },
+                    ] satisfies ActionMenuItem[]
+                  }
+                />
 
                 {/* Subtitle selector */}
                 {subtitles.length > 0 && (

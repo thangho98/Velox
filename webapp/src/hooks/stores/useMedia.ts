@@ -571,6 +571,16 @@ export function useUnlockMetadata(type: 'media' | 'series', id: number) {
   })
 }
 
+export function useStreamUrl(mediaId: number) {
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ direct_url: string; hls_url: string; token: string; expires_in: number }>(
+        `/stream/${mediaId}/url`,
+        {},
+      ),
+  })
+}
+
 export function useEditEpisodeMetadata(seriesId: number, seasonId: number) {
   const queryClient = useQueryClient()
   return useMutation({

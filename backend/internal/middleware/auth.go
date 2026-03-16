@@ -17,8 +17,9 @@ type AuthConfig struct {
 }
 
 // RequireAuth returns a middleware that requires valid JWT authentication.
+// If an APIKeyStore is provided, api_key query params are also accepted.
 // skipPaths are exact path matches; paths ending with "/*" are treated as prefix matches.
-func RequireAuth(jwtManager *auth.JWTManager, skipPaths ...string) func(http.Handler) http.Handler {
+func RequireAuth(jwtManager *auth.JWTManager, apiKeyStore *auth.APIKeyStore, skipPaths ...string) func(http.Handler) http.Handler {
 	skipMap := make(map[string]bool)
 	var skipPrefixes []string
 	for _, path := range skipPaths {
@@ -44,14 +45,25 @@ func RequireAuth(jwtManager *auth.JWTManager, skipPaths ...string) func(http.Han
 				}
 			}
 
-			// Extract token from Authorization header or query param
+			// Try api_key query param first (short keys for external players)
+			if apiKeyStore != nil {
+				if apiKey := r.URL.Query().Get("api_key"); apiKey != "" {
+					if entry := apiKeyStore.Validate(apiKey); entry != nil {
+						ctx := auth.ContextWithUser(r.Context(), entry.UserID, entry.IsAdmin)
+						next.ServeHTTP(w, r.WithContext(ctx))
+						return
+					}
+				}
+			}
+
+			// Extract JWT from Authorization header or token query param
 			token := extractToken(r)
 			if token == "" {
 				respondUnauthorized(w)
 				return
 			}
 
-			// Validate token
+			// Validate JWT
 			claims, err := jwtManager.ValidateToken(token)
 			if err != nil {
 				respondUnauthorized(w)

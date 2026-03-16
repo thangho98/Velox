@@ -121,6 +121,7 @@ func runServer() {
 		log.Fatalf("failed to initialize JWT: %v", err)
 	}
 	jwtManager := auth.NewJWTManager(jwtSecret)
+	apiKeyStore := auth.NewAPIKeyStore()
 
 	// Repositories
 	libraryRepo := repository.NewLibraryRepo(db)
@@ -475,6 +476,46 @@ func runServer() {
 		mux.HandleFunc("GET /api/images/local/{type}/{id}/{filename}", metadataHandler.ServeLocalImage)
 	}
 
+	// API routes - Stream URL (Jellyfin-style api_key for external players)
+	mux.HandleFunc("POST /api/stream/{id}/url", func(w http.ResponseWriter, r *http.Request) {
+		mediaID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"invalid id"}`)
+			return
+		}
+
+		userID, isAdmin, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, `{"error":"unauthorized"}`)
+			return
+		}
+
+		apiKey := apiKeyStore.Generate(userID, isAdmin)
+
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		host := r.Host
+
+		directURL := fmt.Sprintf("%s://%s/api/stream/%d?api_key=%s", scheme, host, mediaID, apiKey)
+		hlsURL := fmt.Sprintf("%s://%s/api/stream/%d/hls/master.m3u8?api_key=%s", scheme, host, mediaID, apiKey)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"direct_url": directURL,
+				"hls_url":    hlsURL,
+				"api_key":    apiKey,
+				"expires_in": int(auth.StreamTokenExpiry.Seconds()),
+			},
+		})
+	})
+
 	// API routes - Streaming
 	mux.HandleFunc("GET /api/stream/{id}", streamHandler.DirectPlay)
 	mux.HandleFunc("GET /api/stream/{id}/hls/master.m3u8", streamHandler.HLSMaster)
@@ -513,7 +554,7 @@ func runServer() {
 	mux.Handle("POST /api/media-files/{media_file_id}/audio-tracks/{track_id}/default", middleware.RequireAdmin(http.HandlerFunc(audioTrackHandler.SetDefault)))
 
 	// Auth middleware with paths that don't require auth
-	authMiddleware := middleware.RequireAuth(jwtManager,
+	authMiddleware := middleware.RequireAuth(jwtManager, apiKeyStore,
 		"/api/setup/status",
 		"/api/setup",
 		"/api/auth/login",
