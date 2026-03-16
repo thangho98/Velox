@@ -138,12 +138,15 @@ func runServer() {
 	personRepo := repository.NewPersonRepo(db)
 	activityRepo := repository.NewActivityRepo(db)
 	webhookRepo := repository.NewWebhookRepo(db)
+	markerRepo := repository.NewMediaMarkerRepo(db)
+	fpRepo := repository.NewAudioFingerprintRepo(db)
 
 	// Services
 	pipeline := scanner.NewPipeline(
 		db, libraryRepo, mediaRepo, mediaFileRepo,
 		seriesRepo, seasonRepo, episodeRepo,
 		scanJobRepo, subtitleRepo, audioTrackRepo,
+		markerRepo, // NEW: marker repo
 	)
 	// TMDb metadata enrichment (Phase 04)
 	appSettingsRepo := repository.NewAppSettingsRepo(db)
@@ -237,6 +240,7 @@ func runServer() {
 	userDataSvc := service.NewUserDataService(userDataRepo)
 	subtitleSvc := service.NewSubtitleService(subtitleRepo, mediaFileRepo)
 	audioTrackSvc := service.NewAudioTrackService(audioTrackRepo)
+	markerSvc := service.NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo)
 
 	// Plan F: Admin & Operations services
 	activitySvc := service.NewActivityService(activityRepo)
@@ -252,8 +256,8 @@ func runServer() {
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(authSvc)
 	profileHandler := handler.NewProfileHandler(authSvc, prefsRepo, userDataSvc)
-	playbackHandler := handler.NewPlaybackHandler(mediaSvc, streamSvc, userDataSvc, subtitleSvc, audioTrackSvc, prefsRepo, appSettingsRepo)
-	subtitleHandler := handler.NewSubtitleHandler(subtitleSvc, mediaFileRepo, cfg.SubtitleCachePath)
+	playbackHandler := handler.NewPlaybackHandler(mediaSvc, streamSvc, userDataSvc, subtitleSvc, audioTrackSvc, markerSvc, prefsRepo, appSettingsRepo)
+	subtitleHandler := handler.NewSubtitleHandler(subtitleSvc, mediaFileRepo, appSettingsRepo, cfg.SubtitleCachePath)
 	audioTrackHandler := handler.NewAudioTrackHandler(audioTrackSvc)
 	settingsHandler := handler.NewSettingsHandler(appSettingsRepo)
 	subtitleSearchSvc := service.NewSubtitleSearchService(mediaRepo, mediaFileRepo, subtitleRepo, appSettingsRepo, episodeRepo, seasonRepo, seriesRepo, cfg.SubtitleCachePath)
@@ -276,6 +280,7 @@ func runServer() {
 	activityHandler := handler.NewActivityHandler(activitySvc)
 	adminHandler := handler.NewAdminHandler(adminSvc)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc)
+	markerAdminHandler := handler.NewMarkerAdminHandler(markerSvc) // NEW: marker admin handler for backfill
 
 	// Router
 	mux := http.NewServeMux()
@@ -318,6 +323,8 @@ func runServer() {
 	mux.Handle("PUT /api/admin/settings/fanart", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdateFanart)))
 	mux.Handle("GET /api/admin/settings/subdl", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.GetSubdl)))
 	mux.Handle("PUT /api/admin/settings/subdl", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdateSubdl)))
+	mux.Handle("GET /api/admin/settings/deepl", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.GetDeepL)))
+	mux.Handle("PUT /api/admin/settings/deepl", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdateDeepL)))
 	mux.Handle("GET /api/admin/settings/auto-subtitles", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.GetAutoSubtitles)))
 	mux.Handle("PUT /api/admin/settings/auto-subtitles", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdateAutoSubtitles)))
 	mux.Handle("GET /api/admin/settings/playback", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.GetPlayback)))
@@ -334,6 +341,11 @@ func runServer() {
 	mux.Handle("POST /api/admin/webhooks", middleware.RequireAdmin(http.HandlerFunc(webhookHandler.Create)))
 	mux.Handle("PUT /api/admin/webhooks/{id}", middleware.RequireAdmin(http.HandlerFunc(webhookHandler.Update)))
 	mux.Handle("DELETE /api/admin/webhooks/{id}", middleware.RequireAdmin(http.HandlerFunc(webhookHandler.Delete)))
+
+	// Marker admin routes (Phase 04 - Fingerprint Backfill)
+	mux.Handle("GET /api/admin/markers/detectors", middleware.RequireAdmin(http.HandlerFunc(markerAdminHandler.ListDetectors)))
+	mux.Handle("POST /api/admin/markers/detect", middleware.RequireAdmin(http.HandlerFunc(markerAdminHandler.DetectWithDetector)))
+	mux.Handle("POST /api/admin/markers/backfill", middleware.RequireAdmin(http.HandlerFunc(markerAdminHandler.BackfillMarkers)))
 
 	// Library admin routes
 	mux.Handle("POST /api/libraries", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.Create)))
@@ -404,6 +416,7 @@ func runServer() {
 	mux.Handle("PATCH /api/subtitles/{id}", middleware.RequireAdmin(http.HandlerFunc(subtitleHandler.Update)))
 	mux.Handle("DELETE /api/subtitles/{id}", middleware.RequireAdmin(http.HandlerFunc(subtitleHandler.Delete)))
 	mux.Handle("POST /api/media-files/{media_file_id}/subtitles/{subtitle_id}/default", middleware.RequireAdmin(http.HandlerFunc(subtitleHandler.SetDefault)))
+	mux.HandleFunc("POST /api/subtitles/{id}/translate", subtitleHandler.Translate)
 
 	// API routes - Subtitle Search (external providers)
 	mux.HandleFunc("GET /api/media/{id}/subtitles/search", subtitleSearchHandler.Search)

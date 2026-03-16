@@ -33,6 +33,10 @@ interface SubdlSettings {
   api_key: string
 }
 
+interface DeepLSettings {
+  api_key: string
+}
+
 interface PlaybackSettings {
   playback_mode: 'auto' | 'direct_play'
 }
@@ -49,6 +53,7 @@ const settingsKeys = {
   tvdb: () => [...settingsKeys.all, 'tvdb'] as const,
   fanart: () => [...settingsKeys.all, 'fanart'] as const,
   subdl: () => [...settingsKeys.all, 'subdl'] as const,
+  deepl: () => [...settingsKeys.all, 'deepl'] as const,
   playback: () => [...settingsKeys.all, 'playback'] as const,
   autoSub: () => [...settingsKeys.all, 'auto-subtitles'] as const,
 }
@@ -158,6 +163,24 @@ export function useUpdateSubdlSettings() {
     mutationFn: (data: SubdlSettings) => api.put<SubdlSettings>('/admin/settings/subdl', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.subdl() })
+    },
+  })
+}
+
+export function useDeepLSettings() {
+  return useQuery({
+    queryKey: settingsKeys.deepl(),
+    queryFn: () => api.get<DeepLSettings>('/admin/settings/deepl'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useUpdateDeepLSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: DeepLSettings) => api.put<DeepLSettings>('/admin/settings/deepl', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: settingsKeys.deepl() })
     },
   })
 }

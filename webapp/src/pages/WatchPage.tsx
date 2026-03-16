@@ -51,6 +51,7 @@ import { useToast } from '@/components/Toast'
 import { WatchDetailSheet } from '@/components/watch/WatchDetailSheet'
 import { WatchPlaybackStatsOverlay } from '@/components/watch/WatchPlaybackStatsOverlay'
 import { WatchTopBar } from '@/components/watch/WatchTopBar'
+import { SkipIntroCredits } from '@/components/watch/SkipIntroCredits'
 import {
   DETAIL_PANEL_ANIMATION_MS,
   formatChannelLayout,
@@ -105,7 +106,7 @@ export function WatchPage() {
   const progressBarRef = useRef<HTMLDivElement>(null)
   const seasonCarouselRef = useRef<HTMLDivElement>(null)
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastProgressUpdate = useRef(Date.now())
+  const lastProgressUpdate = useRef(0)
   const seekFeedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qualityIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lowBandwidthToastShown = useRef(false)
@@ -358,13 +359,17 @@ export function WatchPage() {
   // Screen lock
   const [isLocked, setIsLocked] = useState(false)
 
-  // Up Next
+  // Up Next — trigger when credits start (Netflix-style) or fallback to 90%
   const [upNextDismissed, setUpNextDismissed] = useState(false)
+  const creditsSegment = playbackInfo?.skip_segments?.find((s) => s.type === 'credits')
+  const upNextThreshold = creditsSegment
+    ? creditsSegment.start // Credits detected → show at credits start
+    : duration * 0.9 // No credits → fallback to 90%
   const showUpNext =
     isEpisode &&
     nextEpisodeMediaId != null &&
     duration > 0 &&
-    currentTime / duration > 0.88 &&
+    currentTime >= upNextThreshold &&
     !upNextDismissed
 
   // ── Callbacks ──────────────────────────────────────────────────────────────
@@ -555,13 +560,14 @@ export function WatchPage() {
       : rawUrl
 
     if (useHls && (streamUrls.abr || streamUrls.hls) && Hls.isSupported()) {
-      const token = accessToken
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 600,
         enableWorker: true,
         xhrSetup: (xhr) => {
-          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+          // Read fresh token on every request — prevents 401 when token refreshes during playback
+          const freshToken = useAuthStore.getState().accessToken
+          if (freshToken) xhr.setRequestHeader('Authorization', `Bearer ${freshToken}`)
         },
       })
       hlsRef.current = hls
@@ -649,7 +655,9 @@ export function WatchPage() {
         hlsRef.current = null
       }
     }
-  }, [streamUrls, playbackInfo?.method, accessToken, audioLanguage])
+    // Note: accessToken intentionally excluded — token refresh must NOT restart video.
+    // HLS uses useAuthStore.getState() for fresh tokens per-request.
+  }, [streamUrls, playbackInfo?.method, audioLanguage])
 
   // Resume position is read from usePlayerStore.getState().lastPositions[mediaId]
   // directly in the HLS init effect — no cross-effect refs needed.
@@ -660,7 +668,7 @@ export function WatchPage() {
     video.volume = volume
     video.muted = isMuted
     video.playbackRate = playbackRate
-  }, [volume, isMuted, playbackRate])
+  }, [volume, isMuted, playbackRate, streamUrls]) // streamUrls ensures re-sync after video remount
 
   useEffect(() => {
     const video = videoRef.current
@@ -956,18 +964,10 @@ export function WatchPage() {
       {/* Quality indicator */}
       {showQualityIndicator && availableLevels.length > 0 && (
         <div className="pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1 text-sm text-white/90">
-          {(() => {
-            const h = availableLevels.find(
-              (l) =>
-                l.level === (currentLevel === -1 ? hlsRef.current?.currentLevel : currentLevel),
-            )?.height
-            return (
-              <>
-                {h ? `${h}p` : 'Auto'}
-                {bandwidth !== null && ` · ${bandwidth.toFixed(1)} Mbps`}
-              </>
-            )
-          })()}
+          {availableLevels.find((l) => l.level === currentLevel)?.height
+            ? `${availableLevels.find((l) => l.level === currentLevel)?.height}p`
+            : 'Auto'}
+          {bandwidth !== null && ` · ${bandwidth.toFixed(1)} Mbps`}
         </div>
       )}
 
@@ -992,7 +992,7 @@ export function WatchPage() {
       {/* Up Next card */}
       {showUpNext && (
         <div
-          className="absolute bottom-44 right-6 z-20 w-64 rounded-xl bg-[#1e1e1e] p-4 shadow-2xl ring-1 ring-white/10"
+          className="absolute bottom-56 right-6 z-20 w-64 rounded-xl bg-[#1e1e1e] p-4 shadow-2xl ring-1 ring-white/10"
           onClick={(e) => e.stopPropagation()}
         >
           <p className="mb-1 text-xs text-white/50">Up next</p>
@@ -1013,6 +1013,19 @@ export function WatchPage() {
           </div>
         </div>
       )}
+
+      {/* Skip Intro/Credits CTA */}
+      <SkipIntroCredits
+        segments={playbackInfo?.skip_segments}
+        currentTime={currentTime}
+        onSkip={(toTime) => {
+          if (videoRef.current) {
+            videoRef.current.currentTime = toTime
+          }
+        }}
+        visible
+        hideCredits={isEpisode && nextEpisodeMediaId != null}
+      />
 
       {/* Screen lock overlay */}
       {isLocked && (
@@ -1172,7 +1185,7 @@ export function WatchPage() {
                           allowImageSubtitles={allowsImageSubtitles}
                           mediaId={mediaId}
                           onSubtitleAdded={() => {
-                            queryClient.invalidateQueries({ queryKey: streamingKeys.all })
+                            queryClient.refetchQueries({ queryKey: streamingKeys.all })
                           }}
                         />
                       </div>

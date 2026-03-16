@@ -9,6 +9,28 @@ interface WatchPlaybackStatsOverlayProps {
   videoRef: RefObject<HTMLVideoElement | null>
 }
 
+function MethodBadge({ method }: { method: string }) {
+  const colors: Record<string, string> = {
+    DirectPlay: 'bg-green-500/20 text-green-400',
+    DirectStream: 'bg-blue-500/20 text-blue-400',
+    TranscodeAudio: 'bg-yellow-500/20 text-yellow-400',
+    FullTranscode: 'bg-red-500/20 text-red-400',
+  }
+  const labels: Record<string, string> = {
+    DirectPlay: 'Direct Play',
+    DirectStream: 'Direct Stream',
+    TranscodeAudio: 'Transcode Audio',
+    FullTranscode: 'Full Transcode',
+  }
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${colors[method] ?? 'bg-white/10 text-white/60'}`}
+    >
+      {labels[method] ?? method}
+    </span>
+  )
+}
+
 export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay({
   onClose,
   playbackInfo,
@@ -18,6 +40,9 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
     playbackInfo.audio_tracks?.find((t) => t.selected) ??
     playbackInfo.audio_tracks?.find((t) => t.is_default) ??
     playbackInfo.audio_tracks?.[0]
+
+  const isTranscoding =
+    playbackInfo.method === 'FullTranscode' || playbackInfo.method === 'TranscodeAudio'
 
   return (
     <div className="absolute left-4 top-20 z-30 w-80 overflow-hidden rounded-xl bg-black/70 backdrop-blur-md ring-1 ring-white/10">
@@ -29,108 +54,105 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
       </button>
 
       <div className="space-y-0">
+        {/* Playback Method */}
         <div className="border-b border-white/10 px-4 py-3">
-          <p className="mb-2 text-sm font-bold text-white">Stream</p>
-          <p className="font-mono text-xs leading-relaxed text-white/80">
-            {playbackInfo.container?.toUpperCase() || '—'}
-            {playbackInfo.bitrate > 0 &&
-              ` (${playbackInfo.bitrate >= 1000 ? `${(playbackInfo.bitrate / 1000).toFixed(1)} mbps` : `${playbackInfo.bitrate} kbps`})`}
+          <div className="mb-2 flex items-center gap-2">
+            <p className="text-sm font-bold text-white">Playback</p>
+            <MethodBadge method={playbackInfo.method} />
+          </div>
+          <p className="font-mono text-xs leading-relaxed text-white/60">
+            {playbackInfo.decision_reason}
           </p>
-          {playbackInfo.method === 'DirectPlay' && (
-            <p className="font-mono text-xs leading-relaxed text-white/80">
-              <span className="text-white/50">→ </span>Direct Play
-            </p>
-          )}
-          {playbackInfo.method !== 'DirectPlay' && (
-            <p className="font-mono text-xs leading-relaxed text-white/80">
-              <span className="text-white/50">→ </span>
-              HLS
-              {playbackInfo.estimated_bitrate > 0
-                ? ` (${playbackInfo.estimated_bitrate >= 1000 ? `${(playbackInfo.estimated_bitrate / 1000).toFixed(1)} mbps` : `${playbackInfo.estimated_bitrate} kbps`})`
-                : playbackInfo.bitrate > 0
-                  ? ` (${playbackInfo.bitrate >= 1000 ? `${(playbackInfo.bitrate / 1000).toFixed(1)} mbps` : `${playbackInfo.bitrate} kbps`})`
-                  : ''}
-            </p>
-          )}
-          {playbackInfo.method === 'TranscodeAudio' && (
-            <p className="mt-1 text-[11px] text-white/50">Converting audio to compatible codec</p>
-          )}
         </div>
 
+        {/* Video */}
         <div className="border-b border-white/10 px-4 py-3">
-          <p className="mb-2 text-sm font-bold text-white">Video</p>
+          <div className="mb-2 flex items-center gap-2">
+            <p className="text-sm font-bold text-white">Video</p>
+            {playbackInfo.method === 'FullTranscode' ? (
+              <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-400">
+                Transcoding
+              </span>
+            ) : (
+              <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-green-400">
+                Direct
+              </span>
+            )}
+          </div>
           <p className="font-mono text-xs leading-relaxed text-white/80">
-            {playbackInfo.height > 0 ? `${playbackInfo.height}p` : '—'}{' '}
-            {playbackInfo.video_codec?.toUpperCase() || ''}
+            {playbackInfo.video_codec?.toUpperCase() || '—'}{' '}
+            {playbackInfo.height > 0 && `${playbackInfo.width}×${playbackInfo.height}`}
+            {playbackInfo.video_profile && ` ${playbackInfo.video_profile}`}
+            {playbackInfo.video_level > 0 && ` L${playbackInfo.video_level}`}
           </p>
-          <p className="font-mono text-xs leading-relaxed text-white/80">
-            {playbackInfo.video_profile && `${playbackInfo.video_profile} `}
-            {playbackInfo.video_level > 0 && `${playbackInfo.video_level} `}
+          <p className="font-mono text-xs leading-relaxed text-white/60">
             {playbackInfo.bitrate > 0 &&
-              `${playbackInfo.bitrate >= 1000 ? `${(playbackInfo.bitrate / 1000).toFixed(0)} mbps` : `${playbackInfo.bitrate} kbps`} `}
-            {(() => {
-              if (playbackInfo.video_fps > 0) {
-                return `${Number.isInteger(playbackInfo.video_fps) ? playbackInfo.video_fps : playbackInfo.video_fps.toFixed(3)} fps`
-              }
-              const video = videoRef.current
-              if (video && 'getVideoPlaybackQuality' in video && video.currentTime > 2) {
-                const quality = video.getVideoPlaybackQuality()
-                if (quality.totalVideoFrames > 0) {
-                  return `${(quality.totalVideoFrames / video.currentTime).toFixed(3)} fps`
-                }
-              }
-              return ''
-            })()}
+              `${playbackInfo.bitrate >= 1000 ? `${(playbackInfo.bitrate / 1000).toFixed(1)} Mbps` : `${playbackInfo.bitrate} Kbps`}`}
+            {playbackInfo.video_fps > 0 &&
+              ` · ${Number.isInteger(playbackInfo.video_fps) ? playbackInfo.video_fps : playbackInfo.video_fps.toFixed(2)} fps`}
           </p>
-          {playbackInfo.method === 'FullTranscode' && (
-            <p className="font-mono text-xs leading-relaxed text-white/80">
-              <span className="text-white/50">→ </span>
-              Transcode ({playbackInfo.video_codec?.toUpperCase() || 'H264'}
-              {playbackInfo.estimated_bitrate > 0 &&
-                ` ${playbackInfo.estimated_bitrate >= 1000 ? `${(playbackInfo.estimated_bitrate / 1000).toFixed(0)} mbps` : `${playbackInfo.estimated_bitrate} kbps`}`}
-              )
-            </p>
-          )}
-          {(playbackInfo.method === 'DirectPlay' ||
-            playbackInfo.method === 'DirectStream' ||
-            playbackInfo.method === 'TranscodeAudio') && (
-            <p className="font-mono text-xs leading-relaxed text-white/80">
-              <span className="text-white/50">→ </span>Direct Play
-            </p>
-          )}
-          <p className="mt-1.5 font-mono text-xs text-white/80">
-            Dropped Frames{' '}
+          <p className="mt-1 font-mono text-xs text-white/60">
+            Dropped:{' '}
             <span
-              className={(() => {
-                const dropped =
-                  videoRef.current?.getVideoPlaybackQuality?.()?.droppedVideoFrames ?? 0
-                return dropped > 0 ? 'text-yellow-400' : 'text-white/80'
-              })()}
+              className={
+                (videoRef.current?.getVideoPlaybackQuality?.()?.droppedVideoFrames ?? 0) > 0
+                  ? 'text-yellow-400'
+                  : 'text-white/60'
+              }
             >
               {videoRef.current?.getVideoPlaybackQuality?.()?.droppedVideoFrames ?? 0}
             </span>
           </p>
         </div>
 
+        {/* Audio */}
         {selectedAudio && (
-          <div className="px-4 py-3">
-            <p className="mb-2 text-sm font-bold text-white">Audio</p>
+          <div className="border-b border-white/10 px-4 py-3">
+            <div className="mb-2 flex items-center gap-2">
+              <p className="text-sm font-bold text-white">Audio</p>
+              {isTranscoding ? (
+                <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-yellow-400">
+                  Transcoding
+                </span>
+              ) : (
+                <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-green-400">
+                  Direct
+                </span>
+              )}
+            </div>
             <p className="font-mono text-xs leading-relaxed text-white/80">
-              {selectedAudio.language || 'Unknown'} {selectedAudio.codec?.toUpperCase() || ''}{' '}
+              {selectedAudio.codec?.toUpperCase() || '—'}{' '}
               {formatChannelLayout(selectedAudio.channels)}
+              {selectedAudio.language && ` · ${selectedAudio.language}`}
               {selectedAudio.is_default && ' (Default)'}
             </p>
-            <p className="font-mono text-xs leading-relaxed text-white/80">
+            <p className="font-mono text-xs leading-relaxed text-white/60">
               {selectedAudio.bitrate > 0 &&
-                `${selectedAudio.bitrate >= 1000 ? `${Math.round(selectedAudio.bitrate / 1000)} kbps` : `${selectedAudio.bitrate} bps`} `}
-              {selectedAudio.sample_rate > 0 && `${selectedAudio.sample_rate} Hz`}
+                `${selectedAudio.bitrate >= 1000 ? `${Math.round(selectedAudio.bitrate / 1000)} Kbps` : `${selectedAudio.bitrate} bps`}`}
+              {selectedAudio.sample_rate > 0 && ` · ${selectedAudio.sample_rate} Hz`}
             </p>
-            {(playbackInfo.method === 'FullTranscode' ||
-              playbackInfo.method === 'TranscodeAudio') && (
-              <p className="mt-1 text-[11px] text-white/50">Audio is being transcoded</p>
-            )}
           </div>
         )}
+
+        {/* Stream Info */}
+        <div className="px-4 py-3">
+          <p className="mb-2 text-sm font-bold text-white">Stream</p>
+          <p className="font-mono text-xs leading-relaxed text-white/80">
+            {playbackInfo.method === 'DirectPlay' ? 'HTTP Range' : 'HLS'}
+            {' · '}
+            {playbackInfo.container?.toUpperCase() || '—'}
+            {playbackInfo.file_size > 0 &&
+              ` · ${(playbackInfo.file_size / (1024 * 1024 * 1024)).toFixed(1)} GB`}
+          </p>
+          {playbackInfo.estimated_bitrate > 0 && isTranscoding && (
+            <p className="font-mono text-xs leading-relaxed text-white/60">
+              Estimated:{' '}
+              {playbackInfo.estimated_bitrate >= 1000
+                ? `${(playbackInfo.estimated_bitrate / 1000).toFixed(1)} Mbps`
+                : `${playbackInfo.estimated_bitrate} Kbps`}
+            </p>
+          )}
+        </div>
 
         <div className="border-t border-white/10 px-4 py-2.5">
           <button
@@ -138,7 +160,7 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
             className="flex items-center gap-1.5 text-xs text-white/60 transition-colors hover:text-white"
           >
             <LuActivity size={13} />
-            Close Playback Info
+            Close
           </button>
         </div>
       </div>

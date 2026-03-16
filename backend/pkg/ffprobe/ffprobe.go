@@ -24,6 +24,7 @@ type ProbeResult struct {
 	HasSub       bool
 	AudioTracks  []AudioTrackInfo
 	Subtitles    []SubtitleInfo
+	Chapters     []ChapterInfo // NEW: chapter markers for intro/credits skip
 }
 
 // AudioTrackInfo contains detailed audio track metadata
@@ -50,10 +51,19 @@ type SubtitleInfo struct {
 	IsSDH       bool // Hearing impaired
 }
 
+// ChapterInfo contains chapter metadata from ffprobe
+type ChapterInfo struct {
+	ID        int
+	StartTime float64 // seconds
+	EndTime   float64 // seconds
+	Title     string
+}
+
 // DetailedProbeResult contains full ffprobe output
 type DetailedProbeResult struct {
-	Format  FormatInfo   `json:"format"`
-	Streams []StreamInfo `json:"streams"`
+	Format   FormatInfo   `json:"format"`
+	Streams  []StreamInfo `json:"streams"`
+	Chapters []Chapter    `json:"chapters"`
 }
 
 // FormatInfo from ffprobe
@@ -96,6 +106,22 @@ type Disposition struct {
 	HearingImpaired int `json:"hearing_impaired"`
 }
 
+// Chapter from ffprobe chapters output
+type Chapter struct {
+	ID        int         `json:"id"`
+	TimeBase  string      `json:"time_base"`
+	Start     int64       `json:"start"`
+	End       int64       `json:"end"`
+	StartTime string      `json:"start_time"`
+	EndTime   string      `json:"end_time"`
+	Tags      ChapterTags `json:"tags"`
+}
+
+// ChapterTags contains chapter metadata
+type ChapterTags struct {
+	Title string `json:"title"`
+}
+
 // Probe runs ffprobe on the given file and returns parsed metadata.
 func Probe(path string) (*ProbeResult, error) {
 	cmd := exec.Command("ffprobe",
@@ -103,6 +129,7 @@ func Probe(path string) (*ProbeResult, error) {
 		"-print_format", "json",
 		"-show_format",
 		"-show_streams",
+		"-show_chapters", // NEW: extract chapter markers
 		path,
 	)
 
@@ -118,6 +145,7 @@ func Probe(path string) (*ProbeResult, error) {
 
 	r := &ProbeResult{
 		Container: detailed.Format.Name,
+		Chapters:  parseChapters(detailed.Chapters), // NEW: parse chapters
 	}
 
 	if v, err := strconv.ParseFloat(detailed.Format.Duration, 64); err != nil {
@@ -260,4 +288,49 @@ func IsImageBasedSubtitle(codec string) bool {
 		}
 	}
 	return false
+}
+
+// parseChapters converts ffprobe chapter data to ChapterInfo
+func parseChapters(chapters []Chapter) []ChapterInfo {
+	if len(chapters) == 0 {
+		return nil
+	}
+
+	result := make([]ChapterInfo, 0, len(chapters))
+	for _, c := range chapters {
+		info := ChapterInfo{
+			ID:    c.ID,
+			Title: c.Tags.Title,
+		}
+
+		// Parse start_time and end_time (in seconds)
+		if c.StartTime != "" {
+			info.StartTime, _ = strconv.ParseFloat(c.StartTime, 64)
+		} else if c.TimeBase != "" && c.Start > 0 {
+			// Fallback: calculate from time_base and start ticks
+			info.StartTime = parseTimeBase(c.TimeBase, c.Start)
+		}
+		if c.EndTime != "" {
+			info.EndTime, _ = strconv.ParseFloat(c.EndTime, 64)
+		} else if c.TimeBase != "" && c.End > 0 {
+			info.EndTime = parseTimeBase(c.TimeBase, c.End)
+		}
+
+		result = append(result, info)
+	}
+	return result
+}
+
+// parseTimeBase converts time base (e.g., "1/1000") and ticks to seconds
+func parseTimeBase(timeBase string, ticks int64) float64 {
+	parts := strings.SplitN(timeBase, "/", 2)
+	if len(parts) != 2 {
+		return 0
+	}
+	num, err1 := strconv.ParseFloat(parts[0], 64)
+	den, err2 := strconv.ParseFloat(parts[1], 64)
+	if err1 != nil || err2 != nil || den == 0 {
+		return 0
+	}
+	return float64(ticks) * num / den
 }

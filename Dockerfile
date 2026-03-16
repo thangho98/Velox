@@ -50,6 +50,7 @@ LABEL org.opencontainers.image.description="Self-hosted home media server"
 #   su-exec         — run as non-root (lightweight gosu alternative)
 RUN apk add --no-cache \
     ffmpeg \
+    chromaprint \
     python3 \
     py3-pip \
     chromium \

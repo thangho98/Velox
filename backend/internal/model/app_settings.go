@@ -46,6 +46,11 @@ const (
 	SettingAutoSubLanguages = "auto_sub_languages"
 )
 
+// Known setting keys for subtitle translation.
+const (
+	SettingDeepLAPIKey = "deepl_api_key"
+)
+
 // Known setting keys for playback policy.
 const (
 	// SettingPlaybackMode controls server-wide playback behavior.

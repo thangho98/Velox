@@ -15,6 +15,7 @@ import (
 	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/pkg/bsplayer"
 	"github.com/thawng/velox/pkg/opensubs"
+	"github.com/thawng/velox/pkg/opensubslegacy"
 	"github.com/thawng/velox/pkg/podnapisi"
 	"github.com/thawng/velox/pkg/subdl"
 	"github.com/thawng/velox/pkg/subprovider"
@@ -123,17 +124,52 @@ func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang 
 
 	var results []subprovider.Result
 
-	// OpenSubtitles — disabled: requires VIP subscription for media server apps.
-	// Re-enable by uncommenting the block below when a VIP API key is available.
-	// osClient, err := s.buildOpenSubsClient(ctx)
-	// if err == nil && osClient != nil {
-	// 	osParams := opensubs.SearchParams{Query: query, Language: lang}
-	// 	if media.ImdbID != nil && *media.ImdbID != "" { osParams.ImdbID = *media.ImdbID }
-	// 	if media.TmdbID != nil && *media.TmdbID > 0 { osParams.TmdbID = int(*media.TmdbID) }
-	// 	if year := extractYear(media.ReleaseDate); year > 0 { osParams.Year = year }
-	// 	osResults, osErr := osClient.Search(ctx, osParams)
-	// 	if osErr == nil { results = append(results, osResults...) }
-	// }
+	// OpenSubtitles — use REST v2 if user configured API key, otherwise use legacy API (no key needed)
+	osClient, osErr := s.buildOpenSubsClient(ctx)
+	if osErr == nil && osClient != nil {
+		// REST v2 (user has configured API key + credentials)
+		osParams := opensubs.SearchParams{Query: query, Language: lang}
+		if media.ImdbID != nil && *media.ImdbID != "" {
+			osParams.ImdbID = *media.ImdbID
+		}
+		if media.TmdbID != nil && *media.TmdbID > 0 {
+			osParams.TmdbID = int(*media.TmdbID)
+		}
+		if year := extractYear(media.ReleaseDate); year > 0 {
+			osParams.Year = year
+		}
+		osResults, err := osClient.Search(ctx, osParams)
+		if err != nil {
+			log.Printf("opensubtitles v2 search error: %v", err)
+		} else {
+			results = append(results, osResults...)
+		}
+	} else {
+		// Legacy API (no key needed, search by IMDB ID)
+		imdbID := ""
+		if media.ImdbID != nil {
+			imdbID = *media.ImdbID
+		}
+		if epInfo != nil && epInfo.seriesImdbID != "" {
+			imdbID = epInfo.seriesImdbID
+		}
+		if imdbID != "" {
+			legacyParams := opensubslegacy.SearchParams{
+				ImdbID:   imdbID,
+				Language: lang,
+			}
+			if epInfo != nil {
+				legacyParams.SeasonNumber = epInfo.seasonNumber
+				legacyParams.EpisodeNumber = epInfo.episodeNumber
+			}
+			legacyResults, err := opensubslegacy.New().Search(ctx, legacyParams)
+			if err != nil {
+				log.Printf("opensubtitles legacy search error: %v", err)
+			} else {
+				results = append(results, legacyResults...)
+			}
+		}
+	}
 
 	// Subdl (if configured)
 	subdlClient, err := s.buildSubdlClient(ctx)
@@ -223,11 +259,13 @@ func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, pro
 
 	switch provider {
 	case "opensubtitles":
-		osClient, err := s.buildOpenSubsClient(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("opensubtitles not configured: %w", err)
+		// Try REST v2 first (if configured), fall back to legacy API
+		osClient, osErr := s.buildOpenSubsClient(ctx)
+		if osErr == nil && osClient != nil {
+			data, filename, err = osClient.Download(ctx, externalID)
+		} else {
+			data, filename, err = opensubslegacy.New().Download(ctx, externalID)
 		}
-		data, filename, err = osClient.Download(ctx, externalID)
 		if err != nil {
 			return nil, fmt.Errorf("downloading from opensubtitles: %w", err)
 		}

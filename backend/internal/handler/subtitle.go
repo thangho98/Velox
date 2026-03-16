@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/thawng/velox/internal/model"
@@ -18,13 +20,15 @@ import (
 type SubtitleHandler struct {
 	svc           *service.SubtitleService
 	mediaFileRepo *repository.MediaFileRepo // resolves video path for embedded sub extraction
-	subtitleCache string                    // base dir for extracted VTT files; e.g. ~/.velox/subtitles
+	settingsRepo  *repository.AppSettingsRepo
+	subtitleCache string // base dir for extracted VTT files; e.g. ~/.velox/subtitles
 }
 
-func NewSubtitleHandler(svc *service.SubtitleService, mediaFileRepo *repository.MediaFileRepo, subtitleCache string) *SubtitleHandler {
+func NewSubtitleHandler(svc *service.SubtitleService, mediaFileRepo *repository.MediaFileRepo, settingsRepo *repository.AppSettingsRepo, subtitleCache string) *SubtitleHandler {
 	return &SubtitleHandler{
 		svc:           svc,
 		mediaFileRepo: mediaFileRepo,
+		settingsRepo:  settingsRepo,
 		subtitleCache: subtitleCache,
 	}
 }
@@ -261,6 +265,39 @@ func (h *SubtitleHandler) SetDefault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "default set"})
+}
+
+// Translate translates a subtitle to a target language using DeepL (primary) or Google (fallback).
+// POST /api/subtitles/{id}/translate
+func (h *SubtitleHandler) Translate(w http.ResponseWriter, r *http.Request) {
+	subtitleID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid subtitle id")
+		return
+	}
+
+	var req struct {
+		TargetLanguage string `json:"target_language"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.TargetLanguage == "" {
+		respondError(w, http.StatusBadRequest, "target_language required")
+		return
+	}
+
+	// Get DeepL API key from settings (optional — falls back to Google if empty)
+	deeplKey, _ := h.settingsRepo.Get(r.Context(), model.SettingDeepLAPIKey)
+
+	sub, err := h.svc.TranslateSubtitle(r.Context(), subtitleID, req.TargetLanguage, deeplKey, h.subtitleCache)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, sub)
 }
 
 // AudioTrackHandler handles audio track HTTP requests

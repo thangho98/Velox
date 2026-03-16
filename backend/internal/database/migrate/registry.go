@@ -114,6 +114,18 @@ func All() []Migration {
 			Up:      up018,
 			Down:    down018,
 		},
+		{
+			Version: 19,
+			Name:    "media_markers",
+			Up:      up019,
+			Down:    down019,
+		},
+		{
+			Version: 20,
+			Name:    "audio_fingerprints",
+			Up:      up020,
+			Down:    down020,
+		},
 	}
 }
 
@@ -648,4 +660,67 @@ func down018(tx *sql.Tx) error {
 	// SQLite doesn't support DROP COLUMN before 3.35.0; recreate would be needed.
 	// For simplicity, these columns are harmless if left.
 	return nil
+}
+
+// 019: Media markers for intro/credits skip (chapter-based, fingerprint-based, or manual)
+func up019(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE media_markers (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			media_file_id   INTEGER NOT NULL REFERENCES media_files(id) ON DELETE CASCADE,
+			marker_type     TEXT NOT NULL CHECK (marker_type IN ('intro','credits')),
+			start_sec       REAL NOT NULL,
+			end_sec         REAL NOT NULL,
+			source          TEXT NOT NULL CHECK (source IN ('chapter','fingerprint','manual')),
+			confidence      REAL NOT NULL DEFAULT 1.0,
+			label           TEXT NOT NULL DEFAULT '',
+			created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+			-- Validation: start must be >= 0, end must be > start
+			CONSTRAINT valid_start CHECK (start_sec >= 0),
+			CONSTRAINT valid_end CHECK (end_sec > start_sec)
+		);
+
+		-- Unique constraint: same file + type + source + exact same segment
+		CREATE UNIQUE INDEX idx_marker_unique
+			ON media_markers(media_file_id, marker_type, source, start_sec, end_sec);
+
+		-- Lookup index for querying markers by file and type
+		CREATE INDEX idx_marker_lookup
+			ON media_markers(media_file_id, marker_type);
+
+		-- Index for source-based queries (e.g., delete all chapter markers for rebuild)
+		CREATE INDEX idx_marker_source
+			ON media_markers(media_file_id, source);
+	`)
+	return err
+}
+
+func down019(tx *sql.Tx) error {
+	_, err := tx.Exec(`DROP TABLE IF EXISTS media_markers;`)
+	return err
+}
+
+// 020: Audio fingerprints cache for chromaprint-based intro/credits detection.
+func up020(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE audio_fingerprints (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			media_file_id   INTEGER NOT NULL REFERENCES media_files(id) ON DELETE CASCADE,
+			region          TEXT NOT NULL CHECK (region IN ('intro_region','credits_region')),
+			fingerprint     BLOB NOT NULL,
+			duration_sec    REAL NOT NULL,
+			sample_count    INTEGER NOT NULL DEFAULT 0,
+			created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(media_file_id, region)
+		);
+		CREATE INDEX idx_afp_mediafile ON audio_fingerprints(media_file_id);
+	`)
+	return err
+}
+
+func down020(tx *sql.Tx) error {
+	_, err := tx.Exec(`DROP TABLE IF EXISTS audio_fingerprints;`)
+	return err
 }

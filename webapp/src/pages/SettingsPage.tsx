@@ -60,6 +60,8 @@ import {
   useBulkRefreshRatings,
   useSubdlSettings,
   useUpdateSubdlSettings,
+  useDeepLSettings,
+  useUpdateDeepLSettings,
   usePlaybackSettings,
   useUpdatePlaybackSettings,
   useAutoSubSettings,
@@ -1007,6 +1009,9 @@ function SubtitlesSection() {
       {/* Subdl */}
       <SubdlCard />
 
+      {/* DeepL Translation */}
+      <DeepLCard />
+
       {/* Auto-Download */}
       <AutoSubCard />
     </div>
@@ -1057,6 +1062,77 @@ function SubdlCard() {
             placeholder="Your Subdl API key"
             className={inputClass}
           />
+        </div>
+        <button
+          type="submit"
+          disabled={isSaving}
+          className="flex items-center gap-2 rounded bg-netflix-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-netflix-red-hover disabled:opacity-50"
+        >
+          {saved ? (
+            <>
+              <LuCheck size={14} /> Saved
+            </>
+          ) : (
+            <>
+              <LuSave size={14} /> {isSaving ? 'Saving...' : 'Save'}
+            </>
+          )}
+        </button>
+      </form>
+    </div>
+  )
+}
+
+function DeepLCard() {
+  const { data: settings, isLoading } = useDeepLSettings()
+  const { mutate: updateSettings, isPending: isSaving } = useUpdateDeepLSettings()
+  const [editedApiKey, setEditedApiKey] = useState<string | null>(null)
+  const apiKey = editedApiKey ?? settings?.api_key ?? ''
+  const [saved, setSaved] = useState(false)
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault()
+    updateSettings(
+      { api_key: apiKey },
+      {
+        onSuccess: () => {
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2000)
+        },
+      },
+    )
+  }
+
+  if (isLoading) return <Spinner />
+
+  return (
+    <div className="rounded-lg bg-netflix-dark p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-white">Subtitle Translation</h3>
+        <span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] font-medium text-blue-400">
+          {settings?.api_key ? 'DeepL' : 'Google Translate'}
+        </span>
+      </div>
+      <p className="mb-5 text-xs text-gray-400">
+        Auto-translate subtitles on-demand. Uses Google Translate (free) by default. Add a DeepL API
+        key for higher quality translations (500K chars/month free).
+      </p>
+
+      <form onSubmit={handleSave} className="space-y-4">
+        <div>
+          <span className="mb-1.5 block text-xs font-medium text-gray-300">
+            DeepL API Key (optional)
+          </span>
+          <input
+            type="text"
+            value={apiKey}
+            onChange={(e) => setEditedApiKey(e.target.value)}
+            placeholder="Leave empty to use Google Translate"
+            className={inputClass}
+          />
+          <p className="mt-1.5 text-[11px] text-gray-500">
+            Get a free key at deepl.com/pro-api. Free tier: 500K chars/month.
+          </p>
         </div>
         <button
           type="submit"

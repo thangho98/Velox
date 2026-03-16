@@ -24,6 +24,7 @@ type PlaybackHandler struct {
 	userDataSvc     *service.UserDataService
 	subtitleSvc     *service.SubtitleService
 	audioTrackSvc   *service.AudioTrackService
+	markerSvc       *service.MarkerService // NEW: marker service for skip segments
 	prefRepo        *repository.UserPreferencesRepo
 	appSettingsRepo *repository.AppSettingsRepo
 }
@@ -35,6 +36,7 @@ func NewPlaybackHandler(
 	userDataSvc *service.UserDataService,
 	subtitleSvc *service.SubtitleService,
 	audioTrackSvc *service.AudioTrackService,
+	markerSvc *service.MarkerService,
 	prefRepo *repository.UserPreferencesRepo,
 	appSettingsRepo *repository.AppSettingsRepo,
 ) *PlaybackHandler {
@@ -44,6 +46,7 @@ func NewPlaybackHandler(
 		userDataSvc:     userDataSvc,
 		subtitleSvc:     subtitleSvc,
 		audioTrackSvc:   audioTrackSvc,
+		markerSvc:       markerSvc,
 		prefRepo:        prefRepo,
 		appSettingsRepo: appSettingsRepo,
 	}
@@ -84,7 +87,8 @@ type PlaybackInfoResponse struct {
 	SubtitleTracks   []SubtitleTrackInfo `json:"subtitle_tracks,omitempty"`
 	DecisionReason   string              `json:"decision_reason"`
 	EstimatedBitrate int                 `json:"estimated_bitrate,omitempty"`
-	Position         float64             `json:"position,omitempty"` // Resume position
+	Position         float64             `json:"position,omitempty"`      // Resume position
+	SkipSegments     []model.SkipSegment `json:"skip_segments,omitempty"` // NEW: intro/credits skip markers
 }
 
 // AudioTrackInfo represents an audio track
@@ -345,6 +349,12 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 			IsDefault: sub.IsDefault,
 			IsImage:   isImage,
 		})
+	}
+
+	// NEW: Load skip segments (intro/credits markers) for the primary file
+	if h.markerSvc != nil {
+		skipSegments, _ := h.markerSvc.GetSkipSegments(ctx, primaryFile.ID)
+		resp.SkipSegments = skipSegments
 	}
 
 	respondJSON(w, http.StatusOK, resp)

@@ -357,3 +357,33 @@ func (h *SettingsHandler) UpdateSubdl(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, subdlResponse{APIKey: req.APIKey})
 }
+
+// deeplResponse is the JSON shape for GET /api/admin/settings/deepl.
+type deeplResponse struct {
+	APIKey string `json:"api_key"`
+}
+
+// GetDeepL returns the current DeepL configuration.
+// GET /api/admin/settings/deepl
+func (h *SettingsHandler) GetDeepL(w http.ResponseWriter, r *http.Request) {
+	val, err := h.repo.Get(r.Context(), model.SettingDeepLAPIKey)
+	if err != nil {
+		val = ""
+	}
+	respondJSON(w, http.StatusOK, deeplResponse{APIKey: val})
+}
+
+// UpdateDeepL saves the DeepL API key.
+// PUT /api/admin/settings/deepl
+func (h *SettingsHandler) UpdateDeepL(w http.ResponseWriter, r *http.Request) {
+	var req deeplResponse
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.repo.Set(r.Context(), model.SettingDeepLAPIKey, req.APIKey); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save api_key")
+		return
+	}
+	respondJSON(w, http.StatusOK, deeplResponse{APIKey: req.APIKey})
+}

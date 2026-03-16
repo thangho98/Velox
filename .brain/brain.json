@@ -1,7 +1,7 @@
 {
   "meta": {
     "schema_version": "1.1.0",
-    "updated_at": "2026-03-13",
+    "updated_at": "2026-03-15",
     "plan_status": {
       "A": "✅ Done — Core Domain & Ingestion (all 5 phases 100%)",
       "B": "✅ Done — Auth & Sessions",
@@ -10,7 +10,7 @@
       "E": "✅ Done — Streaming Enhancement (HW transcode, ABR HLS, Trickplay)",
       "F": "✅ Done — Admin Operations (Activity Logging, Dashboard, Scheduler, Webhooks)",
       "G": "⬜ Pending — Nice-to-have",
-      "J": "🟡 In Progress — Netflix-style Series Grouping + URL Routing (4 phases, planning complete)"
+      "J": "✅ Done — Netflix-style Series Grouping + URL Routing (4 phases)"
     }
   },
   "project": {
@@ -35,6 +35,12 @@
       "styling": "TailwindCSS 4",
       "compiler": "React Compiler (babel-plugin-react-compiler)",
       "state": "TanStack Query + Zustand (persist → localStorage)"
+    },
+    "deployment": {
+      "container": "Docker (multi-stage: Node→Go→Alpine)",
+      "web_server": "nginx (SPA + API reverse proxy)",
+      "process_manager": "tini (PID 1)",
+      "user_mapping": "su-exec (PUID/PGID for NAS)"
     },
     "tooling": {
       "backend_linter": "golangci-lint (errcheck, staticcheck, sqlclosecheck, misspell, bodyclose)",
@@ -80,7 +86,7 @@
     ]
   },
   "metadata_providers": {
-    "TMDb": "Primary — movies + TV. Built-in API key, rate-limited (40req/10s token bucket). Provides poster, backdrop, overview, cast, genres.",
+    "TMDb": "Primary — movies + TV. Built-in API key, rate-limited (40req/10s token bucket).",
     "OMDb": "Enrichment — IMDb rating, Rotten Tomatoes %, Metacritic score. Built-in key.",
     "TheTVDB": "TV enrichment — TVDB IDs, IMDb cross-reference, series status. Built-in key.",
     "Fanart.tv": "Artwork enrichment — HD clearlogos, thumbnails. Built-in key.",
@@ -88,9 +94,11 @@
     "NFO": "Local override — NFO files take priority over TMDb search."
   },
   "subtitle_providers": {
-    "OpenSubtitles": "Primary subtitle search. API key via admin settings. REST API.",
-    "Podnapisi": "Fallback subtitle search. No API key needed. XML API.",
-    "Subdl": "Third subtitle provider. API key via admin settings. Supports episode→series resolution for better TV subtitle matching."
+    "OpenSubtitles": "⚠️ DISABLED — requires VIP API key ($2-3/mo) for media server apps. Developer key triggers warning.",
+    "Podnapisi": "XML API. No API key. Currently returning 429 (overloaded) on all requests.",
+    "Subdl": "REST API. API key via admin settings. Best for TV (episode→series resolution). Primary provider.",
+    "BSPlayer": "SOAP/XML API. Anonymous auth (no API key). Search by file hash + IMDb ID. Good for sync accuracy.",
+    "Subscene": "Web scraper via Python (DrissionPage + Chrome). Bypasses Cloudflare. Needs Xvfb in Docker. Slowest (~30s) but large Vietnamese subtitle database. Fallback provider."
   },
   "architecture": {
     "layers": [
@@ -101,32 +109,45 @@
       "service.ErrNotFound sentinel wrapping sql.ErrNoRows (service/errors.go)",
       "respondJSON wraps success in {\"data\": ...}, logs encode errors"
     ],
-    "scan_pipeline": "Pipeline (scanner/pipeline.go) — CreateJob (sync) + RunJob (async goroutine). Stages: discover → fingerprint → probe → parse → persist. ScanJob tracks progress via scan_jobs table. Now captures video_profile, video_level, video_fps from ffprobe + audio sample_rate.",
-    "file_watcher": "watcher/watcher.go — fsnotify recursive directory watching, 5s debounce CREATE, rename tracking (2s TTL), auto-watch new subdirectories. Config: VELOX_FILE_WATCHER=true (default). onCreate → triggers full scan job, onRemove → marks file missing.",
-    "file_verification": "scanner/verify.go — Verifier checks all files exist on disk. Runs at startup + every 6h. Batch 500 files. Updates last_verified_at or marks missing.",
-    "playback_strategy": "Direct Play first → Direct Stream (remux) → Transcode Audio → Full Transcode. Admin can override to force Direct Play via app_settings (playback_mode). Stream URL includes ?pm= query param for method.",
-    "auth": "JWT (15min access + 7-day refresh + session_id in claims), bcrypt cost 12, first-run setup wizard, atomic refresh token rotation (DELETE...RETURNING), per-session activity tracking",
-    "metadata": "TMDb primary + OMDb + TheTVDB + Fanart.tv + TVmaze enrichment chain. NFO/local files override. Levenshtein string similarity for fuzzy title matching.",
-    "admin_settings": "handler/settings.go — CRUD for provider API keys (OpenSubtitles, Subdl, OMDb, TVDB, Fanart.tv) + playback mode + auto-subtitle languages. Stored in app_settings table as JSON values.",
-    "subtitle_search": "service/subtitle_search.go — Multi-provider search (OpenSubs, Podnapisi, Subdl). Episode→series metadata resolution for TV subtitles. Download + persist to subtitles table."
+    "scan_pipeline": "Pipeline (scanner/pipeline.go) — CreateJob (sync) + RunJob (async goroutine). Stages: discover → fingerprint → probe → parse → persist.",
+    "file_watcher": "watcher/watcher.go — fsnotify recursive, 5s debounce, rename tracking. Config: VELOX_FILE_WATCHER=true.",
+    "playback_strategy": "Direct Play → Direct Stream → Transcode Audio → Full Transcode. Admin override via app_settings.",
+    "auth": "JWT (15min access + 7-day refresh + session_id), bcrypt cost 12, atomic refresh token rotation.",
+    "subtitle_search": "Multi-provider: Subdl (primary) → BSPlayer (hash-based) → Subscene (scraper fallback). OpenSubtitles disabled. Podnapisi available but often 429.",
+    "docker": "Multi-stage Dockerfile: Node 22 (frontend) → Go 1.24+GOTOOLCHAIN=auto (backend) → Alpine 3.21 (runtime). Nginx serves SPA + proxies /api/. Xvfb for Subscene scraper. PUID/PGID for Synology NAS."
   },
-  "api_endpoints": {
-    "admin_settings": [
-      "GET/PUT /api/admin/settings/{provider} — provider: opensubtitles, subdl, omdb, tvdb, fanart, playback, auto-subtitles"
-    ],
-    "playback": [
-      "POST /api/playback/{id}/info — PlaybackInfoResponse now includes video_profile, video_level, video_fps + AudioTrackInfo includes bitrate, sample_rate"
-    ]
+  "deployment": {
+    "dockerfile": "Dockerfile (root)",
+    "compose": "docker-compose.yml (root)",
+    "ports": {
+      "80": "nginx — frontend SPA + /api/ reverse proxy to backend",
+      "8080": "Go backend (internal, proxied by nginx)"
+    },
+    "volumes": {
+      "/data": "VELOX_DATA_DIR — database, subtitles, transcode cache, trickplay",
+      "/media": "Media library mount point(s)"
+    },
+    "env_vars": {
+      "PUID": "Host user ID (default 1000, Synology: 1026)",
+      "PGID": "Host group ID (default 1000, Synology: 100)",
+      "VELOX_DATA_DIR": "/data",
+      "VELOX_HW_ACCEL": "auto|vaapi|nvenc|qsv|videotoolbox|none",
+      "VELOX_MAX_TRANSCODES": "2",
+      "VELOX_FILE_WATCHER": "true",
+      "TZ": "Asia/Ho_Chi_Minh",
+      "SUBSCENE_ENABLED": "true (starts Xvfb + Chrome for subtitle scraping)"
+    },
+    "synology_notes": "Intel QSV: uncomment /dev/dri device passthrough. PUID=1026, PGID=100 for default Synology user."
   },
   "plans": {
-    "A": "Core Domain & Ingestion (5 phases: migration system, core data model, scan pipeline, TMDb integration, subtitle discovery)",
+    "A": "Core Domain & Ingestion (5 phases)",
     "B": "Auth & Sessions (3 phases)",
     "C": "Web App MVP (4 phases)",
     "D": "Playback Decision Engine (3 phases)",
     "E": "Streaming Enhancement (3 phases: HW transcode, ABR HLS, Trickplay)",
     "F": "Admin Operations (3 phases)",
     "G": "Nice-to-have (3 phases)",
-    "J": "Netflix-style Series Grouping + URL Routing (4 phases: Backend API, Frontend Types, Routes+SeriesDetailPage, Update Listing Pages)"
+    "J": "Netflix-style Series Grouping + URL Routing (4 phases)"
   },
   "conventions": {
     "language": "Vietnamese in plans, English in code/commits",

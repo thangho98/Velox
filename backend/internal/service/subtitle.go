@@ -12,9 +12,14 @@ import (
 	"strconv"
 	"strings"
 
+	"fmt"
+	"log/slog"
+	"os/exec"
+
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/playback"
 	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/pkg/translate"
 )
 
 // SubtitleService handles subtitle business logic
@@ -78,6 +83,138 @@ func (s *SubtitleService) Delete(ctx context.Context, id int64) error {
 // SetDefault sets a subtitle as default
 func (s *SubtitleService) SetDefault(ctx context.Context, mediaFileID, subtitleID int64) error {
 	return s.subtitleRepo.SetDefault(ctx, mediaFileID, subtitleID)
+}
+
+// TranslateSubtitle translates a subtitle file to the target language.
+// Uses DeepL (if API key configured) with Google Translate fallback.
+// Returns the newly created subtitle record.
+func (s *SubtitleService) TranslateSubtitle(ctx context.Context, subtitleID int64, targetLang, deeplAPIKey, subtitleDir string) (*model.Subtitle, error) {
+	// Get source subtitle
+	source, err := s.Get(ctx, subtitleID)
+	if err != nil {
+		return nil, fmt.Errorf("getting source subtitle: %w", err)
+	}
+
+	if source.Language == targetLang {
+		return nil, fmt.Errorf("source and target language are the same: %s", targetLang)
+	}
+
+	// Read source file content — extract embedded subs via FFmpeg if needed
+	var content string
+	if source.FilePath != "" && !source.IsEmbedded {
+		data, err := os.ReadFile(source.FilePath)
+		if err != nil {
+			return nil, fmt.Errorf("reading subtitle file: %w", err)
+		}
+		content = string(data)
+	} else if source.IsEmbedded {
+		// Extract embedded subtitle to a temp SRT file
+		mf, err := s.mediaFileRepo.GetByID(ctx, source.MediaFileID)
+		if err != nil {
+			return nil, fmt.Errorf("getting media file for extraction: %w", err)
+		}
+		extractDir := filepath.Join(subtitleDir, strconv.FormatInt(source.MediaFileID, 10))
+		if err := os.MkdirAll(extractDir, 0755); err != nil {
+			return nil, fmt.Errorf("creating extract dir: %w", err)
+		}
+		extractPath := filepath.Join(extractDir, fmt.Sprintf("extracted_%d.srt", source.StreamIndex))
+		// Extract via FFmpeg as SRT (not VTT, since our translator expects SRT)
+		cmd := exec.Command("ffmpeg", "-y",
+			"-i", mf.FilePath,
+			"-map", fmt.Sprintf("0:%d", source.StreamIndex),
+			"-c:s", "srt",
+			extractPath,
+		)
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("extracting embedded subtitle: %w", err)
+		}
+		data, err := os.ReadFile(extractPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading extracted subtitle: %w", err)
+		}
+		content = string(data)
+	} else {
+		return nil, fmt.Errorf("subtitle has no file path")
+	}
+
+	// Choose translator: DeepL primary, Google fallback
+	var translator translate.Translator
+	if deeplAPIKey != "" {
+		translator = translate.NewDeepL(deeplAPIKey)
+	} else {
+		translator = translate.NewGoogle()
+	}
+
+	slog.Info("translating subtitle",
+		"subtitle_id", subtitleID,
+		"from", source.Language,
+		"to", targetLang,
+		"translator", translator.Name(),
+		"cues", len(translate.ParseSRT(content)),
+	)
+
+	// Translate
+	translated, err := translate.TranslateSRT(ctx, translator, content, targetLang)
+	if err != nil {
+		// If DeepL fails (quota exceeded), fallback to Google
+		if deeplAPIKey != "" {
+			slog.Warn("deepl translation failed, falling back to google", "error", err)
+			translator = translate.NewGoogle()
+			translated, err = translate.TranslateSRT(ctx, translator, content, targetLang)
+			if err != nil {
+				return nil, fmt.Errorf("translation failed: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("translation failed: %w", err)
+		}
+	}
+
+	// Save translated file
+	dir := filepath.Join(subtitleDir, strconv.FormatInt(source.MediaFileID, 10))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("creating subtitle dir: %w", err)
+	}
+
+	langNames := map[string]string{
+		"en": "English", "vi": "Vietnamese", "fr": "French", "de": "German",
+		"es": "Spanish", "pt": "Portuguese", "it": "Italian", "nl": "Dutch",
+		"ja": "Japanese", "ko": "Korean", "zh": "Chinese", "ar": "Arabic",
+		"ru": "Russian", "th": "Thai", "pl": "Polish", "tr": "Turkish",
+	}
+	langName := langNames[targetLang]
+	if langName == "" {
+		langName = strings.ToUpper(targetLang)
+	}
+
+	savePath := filepath.Join(dir, fmt.Sprintf("translated_%s_%d.srt", targetLang, subtitleID))
+	if err := os.WriteFile(savePath, []byte(translated), 0644); err != nil {
+		return nil, fmt.Errorf("saving translated subtitle: %w", err)
+	}
+
+	// Create DB record
+	title := fmt.Sprintf("%s (%s auto)", langName, translator.Name())
+	sub := &model.Subtitle{
+		MediaFileID: source.MediaFileID,
+		Language:    targetLang,
+		Codec:       "srt",
+		Title:       title,
+		IsEmbedded:  false,
+		StreamIndex: -1,
+		FilePath:    savePath,
+	}
+	if err := s.subtitleRepo.Create(ctx, sub); err != nil {
+		return nil, fmt.Errorf("saving subtitle record: %w", err)
+	}
+
+	slog.Info("subtitle translated",
+		"subtitle_id", sub.ID,
+		"from", source.Language,
+		"to", targetLang,
+		"translator", translator.Name(),
+		"file", savePath,
+	)
+
+	return sub, nil
 }
 
 // AudioTrackService handles audio track business logic

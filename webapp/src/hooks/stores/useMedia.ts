@@ -359,6 +359,7 @@ export function useStreamUrls(mediaId: number, request: PlaybackInfoRequest = {}
       }
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev, // Keep previous data while refetching to prevent video remount
     enabled: mediaId > 0,
   })
 }
@@ -388,6 +389,7 @@ export function usePlaybackInfo(mediaId: number, request: PlaybackInfoRequest = 
     queryKey: streamingKeys.playbackInfo(mediaId, request),
     queryFn: () => streamingApi.getPlaybackInfo(mediaId, request),
     staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev, // Keep previous data while refetching to prevent video remount
     enabled: mediaId > 0,
   })
 }
@@ -469,13 +471,19 @@ export function useSubtitleSearch(mediaId: number, lang: string, enabled = true)
 }
 
 export function useDownloadSubtitle(mediaId: number) {
-  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (body: SubtitleDownloadRequest) => subtitleSearchApi.download(mediaId, body),
-    onSuccess: () => {
-      // Invalidate playback info so subtitle list refreshes
-      queryClient.invalidateQueries({ queryKey: streamingKeys.all })
-    },
+    // NOTE: Do NOT invalidate streamingKeys here — it causes the video to reload.
+    // The caller (SubtitleSearchModal) calls onSubtitleAdded which handles refresh.
+  })
+}
+
+export function useTranslateSubtitle() {
+  return useMutation({
+    mutationFn: ({ subtitleId, targetLanguage }: { subtitleId: number; targetLanguage: string }) =>
+      api.post<unknown>(`/subtitles/${subtitleId}/translate`, { target_language: targetLanguage }),
+    // NOTE: Do NOT invalidate streamingKeys here — it causes the video to reload.
+    // The caller (SubtitlePicker) calls onSubtitleAdded which handles refresh safely.
   })
 }
 

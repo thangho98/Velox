@@ -42,8 +42,9 @@ type Pipeline struct {
 	scanJobRepo    *repository.ScanJobRepo
 	subtitleRepo   *repository.SubtitleRepo
 	audioTrackRepo *repository.AudioTrackRepo
-	metadataSvc    MetadataMatcher        // nil = skip metadata enrichment
-	subtitleDL     SubtitleAutoDownloader // nil = skip subtitle auto-download
+	markerRepo     *repository.MediaMarkerRepo // marker repository for skip intro/credits
+	metadataSvc    MetadataMatcher             // nil = skip metadata enrichment
+	subtitleDL     SubtitleAutoDownloader      // nil = skip subtitle auto-download
 }
 
 // NewPipeline creates a new scan pipeline
@@ -58,8 +59,9 @@ func NewPipeline(
 	scanJobRepo *repository.ScanJobRepo,
 	subtitleRepo *repository.SubtitleRepo,
 	audioTrackRepo *repository.AudioTrackRepo,
+	markerRepo *repository.MediaMarkerRepo, // NEW
 ) *Pipeline {
-	return &Pipeline{
+	p := &Pipeline{
 		db:             db,
 		libraryRepo:    libraryRepo,
 		mediaRepo:      mediaRepo,
@@ -70,7 +72,9 @@ func NewPipeline(
 		scanJobRepo:    scanJobRepo,
 		subtitleRepo:   subtitleRepo,
 		audioTrackRepo: audioTrackRepo,
+		markerRepo:     markerRepo, // NEW
 	}
+	return p
 }
 
 // SetMetadataMatcher attaches an optional metadata enrichment service.
@@ -225,6 +229,8 @@ func (p *Pipeline) processFile(scanCtx *ScanContext, path string) (bool, error) 
 				return false, fmt.Errorf("refreshing title: %w", err)
 			}
 		}
+		// Backfill chapter markers for existing files that don't have any yet
+		p.backfillChapterMarkers(scanCtx.ctx, existingFile.ID, path)
 		return false, nil // Already known file
 	}
 
@@ -246,6 +252,8 @@ func (p *Pipeline) processFile(scanCtx *ScanContext, path string) (bool, error) 
 					return false, fmt.Errorf("refreshing title: %w", err)
 				}
 			}
+			// Backfill chapter markers for existing files that don't have any yet
+			p.backfillChapterMarkers(scanCtx.ctx, existingByPath.ID, path)
 			return false, nil
 		}
 		// File was replaced (different size or different fingerprint) — defer deletion to persist()
@@ -391,6 +399,21 @@ func (p *Pipeline) persist(scanCtx *ScanContext, path string, fingerprint string
 		}
 	}
 
+	// Extract and persist chapter markers for skip intro/credits (inside transaction)
+	if p.markerRepo != nil && len(probe.Chapters) > 0 {
+		markerRepo := p.markerRepo.WithTx(tx)
+		// Delete existing chapter markers only (not manual/fingerprint)
+		if err := markerRepo.DeleteBySource(ctx, mediaFile.ID, "chapter"); err != nil {
+			log.Printf("Failed to delete old chapter markers for file %d: %v", mediaFile.ID, err)
+		}
+		for _, dm := range ExtractChapterMarkers(probe.Chapters) {
+			marker := dm.ToModel(mediaFile.ID)
+			if err := markerRepo.Create(ctx, marker); err != nil {
+				log.Printf("Failed to save %s marker for file %d: %v", dm.Type, mediaFile.ID, err)
+			}
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing transaction: %w", err)
 	}
@@ -428,6 +451,41 @@ func (p *Pipeline) persist(scanCtx *ScanContext, path string, fingerprint string
 	}
 
 	return nil
+}
+
+// backfillChapterMarkers extracts chapter markers for an existing file if none exist yet.
+// Called during rescan when a file is already known (fingerprint/path match).
+func (p *Pipeline) backfillChapterMarkers(ctx context.Context, fileID int64, path string) {
+	if p.markerRepo == nil {
+		return
+	}
+
+	// Check if file already has chapter markers
+	existing, err := p.markerRepo.GetByMediaFileID(ctx, fileID)
+	if err != nil {
+		return
+	}
+	for _, m := range existing {
+		if m.Source == "chapter" {
+			return // Already has chapter markers
+		}
+	}
+
+	// Probe for chapters
+	probe, err := ffprobe.Probe(path)
+	if err != nil || len(probe.Chapters) == 0 {
+		return
+	}
+
+	markers := ExtractChapterMarkers(probe.Chapters)
+	for _, dm := range markers {
+		marker := dm.ToModel(fileID)
+		if err := p.markerRepo.Create(ctx, marker); err != nil {
+			log.Printf("Backfill marker for file %d: %v", fileID, err)
+		} else {
+			log.Printf("Backfilled %s marker (%.1f-%.1fs) for file %d", dm.Type, dm.StartSec, dm.EndSec, fileID)
+		}
+	}
 }
 
 // refreshTitle re-parses the filename and updates the media title if it changed.

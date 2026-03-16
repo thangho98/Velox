@@ -323,6 +323,15 @@ export interface PlaybackInfoRequest {
   selected_subtitle_id?: number // exact subtitle track id
 }
 
+// Skip Segment Types (for intro/credits skip)
+export interface SkipSegment {
+  type: 'intro' | 'credits'
+  start: number
+  end: number
+  source: string
+  confidence: number
+}
+
 // Playback Info Types (from POST /api/playback/{id}/info)
 export interface PlaybackSubtitleTrack {
   id: number
@@ -387,6 +396,7 @@ export interface PlaybackInfo {
   decision_reason: string
   estimated_bitrate: number
   position: number
+  skip_segments?: SkipSegment[]
 }
 
 // Continue Watching / Next Up Types
