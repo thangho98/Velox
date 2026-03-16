@@ -52,6 +52,7 @@ import { WatchDetailSheet } from '@/components/watch/WatchDetailSheet'
 import { WatchPlaybackStatsOverlay } from '@/components/watch/WatchPlaybackStatsOverlay'
 import { WatchTopBar } from '@/components/watch/WatchTopBar'
 import { SkipIntroCredits } from '@/components/watch/SkipIntroCredits'
+import { useChromecast } from '@/hooks/useChromecast'
 import {
   DETAIL_PANEL_ANIMATION_MS,
   formatChannelLayout,
@@ -111,6 +112,14 @@ export function WatchPage() {
   const qualityIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lowBandwidthToastShown = useRef(false)
 
+  const {
+    available: castAvailable,
+    connected: castConnected,
+    casting,
+    castMedia,
+    requestSession: requestCast,
+    stopCasting,
+  } = useChromecast()
   const { data: media, isLoading: mediaLoading } = useMediaWithFiles(mediaId)
   const { data: preferences } = usePreferences()
   const { mutate: updateProgress } = useUpdateProgress()
@@ -1073,6 +1082,23 @@ export function WatchPage() {
               if (videoRef.current) {
                 videoRef.current.volume = nextVolume
                 videoRef.current.muted = false
+              }
+            }}
+            castAvailable={castAvailable}
+            castConnected={castConnected}
+            casting={casting}
+            onCastClick={() => {
+              if (casting) {
+                stopCasting()
+              } else if (castConnected) {
+                castMedia(
+                  mediaId,
+                  media?.media.title ?? '',
+                  media?.media.poster_path ? tmdbImage(media.media.poster_path, 'w342') : undefined,
+                  currentTime,
+                )
+              } else {
+                requestCast()
               }
             }}
           />

@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { LuChevronLeft, LuVolume1, LuVolume2, LuVolumeX } from 'react-icons/lu'
+import { LuChevronLeft, LuVolume1, LuVolume2, LuVolumeX, LuCast } from 'react-icons/lu'
 
 interface WatchTopBarProps {
   isMuted: boolean
@@ -7,6 +7,10 @@ interface WatchTopBarProps {
   onMuteToggle: () => void
   onVolumeChange: (value: number) => void
   volume: number
+  castAvailable?: boolean
+  castConnected?: boolean
+  casting?: boolean
+  onCastClick?: () => void
 }
 
 export const WatchTopBar = memo(function WatchTopBar({
@@ -15,6 +19,10 @@ export const WatchTopBar = memo(function WatchTopBar({
   onMuteToggle,
   onVolumeChange,
   volume,
+  castAvailable,
+  castConnected,
+  casting,
+  onCastClick,
 }: WatchTopBarProps) {
   const VolumeIcon = isMuted || volume === 0 ? LuVolumeX : volume < 0.5 ? LuVolume1 : LuVolume2
 
@@ -31,19 +39,42 @@ export const WatchTopBar = memo(function WatchTopBar({
         <span className="text-sm font-medium">Back</span>
       </button>
 
-      <div className="flex items-center gap-2">
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={isMuted ? 0 : volume}
-          onChange={(e) => onVolumeChange(Number(e.target.value))}
-          className="h-0.5 w-28 cursor-pointer accent-white"
-        />
-        <button onClick={onMuteToggle} className="text-white/80 transition-colors hover:text-white">
-          <VolumeIcon size={20} />
-        </button>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={isMuted ? 0 : volume}
+            onChange={(e) => onVolumeChange(Number(e.target.value))}
+            className="h-0.5 w-28 cursor-pointer accent-white"
+          />
+          <button
+            onClick={onMuteToggle}
+            className="text-white/80 transition-colors hover:text-white"
+          >
+            <VolumeIcon size={20} />
+          </button>
+        </div>
+
+        {castAvailable && onCastClick && (
+          <button
+            onClick={onCastClick}
+            className={`transition-colors ${
+              casting
+                ? 'text-blue-400 hover:text-blue-300'
+                : castConnected
+                  ? 'text-white hover:text-blue-400'
+                  : 'text-white/60 hover:text-white'
+            }`}
+            title={
+              casting ? 'Stop casting' : castConnected ? 'Cast to device' : 'Connect to Chromecast'
+            }
+          >
+            <LuCast size={20} />
+          </button>
+        )}
       </div>
     </div>
   )
