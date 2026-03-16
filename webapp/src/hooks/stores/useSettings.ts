@@ -56,6 +56,7 @@ const settingsKeys = {
   deepl: () => [...settingsKeys.all, 'deepl'] as const,
   playback: () => [...settingsKeys.all, 'playback'] as const,
   autoSub: () => [...settingsKeys.all, 'auto-subtitles'] as const,
+  cinema: () => [...settingsKeys.all, 'cinema'] as const,
 }
 
 export function useOpenSubsSettings() {
@@ -219,6 +220,45 @@ export function useUpdateAutoSubSettings() {
       api.put<AutoSubSettings>('/admin/settings/auto-subtitles', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.autoSub() })
+    },
+  })
+}
+
+export interface CinemaSettings {
+  enabled: boolean
+  max_trailers: string
+  has_intro: boolean
+}
+
+export function useCinemaSettings() {
+  return useQuery({
+    queryKey: settingsKeys.cinema(),
+    queryFn: () => api.get<CinemaSettings>('/admin/settings/cinema'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useUpdateCinemaSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { enabled?: boolean; max_trailers?: string }) =>
+      api.put<unknown>('/admin/settings/cinema', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: settingsKeys.cinema() })
+    },
+  })
+}
+
+export function useUploadCinemaIntro() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.uploadFormData<{ path: string }>('/admin/cinema/intro', form)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: settingsKeys.cinema() })
     },
   })
 }

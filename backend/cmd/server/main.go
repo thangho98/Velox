@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -335,6 +336,46 @@ func runServer() {
 	mux.Handle("GET /api/admin/settings/playback", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.GetPlayback)))
 	mux.Handle("PUT /api/admin/settings/playback", middleware.RequireAdmin(http.HandlerFunc(settingsHandler.UpdatePlayback)))
 
+	// Admin cinema mode settings
+	mux.Handle("GET /api/admin/settings/cinema", middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		enabled, _ := appSettingsRepo.Get(r.Context(), "cinema_mode_enabled")
+		maxTrailers, _ := appSettingsRepo.Get(r.Context(), "cinema_max_trailers")
+		introPath, _ := appSettingsRepo.Get(r.Context(), "cinema_intro_path")
+		if maxTrailers == "" {
+			maxTrailers = "2"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+			"enabled":      enabled == "true",
+			"max_trailers": maxTrailers,
+			"has_intro":    introPath != "",
+		}})
+	})))
+	mux.Handle("PUT /api/admin/settings/cinema", middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Enabled     *bool   `json:"enabled"`
+			MaxTrailers *string `json:"max_trailers"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"invalid body"}`)
+			return
+		}
+		if body.Enabled != nil {
+			val := "false"
+			if *body.Enabled {
+				val = "true"
+			}
+			appSettingsRepo.Set(r.Context(), "cinema_mode_enabled", val)
+		}
+		if body.MaxTrailers != nil {
+			appSettingsRepo.Set(r.Context(), "cinema_max_trailers", *body.MaxTrailers)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"status": "updated"}})
+	})))
+
 	// Admin dashboard routes (Plan F)
 	mux.Handle("GET /api/admin/activity", middleware.RequireAdmin(http.HandlerFunc(activityHandler.List)))
 	mux.Handle("GET /api/admin/stats/playback", middleware.RequireAdmin(http.HandlerFunc(activityHandler.GetPlaybackStats)))
@@ -515,6 +556,201 @@ func runServer() {
 			},
 		})
 	})
+
+	// API routes - Cinema mode (trailers + intro before main video)
+	mux.HandleFunc("GET /api/media/{id}/cinema", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"invalid id"}`)
+			return
+		}
+
+		type cinemaItem struct {
+			Type      string `json:"type"` // "intro" | "trailer" | "main"
+			Title     string `json:"title"`
+			URL       string `json:"url"`
+			Duration  int    `json:"duration"` // seconds, 0 if unknown
+			Skippable bool   `json:"skippable"`
+		}
+
+		var items []cinemaItem
+
+		// 1. Cinema intro video (only if cinema mode enabled)
+		cinemaEnabled, _ := appSettingsRepo.Get(r.Context(), "cinema_mode_enabled")
+		introPath, _ := appSettingsRepo.Get(r.Context(), "cinema_intro_path")
+		if introPath != "" && cinemaEnabled == "true" {
+			items = append(items, cinemaItem{
+				Type:      "intro",
+				Title:     "Cinema Intro",
+				URL:       "/api/cinema/intro",
+				Skippable: true,
+			})
+		}
+
+		// 2. Trailers from TMDb
+		maxTrailers := 2
+		if maxStr, _ := appSettingsRepo.Get(r.Context(), "cinema_max_trailers"); maxStr != "" {
+			if n, err := strconv.Atoi(maxStr); err == nil && n >= 0 {
+				maxTrailers = n
+			}
+		}
+
+		if tmdbClient != nil && maxTrailers > 0 {
+			media, err := mediaRepo.GetByID(r.Context(), id)
+			if err == nil {
+				var videos *tmdb.VideoList
+
+				if media.MediaType == "episode" {
+					// For episodes, fetch trailers from the parent series
+					ep, epErr := episodeRepo.GetByMediaID(r.Context(), media.ID)
+					if epErr == nil {
+						series, sErr := seriesRepo.GetByID(r.Context(), ep.SeriesID)
+						if sErr == nil && series.TmdbID != nil {
+							tvDetails, tvErr := tmdbClient.GetTVDetails(r.Context(), int(*series.TmdbID))
+							if tvErr == nil {
+								videos = tvDetails.Videos
+							}
+						}
+					}
+				} else if media.TmdbID != nil {
+					movieDetails, mErr := tmdbClient.GetMovieDetails(r.Context(), int(*media.TmdbID))
+					if mErr == nil {
+						videos = movieDetails.Videos
+					}
+				}
+
+				if videos != nil {
+					count := 0
+					for _, v := range videos.Results {
+						if count >= maxTrailers {
+							break
+						}
+						if v.Site == "YouTube" && (v.Type == "Trailer" || v.Type == "Teaser") {
+							items = append(items, cinemaItem{
+								Type:      "trailer",
+								Title:     v.Name,
+								URL:       "https://www.youtube.com/embed/" + v.Key + "?autoplay=1&controls=0",
+								Skippable: true,
+							})
+							count++
+						}
+					}
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"items": items}})
+	})
+
+	// API routes - Cinema mode for series (trailers from TMDb TV)
+	mux.HandleFunc("GET /api/series/{id}/cinema", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"invalid id"}`)
+			return
+		}
+
+		type cinemaItem struct {
+			Type      string `json:"type"`
+			Title     string `json:"title"`
+			URL       string `json:"url"`
+			Duration  int    `json:"duration"`
+			Skippable bool   `json:"skippable"`
+		}
+
+		var items []cinemaItem
+
+		maxTrailers := 2
+		if maxStr, _ := appSettingsRepo.Get(r.Context(), "cinema_max_trailers"); maxStr != "" {
+			if n, err := strconv.Atoi(maxStr); err == nil && n >= 0 {
+				maxTrailers = n
+			}
+		}
+
+		if tmdbClient != nil && maxTrailers > 0 {
+			series, err := seriesRepo.GetByID(r.Context(), id)
+			if err == nil && series.TmdbID != nil {
+				tvDetails, tvErr := tmdbClient.GetTVDetails(r.Context(), int(*series.TmdbID))
+				if tvErr == nil && tvDetails.Videos != nil {
+					count := 0
+					for _, v := range tvDetails.Videos.Results {
+						if count >= maxTrailers {
+							break
+						}
+						if v.Site == "YouTube" && (v.Type == "Trailer" || v.Type == "Teaser") {
+							items = append(items, cinemaItem{
+								Type:      "trailer",
+								Title:     v.Name,
+								URL:       "https://www.youtube.com/embed/" + v.Key + "?autoplay=1&controls=0",
+								Skippable: true,
+							})
+							count++
+						}
+					}
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"items": items}})
+	})
+
+	// API routes - Cinema intro video serve
+	mux.HandleFunc("GET /api/cinema/intro", func(w http.ResponseWriter, r *http.Request) {
+		introPath, _ := appSettingsRepo.Get(r.Context(), "cinema_intro_path")
+		if introPath == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, introPath)
+	})
+
+	// API routes - Cinema intro upload (admin)
+	mux.Handle("POST /api/admin/cinema/intro", middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 100<<20) // 100MB max for intro video
+		if err := r.ParseMultipartForm(100 << 20); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"file too large (max 100MB)"}`)
+			return
+		}
+
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"missing file"}`)
+			return
+		}
+		defer file.Close()
+
+		// Save to data dir
+		cinemaDir := cfg.DataDir + "/cinema"
+		os.MkdirAll(cinemaDir, 0755)
+		introPath := cinemaDir + "/intro.mp4"
+
+		dst, err := os.Create(introPath)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"failed to save file"}`)
+			return
+		}
+		defer dst.Close()
+
+		io.Copy(dst, file)
+
+		// Save path in settings
+		appSettingsRepo.Set(r.Context(), "cinema_intro_path", introPath)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"path": introPath}})
+	})))
 
 	// API routes - Streaming
 	mux.HandleFunc("GET /api/stream/{id}", streamHandler.DirectPlay)

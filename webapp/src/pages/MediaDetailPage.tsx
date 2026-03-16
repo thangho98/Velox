@@ -32,6 +32,8 @@ import { ActionMenu } from '@/components/ActionMenu'
 import type { ActionMenuItem } from '@/components/ActionMenu'
 import { tmdbImage } from '@/lib/image'
 import { MetadataEditor } from '@/components/metadata/MetadataEditor'
+import { useTrailers } from '@/hooks/useCinemaMode'
+import { YouTubeBackground } from '@/components/YouTubeBackground'
 
 export function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -49,6 +51,8 @@ export function MediaDetailPage() {
   const { data: mediaCredits = [] } = useMediaCredits(mediaId)
   const { mutate: getStreamUrl } = useStreamUrl(mediaId)
   const [copied, setCopied] = useState(false)
+  const { youtubeKey } = useTrailers(mediaId)
+  const [trailerMuted, setTrailerMuted] = useState(true)
   const { user } = useAuthStore()
   const { subtitleLanguage, setSubtitleLanguage } = usePlayerStore()
   const { data: subtitles = [] } = useSubtitles(mediaId)
@@ -97,14 +101,30 @@ export function MediaDetailPage() {
 
   return (
     <div className="min-h-screen bg-netflix-black">
-      {/* Backdrop */}
-      {media.media.backdrop_path && (
+      {/* Backdrop — YouTube trailer or static image */}
+      {(youtubeKey || media.media.backdrop_path) && (
         <div className="fixed inset-0 h-screen">
-          <img
-            src={tmdbImage(media.media.backdrop_path, 'w1280')!}
-            alt={media.media.title}
-            className="h-full w-full object-cover"
-          />
+          {youtubeKey ? (
+            <>
+              <YouTubeBackground
+                videoId={youtubeKey}
+                muted={trailerMuted}
+                className="absolute inset-0"
+              />
+              <button
+                onClick={() => setTrailerMuted(!trailerMuted)}
+                className="absolute bottom-24 right-6 z-20 flex items-center gap-2 rounded-full border border-white/40 bg-black/40 px-3 py-1.5 text-sm text-white/80 backdrop-blur-sm transition-colors hover:bg-black/60"
+              >
+                {trailerMuted ? '🔇 Unmute' : '🔊 Mute'}
+              </button>
+            </>
+          ) : (
+            <img
+              src={tmdbImage(media.media.backdrop_path, 'w1280')!}
+              alt={media.media.title}
+              className="h-full w-full object-cover"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-netflix-black via-netflix-black/80 to-netflix-black/30" />
           <div className="absolute inset-0 bg-gradient-to-r from-netflix-black via-netflix-black/50 to-transparent" />
         </div>

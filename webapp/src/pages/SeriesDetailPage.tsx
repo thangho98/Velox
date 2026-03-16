@@ -18,6 +18,8 @@ import { LuChevronLeft, LuFilm, LuPlay, LuTv, LuPencil, LuLock } from 'react-ico
 import { seriesImage } from '@/lib/image'
 import { MetadataEditor } from '@/components/metadata/MetadataEditor'
 import { EpisodeEditDialog } from '@/components/metadata/EpisodeEditDialog'
+import { useSeriesTrailers } from '@/hooks/useCinemaMode'
+import { YouTubeBackground } from '@/components/YouTubeBackground'
 import type { Episode } from '@/types/api'
 
 export function SeriesDetailPage() {
@@ -33,6 +35,8 @@ export function SeriesDetailPage() {
   const { data: seriesCredits = [] } = useSeriesCredits(id)
   const { user } = useAuthStore()
   const [showEditor, setShowEditor] = useState(false)
+  const { youtubeKey } = useSeriesTrailers(id)
+  const [trailerMuted, setTrailerMuted] = useState(true)
   const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null)
   const currentSeasonId = selectedSeasonId || seasons?.[0]?.id || 0
   const { mutate: editEpisode, isPending: isEpisodeSaving } = useEditEpisodeMetadata(
@@ -92,14 +96,30 @@ export function SeriesDetailPage() {
 
   return (
     <div className="min-h-screen bg-netflix-black">
-      {/* Backdrop */}
-      {series.backdrop_path && (
+      {/* Backdrop — YouTube trailer or static image */}
+      {(youtubeKey || series.backdrop_path) && (
         <div className="fixed inset-0 h-screen">
-          <img
-            src={seriesImage(series.backdrop_path, 'w1280')!}
-            alt={series.title}
-            className="h-full w-full object-cover"
-          />
+          {youtubeKey ? (
+            <>
+              <YouTubeBackground
+                videoId={youtubeKey}
+                muted={trailerMuted}
+                className="absolute inset-0"
+              />
+              <button
+                onClick={() => setTrailerMuted(!trailerMuted)}
+                className="absolute bottom-24 right-6 z-20 flex items-center gap-2 rounded-full border border-white/40 bg-black/40 px-3 py-1.5 text-sm text-white/80 backdrop-blur-sm transition-colors hover:bg-black/60"
+              >
+                {trailerMuted ? '🔇 Unmute' : '🔊 Mute'}
+              </button>
+            </>
+          ) : (
+            <img
+              src={seriesImage(series.backdrop_path, 'w1280')!}
+              alt={series.title}
+              className="h-full w-full object-cover"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-netflix-black via-netflix-black/80 to-netflix-black/30" />
           <div className="absolute inset-0 bg-gradient-to-r from-netflix-black via-netflix-black/50 to-transparent" />
         </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 import {
   LuUser,
@@ -66,6 +66,9 @@ import {
   useUpdatePlaybackSettings,
   useAutoSubSettings,
   useUpdateAutoSubSettings,
+  useCinemaSettings,
+  useUpdateCinemaSettings,
+  useUploadCinemaIntro,
 } from '@/hooks/stores/useSettings'
 import {
   useServerInfo,
@@ -121,6 +124,13 @@ const ALL_SECTIONS: Section[] = [
     id: 'playback',
     label: 'Playback',
     icon: <LuPlay size={18} />,
+    group: 'Admin Preferences',
+    adminOnly: true,
+  },
+  {
+    id: 'cinema',
+    label: 'Cinema Mode',
+    icon: <LuFilm size={18} />,
     group: 'Admin Preferences',
     adminOnly: true,
   },
@@ -230,6 +240,7 @@ export function SettingsPage() {
         {activeSection === 'tasks' && <TasksSection />}
         {activeSection === 'webhooks' && <WebhooksSection />}
         {activeSection === 'playback' && <PlaybackSection />}
+        {activeSection === 'cinema' && <CinemaSection />}
       </main>
     </div>
   )
@@ -2573,6 +2584,111 @@ function Modal({
           </button>
         </div>
         {children}
+      </div>
+    </div>
+  )
+}
+
+// ── Cinema Mode Settings ──────────────────────────────────────────────────────
+
+function CinemaSection() {
+  const { data: settings, isLoading } = useCinemaSettings()
+  const { mutate: updateSettings } = useUpdateCinemaSettings()
+  const { mutate: uploadIntro, isPending: isUploading } = useUploadCinemaIntro()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [saved, setSaved] = useState(false)
+
+  if (isLoading) return <Spinner />
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <SectionHeader
+        title="Cinema Mode"
+        description="Play trailers and a custom intro video before the main feature"
+      />
+
+      {/* Enable toggle */}
+      <div className="rounded-lg bg-netflix-dark p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-white">Enable Cinema Mode</h3>
+            <p className="mt-1 text-sm text-gray-400">
+              Show trailers and intro before playback. Users can skip at any time.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              updateSettings(
+                { enabled: !settings?.enabled },
+                {
+                  onSuccess: () => {
+                    setSaved(true)
+                    setTimeout(() => setSaved(false), 2000)
+                  },
+                },
+              )
+            }}
+            className={`relative h-7 w-12 rounded-full transition-colors ${
+              settings?.enabled ? 'bg-blue-600' : 'bg-gray-600'
+            }`}
+          >
+            <span
+              className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition-transform ${
+                settings?.enabled ? 'translate-x-5' : ''
+              }`}
+            />
+          </button>
+        </div>
+        {saved && <p className="mt-2 text-sm text-green-400">Saved!</p>}
+      </div>
+
+      {/* Max trailers */}
+      <div className="rounded-lg bg-netflix-dark p-6">
+        <h3 className="mb-1 text-base font-semibold text-white">Number of Trailers</h3>
+        <p className="mb-3 text-sm text-gray-400">
+          How many YouTube trailers to show (fetched from TMDb)
+        </p>
+        <select
+          value={settings?.max_trailers ?? '2'}
+          onChange={(e) => updateSettings({ max_trailers: e.target.value })}
+          className="rounded-lg bg-[#2a2a2a] px-4 py-2 text-white outline-none"
+        >
+          <option value="0">None</option>
+          <option value="1">1 trailer</option>
+          <option value="2">2 trailers</option>
+          <option value="3">3 trailers</option>
+        </select>
+      </div>
+
+      {/* Custom intro video */}
+      <div className="rounded-lg bg-netflix-dark p-6">
+        <h3 className="mb-1 text-base font-semibold text-white">Custom Intro Video</h3>
+        <p className="mb-3 text-sm text-gray-400">
+          Upload a short video (e.g. THX-style logo animation) that plays before trailers. Max
+          100MB.
+        </p>
+        <div className="flex items-center gap-4">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="video/mp4,video/webm,video/quicktime"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) uploadIntro(file)
+            }}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={isUploading}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          >
+            {isUploading ? 'Uploading...' : settings?.has_intro ? 'Replace Intro' : 'Upload Intro'}
+          </button>
+          {settings?.has_intro && (
+            <span className="text-sm text-green-400">Intro video uploaded</span>
+          )}
+        </div>
       </div>
     </div>
   )

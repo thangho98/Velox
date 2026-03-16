@@ -81,6 +81,23 @@ type MovieDetails struct {
 	ProductionCompanies []Company   `json:"production_companies"`
 	ProductionCountries []Country   `json:"production_countries"`
 	SpokenLanguages     []Language  `json:"spoken_languages"`
+	Videos              *VideoList  `json:"videos"`
+}
+
+// VideoList contains video results from TMDb (trailers, teasers, etc.)
+type VideoList struct {
+	Results []VideoInfo `json:"results"`
+}
+
+// VideoInfo represents a single video (trailer/teaser/clip) from TMDb.
+type VideoInfo struct {
+	ID       string `json:"id"`
+	Key      string `json:"key"`  // YouTube video ID
+	Name     string `json:"name"` // e.g. "Official Trailer"
+	Site     string `json:"site"` // "YouTube" | "Vimeo"
+	Type     string `json:"type"` // "Trailer" | "Teaser" | "Clip" | "Featurette"
+	Official bool   `json:"official"`
+	Size     int    `json:"size"` // 360, 480, 720, 1080
 }
 
 type TVDetails struct {
@@ -113,6 +130,7 @@ type TVDetails struct {
 	OriginCountry    []string        `json:"origin_country"`
 	OriginalLanguage string          `json:"original_language"`
 	Languages        []string        `json:"languages"`
+	Videos           *VideoList      `json:"videos"`
 }
 
 // Season and Episode structures

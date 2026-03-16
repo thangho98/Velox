@@ -173,7 +173,7 @@ func (c *Client) SearchTV(ctx context.Context, query string, year int, page int)
 // GetMovieDetails gets full details for a movie
 func (c *Client) GetMovieDetails(ctx context.Context, movieID int) (*MovieDetails, error) {
 	params := url.Values{
-		"append_to_response": {"credits,keywords"},
+		"append_to_response": {"credits,keywords,videos"},
 	}
 
 	req, err := c.newRequest(ctx, "GET", fmt.Sprintf("/movie/%d", movieID), params)
@@ -192,7 +192,7 @@ func (c *Client) GetMovieDetails(ctx context.Context, movieID int) (*MovieDetail
 // GetTVDetails gets full details for a TV show
 func (c *Client) GetTVDetails(ctx context.Context, tvID int) (*TVDetails, error) {
 	params := url.Values{
-		"append_to_response": {"credits,keywords,external_ids"},
+		"append_to_response": {"credits,keywords,external_ids,videos"},
 	}
 
 	req, err := c.newRequest(ctx, "GET", fmt.Sprintf("/tv/%d", tvID), params)

@@ -1,8 +1,9 @@
 import { Link } from 'react-router'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { LuFilm, LuPlay, LuStar, LuCheck, LuHeart } from 'react-icons/lu'
 import { useToggleFavorite, useProgress } from '@/hooks/stores/useMedia'
 import { tmdbImage } from '@/lib/image'
+import { api } from '@/lib/fetch'
 
 interface MediaCardProps {
   id: number
@@ -39,7 +40,38 @@ export function MediaCard({
   size = 'md',
 }: MediaCardProps) {
   const [isHovered, setIsHovered] = useState(false)
+  const [trailerKey, setTrailerKey] = useState<string | null>(null)
+  const [showTrailer, setShowTrailer] = useState(false)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { mutate: toggleFavorite } = useToggleFavorite()
+
+  useEffect(() => {
+    if (!isHovered) {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+      setShowTrailer(false)
+      return
+    }
+    // After 2s hover, fetch trailer
+    hoverTimerRef.current = setTimeout(async () => {
+      if (!trailerKey) {
+        try {
+          const endpoint = isSeries ? `/series/${seriesId || id}/cinema` : `/media/${id}/cinema`
+          const data = await api.get<{ items: Array<{ type: string; url: string }> }>(endpoint)
+          const trailer = data.items?.find((i) => i.type === 'trailer')
+          if (trailer) {
+            const match = trailer.url.match(/embed\/([^?]+)/)
+            if (match) setTrailerKey(match[1])
+          }
+        } catch {
+          // No trailers available
+        }
+      }
+      setShowTrailer(true)
+    }, 2000)
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    }
+  }, [isHovered, id, trailerKey])
 
   // Series cards: id is series.id, NOT media_id — skip progress/favorite
   const isSeries = type === 'series'
@@ -85,7 +117,27 @@ export function MediaCard({
         <div
           className={`${aspectClass} relative overflow-hidden rounded-lg bg-netflix-dark transition-transform duration-300 group-hover:scale-105 ${sizeClasses[size]}`}
         >
-          {posterSrc ? (
+          {/* Trailer preview or poster */}
+          {showTrailer && trailerKey ? (
+            <div className="absolute inset-0 overflow-hidden">
+              <div
+                style={{
+                  width: '160%',
+                  height: '160%',
+                  marginLeft: '-30%',
+                  marginTop: '-15%',
+                  pointerEvents: 'none',
+                }}
+              >
+                <iframe
+                  src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0`}
+                  className="h-full w-full"
+                  allow="autoplay; encrypted-media"
+                  style={{ border: 'none' }}
+                />
+              </div>
+            </div>
+          ) : posterSrc ? (
             <img
               src={posterSrc}
               alt={title}
@@ -99,22 +151,24 @@ export function MediaCard({
             </div>
           )}
 
-          {/* Hover Overlay */}
-          <div
-            className={`absolute inset-0 flex flex-col items-center justify-center bg-black/60 transition-opacity duration-200 ${
-              isHovered ? 'opacity-100' : 'opacity-0'
-            }`}
-          >
-            <div className="mb-4 rounded-full bg-netflix-red p-3 shadow-lg transition-transform hover:scale-110">
-              <LuPlay size={32} className="text-white fill-white" />
-            </div>
-            {rating && rating > 0 && (
-              <div className="flex items-center gap-1 rounded bg-yellow-500/90 px-2 py-0.5 text-xs font-medium text-black">
-                <LuStar size={12} className="fill-black" />
-                {rating.toFixed(1)}
+          {/* Hover Overlay (hidden during trailer) */}
+          {!(showTrailer && trailerKey) && (
+            <div
+              className={`absolute inset-0 flex flex-col items-center justify-center bg-black/60 transition-opacity duration-200 ${
+                isHovered ? 'opacity-100' : 'opacity-0'
+              }`}
+            >
+              <div className="mb-4 rounded-full bg-netflix-red p-3 shadow-lg transition-transform hover:scale-110">
+                <LuPlay size={32} className="text-white fill-white" />
               </div>
-            )}
-          </div>
+              {rating && rating > 0 && (
+                <div className="flex items-center gap-1 rounded bg-yellow-500/90 px-2 py-0.5 text-xs font-medium text-black">
+                  <LuStar size={12} className="fill-black" />
+                  {rating.toFixed(1)}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Type Badge */}
           <div className="absolute left-2 top-2">
