@@ -1,11 +1,17 @@
 import { Link } from 'react-router'
 import { useDismissProgress, useProgress, useUpdateProgress } from '@/hooks/stores/useMedia'
-import { LuFilm, LuPlay } from 'react-icons/lu'
+import { LuFilm, LuPlay, LuPencil } from 'react-icons/lu'
 import { LuCheck } from 'react-icons/lu'
 import { tmdbImage } from '@/lib/image'
 import type { Episode } from '@/types/api'
 
-export function EpisodeCard({ episode }: { episode: Episode }) {
+interface EpisodeCardProps {
+  episode: Episode
+  isAdmin?: boolean
+  onEdit?: (episode: Episode) => void
+}
+
+export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
   const { data: progress } = useProgress(episode.media_id)
   const { mutate: updateProgress } = useUpdateProgress()
   const { mutate: dismissProgress } = useDismissProgress()
@@ -71,6 +77,19 @@ export function EpisodeCard({ episode }: { episode: Episode }) {
           >
             <LuCheck size={16} />
           </button>
+          {isAdmin && onEdit && (
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onEdit(episode)
+              }}
+              className="rounded-full p-1.5 text-gray-500 transition-colors hover:text-white"
+              title="Edit episode metadata"
+            >
+              <LuPencil size={14} />
+            </button>
+          )}
         </div>
         {episode.overview && (
           <p className="mt-1 line-clamp-2 text-sm text-gray-400">{episode.overview}</p>

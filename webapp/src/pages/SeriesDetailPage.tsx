@@ -10,12 +10,15 @@ import {
   useUploadSeriesImage,
   useSeriesGenres,
   useSeriesCredits,
+  useEditEpisodeMetadata,
 } from '@/hooks/stores/useMedia'
 import { useAuthStore } from '@/stores/auth'
 import { EpisodeCard } from '@/components/EpisodeCard'
 import { LuChevronLeft, LuFilm, LuPlay, LuTv, LuPencil, LuLock } from 'react-icons/lu'
 import { seriesImage } from '@/lib/image'
 import { MetadataEditor } from '@/components/metadata/MetadataEditor'
+import { EpisodeEditDialog } from '@/components/metadata/EpisodeEditDialog'
+import type { Episode } from '@/types/api'
 
 export function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>()
@@ -30,6 +33,12 @@ export function SeriesDetailPage() {
   const { data: seriesCredits = [] } = useSeriesCredits(id)
   const { user } = useAuthStore()
   const [showEditor, setShowEditor] = useState(false)
+  const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null)
+  const currentSeasonId = selectedSeasonId || seasons?.[0]?.id || 0
+  const { mutate: editEpisode, isPending: isEpisodeSaving } = useEditEpisodeMetadata(
+    id,
+    currentSeasonId,
+  )
   const { data: continueWatchingData } = useContinueWatching({ limit: 100 })
   const { data: nextUpData } = useNextUp({ limit: 100 })
   const { data: episodes, isLoading: episodesLoading } = useEpisodes(
@@ -224,7 +233,12 @@ export function SeriesDetailPage() {
             ) : episodes && episodes.length > 0 ? (
               <div className="space-y-3">
                 {episodes.map((episode) => (
-                  <EpisodeCard key={episode.id} episode={episode} />
+                  <EpisodeCard
+                    key={episode.id}
+                    episode={episode}
+                    isAdmin={user?.is_admin}
+                    onEdit={(ep) => setEditingEpisode(ep)}
+                  />
                 ))}
               </div>
             ) : (
@@ -235,6 +249,21 @@ export function SeriesDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Episode Edit Dialog */}
+      {editingEpisode && (
+        <EpisodeEditDialog
+          episode={editingEpisode}
+          isSaving={isEpisodeSaving}
+          onSave={(req) => {
+            editEpisode(
+              { episodeId: editingEpisode.id, req },
+              { onSuccess: () => setEditingEpisode(null) },
+            )
+          }}
+          onClose={() => setEditingEpisode(null)}
+        />
+      )}
 
       {/* Metadata Editor Panel */}
       {showEditor && series && (

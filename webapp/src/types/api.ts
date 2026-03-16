@@ -234,6 +234,14 @@ export interface CreditInput {
   order: number
 }
 
+export interface EpisodeMetadataEditRequest {
+  title?: string
+  overview?: string
+  air_date?: string
+  episode_number?: number
+  metadata_locked?: boolean
+}
+
 export interface CreditWithPerson {
   credit: {
     id: number

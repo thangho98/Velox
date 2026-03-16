@@ -459,6 +459,7 @@ func runServer() {
 		mux.Handle("POST /api/admin/metadata/refresh-ratings", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.BulkRefreshRatings)))
 		mux.Handle("PATCH /api/media/{id}/metadata", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.EditMediaMetadata)))
 		mux.Handle("PATCH /api/series/{id}/metadata", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.EditSeriesMetadata)))
+		mux.Handle("PATCH /api/episodes/{id}/metadata", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.EditEpisodeMetadata)))
 		mux.Handle("DELETE /api/media/{id}/metadata/lock", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.UnlockMediaMetadata)))
 		mux.Handle("DELETE /api/series/{id}/metadata/lock", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.UnlockSeriesMetadata)))
 		mux.Handle("POST /api/media/{id}/images", middleware.RequireAdmin(http.HandlerFunc(metadataHandler.UploadMediaImage)))

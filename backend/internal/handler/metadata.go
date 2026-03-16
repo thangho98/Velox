@@ -193,6 +193,37 @@ func (h *MetadataHandler) EditSeriesMetadata(w http.ResponseWriter, r *http.Requ
 	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
+// EditEpisodeMetadata partially updates metadata for an episode.
+// PATCH /api/episodes/{id}/metadata
+func (h *MetadataHandler) EditEpisodeMetadata(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var req model.EpisodeMetadataEditRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if req.Title != nil && *req.Title == "" {
+		respondError(w, http.StatusBadRequest, "title must not be empty")
+		return
+	}
+
+	if err := h.metadataSvc.EditEpisodeMetadata(r.Context(), id, req); errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "episode not found")
+		return
+	} else if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
 // UnlockMediaMetadata removes the metadata lock for a media item.
 // DELETE /api/media/{id}/metadata/lock
 func (h *MetadataHandler) UnlockMediaMetadata(w http.ResponseWriter, r *http.Request) {

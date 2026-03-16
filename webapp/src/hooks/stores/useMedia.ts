@@ -30,6 +30,7 @@ import type {
   NextUpParams,
   MetadataEditRequest,
   SeriesMetadataEditRequest,
+  EpisodeMetadataEditRequest,
   CreditWithPerson,
 } from '@/types/api'
 
@@ -566,6 +567,17 @@ export function useUnlockMetadata(type: 'media' | 'series', id: number) {
       } else {
         queryClient.invalidateQueries({ queryKey: seriesKeys.detail(id) })
       }
+    },
+  })
+}
+
+export function useEditEpisodeMetadata(seriesId: number, seasonId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ episodeId, req }: { episodeId: number; req: EpisodeMetadataEditRequest }) =>
+      api.patch<unknown>(`/episodes/${episodeId}/metadata`, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: seriesKeys.episodes(seriesId, seasonId) })
     },
   })
 }

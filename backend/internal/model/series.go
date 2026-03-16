@@ -69,6 +69,15 @@ type EpisodeWithMedia struct {
 	PrimaryFile *MediaFile `json:"primary_file,omitempty"`
 }
 
+// EpisodeMetadataEditRequest represents a partial metadata edit for an episode.
+type EpisodeMetadataEditRequest struct {
+	Title          *string `json:"title"`
+	Overview       *string `json:"overview"`
+	AirDate        *string `json:"air_date"`
+	EpisodeNumber  *int    `json:"episode_number"`
+	MetadataLocked *bool   `json:"metadata_locked"` // locks the linked media
+}
+
 // SeriesWithSeasons combines series with its seasons
 type SeriesWithSeasons struct {
 	Series  Series   `json:"series"`

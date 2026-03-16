@@ -1057,6 +1057,65 @@ func (s *MetadataService) EditSeriesMetadata(ctx context.Context, seriesID int64
 	return nil
 }
 
+// EditEpisodeMetadata updates episode-level metadata (title, overview, air_date)
+// and syncs the linked media record. Locks the media from rescan override.
+func (s *MetadataService) EditEpisodeMetadata(ctx context.Context, episodeID int64, req model.EpisodeMetadataEditRequest) error {
+	episode, err := s.episodeRepo.GetByID(ctx, episodeID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("getting episode: %w", err)
+	}
+
+	// Update episode fields
+	if req.Title != nil {
+		episode.Title = *req.Title
+	}
+	if req.Overview != nil {
+		episode.Overview = *req.Overview
+	}
+	if req.AirDate != nil {
+		episode.AirDate = *req.AirDate
+	}
+	if req.EpisodeNumber != nil {
+		episode.EpisodeNumber = *req.EpisodeNumber
+	}
+
+	if err := s.episodeRepo.Update(ctx, episode); err != nil {
+		return fmt.Errorf("updating episode: %w", err)
+	}
+
+	// Sync title + overview to the linked media record
+	mediaReq := model.MetadataEditRequest{}
+	if req.Title != nil {
+		mediaReq.Title = req.Title
+		mediaReq.SortTitle = req.Title
+	}
+	if req.Overview != nil {
+		mediaReq.Overview = req.Overview
+	}
+	if req.AirDate != nil {
+		mediaReq.ReleaseDate = req.AirDate
+	}
+
+	// Auto-lock unless explicitly false
+	if req.MetadataLocked == nil {
+		locked := true
+		mediaReq.MetadataLocked = &locked
+	} else {
+		mediaReq.MetadataLocked = req.MetadataLocked
+	}
+
+	if err := s.mediaRepo.UpdateMetadata(ctx, episode.MediaID, mediaReq); err != nil {
+		if !errors.Is(err, repository.ErrNotFound) {
+			return fmt.Errorf("syncing media metadata: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // GetSeries retrieves a series by ID. Returns ErrNotFound if not found.
 func (s *MetadataService) GetSeries(ctx context.Context, id int64) (*model.Series, error) {
 	series, err := s.seriesRepo.GetByID(ctx, id)
