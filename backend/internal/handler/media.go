@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/service"
 )
 
@@ -16,12 +17,19 @@ func NewMediaHandler(svc *service.MediaService) *MediaHandler {
 }
 
 func (h *MediaHandler) List(w http.ResponseWriter, r *http.Request) {
-	libraryID := int64(parseIntQuery(r, "library_id", 0))
-	mediaType := r.URL.Query().Get("type") // "movie" or "episode"
-	limit := parseIntQuery(r, "limit", 50)
-	offset := parseIntQuery(r, "offset", 0)
+	// Always use ListFiltered — returns MediaListItem[] (superset of Media[])
+	filter := model.MediaListFilter{
+		LibraryID: int64(parseIntQuery(r, "library_id", 0)),
+		MediaType: r.URL.Query().Get("type"),
+		Search:    r.URL.Query().Get("search"),
+		Genre:     r.URL.Query().Get("genre"),
+		Year:      r.URL.Query().Get("year"),
+		Sort:      r.URL.Query().Get("sort"),
+		Limit:     parseIntQuery(r, "limit", 50),
+		Offset:    parseIntQuery(r, "offset", 0),
+	}
 
-	items, err := h.svc.List(r.Context(), libraryID, mediaType, limit, offset)
+	items, err := h.svc.ListFiltered(r.Context(), filter)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

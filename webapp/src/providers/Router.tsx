@@ -15,6 +15,7 @@ import { SeriesPage } from '@/pages/SeriesPage'
 import { FavoritesPage } from '@/pages/FavoritesPage'
 import { RecentlyWatchedPage } from '@/pages/RecentlyWatchedPage'
 import { SearchPage } from '@/pages/SearchPage'
+import { BrowsePage } from '@/pages/BrowsePage'
 
 // Auth guard component - wraps content with Layout
 function RequireAuth() {
@@ -76,6 +77,7 @@ export function RouterProvider() {
           <Route path="/libraries" element={<LibraryListPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/browse" element={<BrowsePage />} />
           {/* Redirects for old routes */}
           <Route path="/profile" element={<Navigate to="/settings?section=profile" replace />} />
           <Route

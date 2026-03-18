@@ -1,55 +1,33 @@
-import { useState } from 'react'
-import { useMediaList } from '@/hooks/stores/useMedia'
+import { useMediaList, useGenres } from '@/hooks/stores/useMedia'
+import { useFilterParams } from '@/hooks/useFilterParams'
 import { MediaCard } from '@/components/MediaCard'
-import { LuX, LuFilm } from 'react-icons/lu'
+import { FilterBar } from '@/components/FilterBar'
+import { AlphaIndex, useAlphaScroll } from '@/components/AlphaIndex'
+import { LuFilm } from 'react-icons/lu'
 
 export function MoviesPage() {
-  const [filters, setFilters] = useState({
-    genre: '',
-    year: '',
-    sortBy: 'newest',
-  })
+  const { filters, setGenre, setYear, setSort, clearFilters, hasActiveFilters } = useFilterParams()
 
   const { data: movies, isLoading } = useMediaList({
     type: 'movie',
-    limit: 100,
+    genre: filters.genre || undefined,
+    year: filters.year || undefined,
+    sort: filters.sort,
+    limit: 500,
   })
 
-  // Filter and sort movies
-  const filteredMovies = movies?.filter((movie) => {
-    if (filters.genre && !movie.genres.includes(filters.genre)) return false
-    if (filters.year) {
-      const movieYear = movie.release_date ? new Date(movie.release_date).getFullYear() : null
-      if (movieYear !== Number(filters.year)) return false
-    }
-    return true
-  })
+  const { data: genreList } = useGenres('movie')
+  const genres = genreList?.map((g) => g.name) ?? []
 
-  // Sort movies
-  const sortedMovies = filteredMovies?.sort((a, b) => {
-    switch (filters.sortBy) {
-      case 'newest':
-        return new Date(b.release_date || 0).getTime() - new Date(a.release_date || 0).getTime()
-      case 'oldest':
-        return new Date(a.release_date || 0).getTime() - new Date(b.release_date || 0).getTime()
-      case 'rating':
-        return (b.rating || 0) - (a.rating || 0)
-      case 'title':
-        return a.title.localeCompare(b.title)
-      default:
-        return 0
-    }
-  })
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: currentYear - 1900 + 1 }, (_, i) => String(currentYear - i))
 
-  // Get unique genres and years for filters
-  const genres = [...new Set(movies?.flatMap((m) => m.genres ?? []) || [])].filter(Boolean).sort()
-  const years = [
-    ...new Set(
-      movies
-        ?.map((m) => (m.release_date ? new Date(m.release_date).getFullYear() : null))
-        .filter((y): y is number => y !== null && !Number.isNaN(y)) || [],
-    ),
-  ].sort((a, b) => b - a)
+  const { activeLetters, currentLetter, scrollToLetter, getLetterForTitle } = useAlphaScroll(movies)
+
+  const showAlphaIndex = filters.sort === 'title' && (movies?.length ?? 0) > 0
+
+  // Track which letters have been seen to mark only the first item per letter
+  const seenLetters = new Set<string>()
 
   return (
     <div className="space-y-6">
@@ -58,115 +36,66 @@ export function MoviesPage() {
         <div>
           <h1 className="text-3xl font-bold text-white">Movies</h1>
           <p className="text-gray-400">
-            {sortedMovies?.length || 0} {sortedMovies?.length === 1 ? 'movie' : 'movies'}
+            {movies?.length || 0} {movies?.length === 1 ? 'movie' : 'movies'}
           </p>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3">
-          {/* Genre Filter */}
-          <select
-            value={filters.genre}
-            onChange={(e) => setFilters({ ...filters, genre: e.target.value })}
-            className="rounded-lg bg-netflix-dark px-4 py-2 text-sm text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
-          >
-            <option value="">All Genres</option>
-            {genres.map((genre) => (
-              <option key={genre} value={genre}>
-                {genre}
-              </option>
-            ))}
-          </select>
-
-          {/* Year Filter */}
-          <select
-            value={filters.year}
-            onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-            className="rounded-lg bg-netflix-dark px-4 py-2 text-sm text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
-          >
-            <option value="">All Years</option>
-            {years.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-
-          {/* Sort */}
-          <select
-            value={filters.sortBy}
-            onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
-            className="rounded-lg bg-netflix-dark px-4 py-2 text-sm text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="rating">Highest Rated</option>
-            <option value="title">Title A-Z</option>
-          </select>
         </div>
       </div>
 
-      {/* Active Filters */}
-      {(filters.genre || filters.year) && (
-        <div className="flex flex-wrap gap-2">
-          {filters.genre && (
-            <span className="flex items-center gap-1 rounded-full bg-netflix-red/20 px-3 py-1 text-sm text-netflix-red">
-              {filters.genre}
-              <button
-                onClick={() => setFilters({ ...filters, genre: '' })}
-                className="ml-1 hover:text-white"
-              >
-                <LuX size={16} />
-              </button>
-            </span>
-          )}
-          {filters.year && (
-            <span className="flex items-center gap-1 rounded-full bg-netflix-red/20 px-3 py-1 text-sm text-netflix-red">
-              {filters.year}
-              <button
-                onClick={() => setFilters({ ...filters, year: '' })}
-                className="ml-1 hover:text-white"
-              >
-                <LuX size={16} />
-              </button>
-            </span>
-          )}
-          <button
-            onClick={() => setFilters({ genre: '', year: '', sortBy: 'newest' })}
-            className="text-sm text-gray-400 hover:text-white"
-          >
-            Clear all
-          </button>
-        </div>
+      {/* Filter Bar */}
+      <FilterBar
+        genre={filters.genre}
+        year={filters.year}
+        sort={filters.sort}
+        genres={genres}
+        years={years}
+        onGenreChange={setGenre}
+        onYearChange={setYear}
+        onSortChange={setSort}
+        onClearFilters={clearFilters}
+        hasActiveFilters={hasActiveFilters}
+      />
+
+      {showAlphaIndex && (
+        <AlphaIndex
+          activeLetters={activeLetters}
+          currentLetter={currentLetter}
+          onSelect={scrollToLetter}
+        />
       )}
 
       {/* Movies Grid */}
       {isLoading ? (
         <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-netflix-red border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#e50914] border-t-transparent" />
         </div>
-      ) : sortedMovies?.length === 0 ? (
-        <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
+      ) : movies?.length === 0 ? (
+        <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-[#1a1a1a]">
           <LuFilm size={48} className="mb-4 text-gray-600" />
           <p className="text-gray-400">
-            {movies?.length === 0
-              ? 'No movies found in your libraries.'
-              : 'No movies match your filters.'}
+            {hasActiveFilters ? 'No movies match your filters.' : 'No movies in your library yet.'}
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {sortedMovies?.map((movie) => (
-            <MediaCard
-              key={movie.id}
-              id={movie.id}
-              title={movie.title}
-              posterPath={movie.poster_path}
-              type={movie.media_type === 'episode' ? 'series' : 'movie'}
-              year={movie.release_date ? new Date(movie.release_date).getFullYear() : undefined}
-              rating={movie.rating}
-            />
-          ))}
+        <div
+          className={`grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 ${showAlphaIndex ? 'pr-8' : ''}`}
+        >
+          {movies?.map((movie) => {
+            const letter = getLetterForTitle(movie.sort_title || movie.title)
+            const isFirstOfLetter = showAlphaIndex && !seenLetters.has(letter)
+            if (isFirstOfLetter) seenLetters.add(letter)
+            return (
+              <div key={movie.id} {...(isFirstOfLetter ? { 'data-alpha-letter': letter } : {})}>
+                <MediaCard
+                  id={movie.id}
+                  title={movie.title}
+                  posterPath={movie.poster_path}
+                  type={movie.media_type === 'episode' ? 'series' : 'movie'}
+                  year={movie.release_date ? new Date(movie.release_date).getFullYear() : undefined}
+                  rating={movie.rating}
+                />
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

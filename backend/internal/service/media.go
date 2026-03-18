@@ -36,6 +36,15 @@ func (s *MediaService) List(ctx context.Context, libraryID int64, mediaType stri
 	return s.repo.List(ctx, libraryID, mediaType, limit, offset)
 }
 
+// ListFiltered returns media items with advanced filtering, sorting, and pagination.
+// Supports filtering by library, media type, search query, genre, and year.
+func (s *MediaService) ListFiltered(ctx context.Context, filter model.MediaListFilter) ([]model.MediaListItem, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 50
+	}
+	return s.repo.ListFiltered(ctx, filter)
+}
+
 func (s *MediaService) Get(ctx context.Context, id int64) (*model.Media, error) {
 	media, err := s.repo.GetByID(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {

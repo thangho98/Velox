@@ -36,7 +36,7 @@ export function SeriesDetailPage() {
   const { user } = useAuthStore()
   const [showEditor, setShowEditor] = useState(false)
   const { youtubeKey } = useSeriesTrailers(id)
-  const [trailerMuted, setTrailerMuted] = useState(true)
+
   const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null)
   const currentSeasonId = selectedSeasonId || seasons?.[0]?.id || 0
   const { mutate: editEpisode, isPending: isEpisodeSaving } = useEditEpisodeMetadata(
@@ -100,19 +100,7 @@ export function SeriesDetailPage() {
       {(youtubeKey || series.backdrop_path) && (
         <div className="fixed inset-0 h-screen">
           {youtubeKey ? (
-            <>
-              <YouTubeBackground
-                videoId={youtubeKey}
-                muted={trailerMuted}
-                className="absolute inset-0"
-              />
-              <button
-                onClick={() => setTrailerMuted(!trailerMuted)}
-                className="absolute bottom-24 right-6 z-20 flex items-center gap-2 rounded-full border border-white/40 bg-black/40 px-3 py-1.5 text-sm text-white/80 backdrop-blur-sm transition-colors hover:bg-black/60"
-              >
-                {trailerMuted ? '🔇 Unmute' : '🔊 Mute'}
-              </button>
-            </>
+            <YouTubeBackground videoId={youtubeKey} muted className="absolute inset-0" />
           ) : (
             <img
               src={seriesImage(series.backdrop_path, 'w1280')!}

@@ -83,3 +83,41 @@ type SeriesWithSeasons struct {
 	Series  Series   `json:"series"`
 	Seasons []Season `json:"seasons"`
 }
+
+// SeriesListItem is a superset of Series — all Series fields + genres, season/episode counts.
+// Used by GET /api/series list endpoint. No fields removed vs Series.
+type SeriesListItem struct {
+	ID             int64   `json:"id"`
+	LibraryID      int64   `json:"library_id"`
+	Title          string  `json:"title"`
+	SortTitle      string  `json:"sort_title"`
+	TmdbID         *int64  `json:"tmdb_id,omitempty"`
+	ImdbID         *string `json:"imdb_id,omitempty"`
+	TvdbID         *int64  `json:"tvdb_id,omitempty"`
+	Overview       string  `json:"overview"`
+	Status         string  `json:"status"`
+	Network        string  `json:"network"`
+	FirstAirDate   string  `json:"first_air_date"`
+	PosterPath     string  `json:"poster_path"`
+	BackdropPath   string  `json:"backdrop_path"`
+	LogoPath       string  `json:"logo_path"`
+	ThumbPath      string  `json:"thumb_path"`
+	MetadataLocked bool    `json:"metadata_locked"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+	// Extra fields beyond Series
+	Genres       []string `json:"genres"`
+	SeasonCount  int      `json:"season_count,omitempty"`
+	EpisodeCount int      `json:"episode_count,omitempty"`
+}
+
+// SeriesListFilter represents filter parameters for series list queries
+type SeriesListFilter struct {
+	LibraryID int64
+	Search    string // LIKE on title + sort_title
+	Genre     string // exact match genre name
+	Year      string // 4-digit year string from first_air_date
+	Sort      string // "newest" | "oldest" | "rating" | "title"
+	Limit     int
+	Offset    int
+}

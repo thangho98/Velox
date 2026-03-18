@@ -120,22 +120,20 @@ export function MediaCard({
           {/* Trailer preview or poster */}
           {showTrailer && trailerKey ? (
             <div className="absolute inset-0 overflow-hidden">
-              <div
+              <iframe
+                src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0`}
+                allow="autoplay; encrypted-media"
                 style={{
-                  width: '160%',
-                  height: '160%',
-                  marginLeft: '-30%',
-                  marginTop: '-15%',
+                  border: 'none',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '200%',
+                  height: '200%',
                   pointerEvents: 'none',
                 }}
-              >
-                <iframe
-                  src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0`}
-                  className="h-full w-full"
-                  allow="autoplay; encrypted-media"
-                  style={{ border: 'none' }}
-                />
-              </div>
+              />
             </div>
           ) : posterSrc ? (
             <img

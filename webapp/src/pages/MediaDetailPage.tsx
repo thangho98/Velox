@@ -52,7 +52,7 @@ export function MediaDetailPage() {
   const { mutate: getStreamUrl } = useStreamUrl(mediaId)
   const [copied, setCopied] = useState(false)
   const { youtubeKey } = useTrailers(mediaId)
-  const [trailerMuted, setTrailerMuted] = useState(true)
+
   const { user } = useAuthStore()
   const { subtitleLanguage, setSubtitleLanguage } = usePlayerStore()
   const { data: subtitles = [] } = useSubtitles(mediaId)
@@ -105,19 +105,7 @@ export function MediaDetailPage() {
       {(youtubeKey || media.media.backdrop_path) && (
         <div className="fixed inset-0 h-screen">
           {youtubeKey ? (
-            <>
-              <YouTubeBackground
-                videoId={youtubeKey}
-                muted={trailerMuted}
-                className="absolute inset-0"
-              />
-              <button
-                onClick={() => setTrailerMuted(!trailerMuted)}
-                className="absolute bottom-24 right-6 z-20 flex items-center gap-2 rounded-full border border-white/40 bg-black/40 px-3 py-1.5 text-sm text-white/80 backdrop-blur-sm transition-colors hover:bg-black/60"
-              >
-                {trailerMuted ? '🔇 Unmute' : '🔊 Mute'}
-              </button>
-            </>
+            <YouTubeBackground videoId={youtubeKey} muted className="absolute inset-0" />
           ) : (
             <img
               src={tmdbImage(media.media.backdrop_path, 'w1280')!}

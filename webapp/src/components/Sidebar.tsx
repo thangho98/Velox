@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router'
-import { LuHouse, LuFilm, LuTv, LuHeart, LuClock, LuSettings } from 'react-icons/lu'
+import { LuHouse, LuFilm, LuTv, LuHeart, LuClock, LuSettings, LuFolderOpen } from 'react-icons/lu'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 
@@ -7,8 +7,9 @@ const sidebarItems = [
   { label: 'Home', path: '/', icon: LuHouse },
   { label: 'Movies', path: '/movies', icon: LuFilm },
   { label: 'Series', path: '/series', icon: LuTv },
+  { label: 'Browse', path: '/browse', icon: LuFolderOpen },
   { label: 'Favorites', path: '/favorites', icon: LuHeart },
-  { label: 'Continue Watching', path: '/recently-watched', icon: LuClock },
+  { label: 'Recently Watched', path: '/recently-watched', icon: LuClock },
   { label: 'Settings', path: '/settings', icon: LuSettings },
 ]
 

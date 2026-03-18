@@ -275,6 +275,111 @@ func (r *SeriesRepo) Search(ctx context.Context, query string, limit int) ([]mod
 	return items, rows.Err()
 }
 
+// ListFiltered retrieves series with advanced filtering, sorting, and pagination.
+// Supports filtering by library, search query, genre, and year.
+func (r *SeriesRepo) ListFiltered(ctx context.Context, f model.SeriesListFilter) ([]model.SeriesListItem, error) {
+	query := `SELECT s.id, s.library_id, s.title, s.sort_title,
+		s.tmdb_id, s.imdb_id, s.tvdb_id,
+		s.overview, s.status, s.network, s.first_air_date,
+		s.poster_path, s.backdrop_path, s.logo_path, s.thumb_path,
+		s.metadata_locked, s.created_at, s.updated_at,
+		GROUP_CONCAT(DISTINCT g.name) as genre_names,
+		COUNT(DISTINCT sea.id) as season_count,
+		COALESCE(SUM(sea.episode_count), 0) as episode_count
+		FROM series s
+		LEFT JOIN media_genres mg ON mg.series_id = s.id
+		LEFT JOIN genres g ON g.id = mg.genre_id
+		LEFT JOIN seasons sea ON sea.series_id = s.id
+		WHERE 1=1`
+	args := []any{}
+
+	// Library filter
+	if f.LibraryID > 0 {
+		query += " AND s.library_id = ?"
+		args = append(args, f.LibraryID)
+	}
+
+	// Search filter (LIKE on title OR sort_title)
+	if f.Search != "" {
+		query += " AND (s.title LIKE ? OR s.sort_title LIKE ?)"
+		pattern := "%" + f.Search + "%"
+		args = append(args, pattern, pattern)
+	}
+
+	// Genre filter using EXISTS subquery for exact match
+	if f.Genre != "" {
+		query += ` AND EXISTS (
+			SELECT 1 FROM media_genres mg2
+			JOIN genres g2 ON g2.id = mg2.genre_id
+			WHERE mg2.series_id = s.id AND g2.name = ?
+		)`
+		args = append(args, f.Genre)
+	}
+
+	// Year filter (extract year from first_air_date)
+	if f.Year != "" {
+		query += " AND s.first_air_date LIKE ?"
+		args = append(args, f.Year+"%")
+	}
+
+	query += " GROUP BY s.id"
+
+	// Sort order
+	switch f.Sort {
+	case "newest":
+		query += " ORDER BY s.first_air_date DESC, s.sort_title ASC"
+	case "oldest":
+		query += " ORDER BY s.first_air_date ASC, s.sort_title ASC"
+	case "rating":
+		// series table has no rating column — fall back to newest
+		query += " ORDER BY s.first_air_date DESC, s.sort_title ASC"
+	case "title":
+		query += " ORDER BY s.sort_title ASC"
+	default:
+		query += " ORDER BY s.sort_title ASC"
+	}
+
+	// Pagination
+	if f.Limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, f.Limit)
+	}
+	if f.Offset > 0 {
+		query += " OFFSET ?"
+		args = append(args, f.Offset)
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing filtered series: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.SeriesListItem
+	for rows.Next() {
+		var item model.SeriesListItem
+		var genreNames sql.NullString
+		if err := rows.Scan(
+			&item.ID, &item.LibraryID, &item.Title, &item.SortTitle,
+			&item.TmdbID, &item.ImdbID, &item.TvdbID,
+			&item.Overview, &item.Status, &item.Network, &item.FirstAirDate,
+			&item.PosterPath, &item.BackdropPath, &item.LogoPath, &item.ThumbPath,
+			&item.MetadataLocked, &item.CreatedAt, &item.UpdatedAt,
+			&genreNames, &item.SeasonCount, &item.EpisodeCount,
+		); err != nil {
+			return nil, fmt.Errorf("scanning filtered series: %w", err)
+		}
+
+		// Handle NULL or empty genre list
+		if genreNames.Valid && genreNames.String != "" {
+			item.Genres = strings.Split(genreNames.String, ",")
+		}
+
+		results = append(results, item)
+	}
+	return results, rows.Err()
+}
+
 // SeasonRepo handles seasons database operations
 type SeasonRepo struct {
 	db DBTX

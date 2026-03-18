@@ -177,3 +177,39 @@ func (r *GenreRepo) ClearSeriesGenres(ctx context.Context, seriesID int64) error
 	_, err := r.db.ExecContext(ctx, "DELETE FROM media_genres WHERE series_id = ?", seriesID)
 	return err
 }
+
+// ListWithFilter retrieves genres with optional type filtering.
+// typeFilter: "movie" | "series" | "" (empty = all)
+// Returns genres that have at least one linked item of the specified type.
+func (r *GenreRepo) ListWithFilter(ctx context.Context, typeFilter string) ([]model.Genre, error) {
+	query := "SELECT DISTINCT g.id, g.name, g.tmdb_id FROM genres g"
+	args := []any{}
+
+	switch typeFilter {
+	case "movie":
+		query += ` JOIN media_genres mg ON mg.genre_id = g.id
+			JOIN media m ON m.id = mg.media_id
+			WHERE m.media_type = 'movie'`
+	case "series":
+		query += ` JOIN media_genres mg ON mg.genre_id = g.id
+			WHERE mg.series_id IS NOT NULL`
+	}
+
+	query += " ORDER BY g.name"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing genres with filter: %w", err)
+	}
+	defer rows.Close()
+
+	var items []model.Genre
+	for rows.Next() {
+		var g model.Genre
+		if err := rows.Scan(&g.ID, &g.Name, &g.TmdbID); err != nil {
+			return nil, fmt.Errorf("scanning genre: %w", err)
+		}
+		items = append(items, g)
+	}
+	return items, rows.Err()
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,7 +10,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -424,9 +427,187 @@ func runServer() {
 	mux.HandleFunc("GET /api/media/{id}/files", mediaHandler.GetWithFiles)
 	mux.HandleFunc("GET /api/media/{id}/versions", mediaHandler.GetVersions)
 
+	// API routes - Folder Browse (DB-based, library-scoped, ACL-aware)
+	// No library_id → show all accessible libraries as root folders
+	// With library_id + path → browse inside that library
+	mux.HandleFunc("GET /api/browse", func(w http.ResponseWriter, r *http.Request) {
+		respondJSON := func(data any) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"data": data})
+		}
+		respondErr := func(status int, msg string) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			fmt.Fprintf(w, `{"error":%q}`, msg)
+		}
+
+		// Get user for ACL
+		userID, isAdmin, _ := auth.UserFromContext(r.Context())
+
+		// Get accessible library IDs for non-admin
+		var accessIDs []int64
+		if !isAdmin {
+			var err error
+			accessIDs, err = userRepo.GetLibraryIDs(r.Context(), userID)
+			if err != nil {
+				respondErr(http.StatusInternalServerError, "checking library access")
+				return
+			}
+		}
+
+		hasAccessTo := func(libID int64) bool {
+			if isAdmin {
+				return true
+			}
+			for _, id := range accessIDs {
+				if id == libID {
+					return true
+				}
+			}
+			return false
+		}
+
+		libraryIDStr := r.URL.Query().Get("library_id")
+		relativePath := r.URL.Query().Get("path")
+
+		// Security: reject path traversal
+		if strings.Contains(relativePath, "..") {
+			respondErr(http.StatusBadRequest, "invalid path")
+			return
+		}
+
+		// No library_id → show all accessible libraries as root folders (with posters)
+		if libraryIDStr == "" || libraryIDStr == "0" {
+			allLibs, err := libraryRepo.List(r.Context())
+			if err != nil {
+				respondErr(http.StatusInternalServerError, "listing libraries")
+				return
+			}
+			folders := make([]repository.BrowseFolderItem, 0, len(allLibs))
+			for _, lib := range allLibs {
+				if !hasAccessTo(lib.ID) {
+					continue
+				}
+				// Get poster from first media in this library
+				var poster sql.NullString
+				_ = db.QueryRowContext(r.Context(), `
+					SELECT poster_path FROM media
+					WHERE library_id = ? AND poster_path != ''
+					ORDER BY sort_title LIMIT 1`, lib.ID).Scan(&poster)
+
+				folders = append(folders, repository.BrowseFolderItem{
+					Name:   lib.Name,
+					Path:   fmt.Sprintf("lib:%d", lib.ID),
+					Poster: poster.String,
+				})
+			}
+			respondJSON(&repository.BrowseResult{
+				Path: "", Parent: "", Folders: folders,
+			})
+			return
+		}
+
+		// Parse library_id
+		libraryID, err := strconv.ParseInt(libraryIDStr, 10, 64)
+		if err != nil || libraryID == 0 {
+			respondErr(http.StatusBadRequest, "invalid library_id")
+			return
+		}
+
+		// Validate library + access
+		library, err := libraryRepo.GetByID(r.Context(), libraryID)
+		if err != nil {
+			respondErr(http.StatusNotFound, "library not found")
+			return
+		}
+		if !hasAccessTo(libraryID) {
+			respondErr(http.StatusForbidden, "no access to this library")
+			return
+		}
+
+		// Multi-root: path="" with multiple roots → show roots as top-level folders
+		if relativePath == "" && len(library.Paths) > 1 {
+			folders := make([]repository.BrowseFolderItem, 0, len(library.Paths))
+			nameCounts := map[string]int{}
+			for i, p := range library.Paths {
+				base := filepath.Base(p)
+				nameCounts[base]++
+				name := base
+				if nameCounts[base] > 1 {
+					name = fmt.Sprintf("%s-%d", base, nameCounts[base])
+				}
+				// Get poster from first media under this root
+				var poster sql.NullString
+				_ = db.QueryRowContext(r.Context(), `
+					SELECT m.poster_path FROM media_files mf
+					JOIN media m ON m.id = mf.media_id
+					WHERE m.library_id = ? AND mf.file_path LIKE ? || '%' AND m.poster_path != ''
+					ORDER BY m.sort_title LIMIT 1`, libraryID, p+"/").Scan(&poster)
+
+				folders = append(folders, repository.BrowseFolderItem{
+					Name:   name,
+					Path:   fmt.Sprintf("root:%d", i),
+					Poster: poster.String,
+				})
+			}
+			respondJSON(&repository.BrowseResult{
+				LibraryID: libraryID, Path: "", Parent: "", Folders: folders,
+			})
+			return
+		}
+
+		// Resolve absolute directory from library paths + relative path
+		var rootPath, subPath string
+		if len(library.Paths) == 1 {
+			rootPath = library.Paths[0]
+			subPath = relativePath
+		} else if strings.HasPrefix(relativePath, "root:") {
+			rest := relativePath[5:]
+			var nStr string
+			if slashIdx := strings.Index(rest, "/"); slashIdx > 0 {
+				nStr = rest[:slashIdx]
+				subPath = rest[slashIdx+1:]
+			} else {
+				nStr = rest
+				subPath = ""
+			}
+			n, parseErr := strconv.Atoi(nStr)
+			if parseErr != nil || n < 0 || n >= len(library.Paths) {
+				respondErr(http.StatusBadRequest, "invalid root index")
+				return
+			}
+			rootPath = library.Paths[n]
+		} else {
+			rootPath = library.Paths[0]
+			subPath = relativePath
+		}
+
+		absDir := rootPath
+		if subPath != "" {
+			absDir = filepath.Join(rootPath, subPath)
+		}
+
+		result, err := mediaFileRepo.BrowseFolders(r.Context(), libraryID, absDir, relativePath)
+		if err != nil {
+			respondErr(http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(result)
+	})
+
 	// API routes - Genres
 	mux.HandleFunc("GET /api/genres", func(w http.ResponseWriter, r *http.Request) {
-		genres, err := genreRepo.List(r.Context())
+		typeFilter := r.URL.Query().Get("type") // "movie" | "series" | "" (all)
+
+		var genres []model.Genre
+		var err error
+
+		if typeFilter != "" {
+			genres, err = genreRepo.ListWithFilter(r.Context(), typeFilter)
+		} else {
+			genres, err = genreRepo.List(r.Context())
+		}
+
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -490,6 +671,62 @@ func runServer() {
 	// API routes - Series
 	mux.HandleFunc("GET /api/series", seriesHandler.ListSeries)
 	mux.HandleFunc("GET /api/series/search", seriesHandler.SearchSeries)
+
+	// API routes - Unified Search (media + series)
+	mux.HandleFunc("GET /api/search", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+		if q == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"query required (use ?q=search_term)"}`)
+			return
+		}
+
+		limit := 20
+		if l := r.URL.Query().Get("limit"); l != "" {
+			if n, err := strconv.Atoi(l); err == nil && n > 0 {
+				limit = n
+			}
+		}
+
+		// Search both media (movies only, not episodes) and series
+		mediaResults, err := mediaRepo.ListFiltered(r.Context(), model.MediaListFilter{
+			Search:    q,
+			MediaType: "movie",
+			Limit:     limit,
+		})
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+
+		seriesResults, err := seriesRepo.ListFiltered(r.Context(), model.SeriesListFilter{
+			Search: q,
+			Limit:  limit,
+		})
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+
+		result := model.SearchResult{
+			Movies: mediaResults,
+			Series: seriesResults,
+		}
+		if result.Movies == nil {
+			result.Movies = []model.MediaListItem{}
+		}
+		if result.Series == nil {
+			result.Series = []model.SeriesListItem{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": result})
+	})
 	mux.HandleFunc("GET /api/series/{id}", seriesHandler.GetSeries)
 	mux.HandleFunc("GET /api/series/{id}/seasons", seriesHandler.ListSeasons)
 	mux.HandleFunc("GET /api/series/{id}/seasons/{seasonId}/episodes", seriesHandler.ListEpisodes)

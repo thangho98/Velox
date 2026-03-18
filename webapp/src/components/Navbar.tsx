@@ -10,6 +10,7 @@ const navItems = [
   { label: 'Home', path: '/' },
   { label: 'Movies', path: '/movies' },
   { label: 'Series', path: '/series' },
+  { label: 'Browse', path: '/browse' },
 ]
 
 export function Navbar() {
@@ -51,7 +52,6 @@ export function Navbar() {
     e.preventDefault()
     if (searchQuery.trim()) {
       navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
-      setSearchQuery('')
       toggleSearch()
     }
   }
@@ -94,13 +94,13 @@ export function Navbar() {
               {isSearchOpen ? (
                 <form
                   onSubmit={handleSearch}
-                  className="flex items-center gap-2 rounded bg-netflix-black/80 border border-gray-600 px-3 py-1.5"
+                  className="flex items-center gap-2 rounded bg-netflix-black/80 border border-gray-500 px-3 py-1.5"
                 >
                   <LuSearch size={16} className="text-gray-400" />
                   <input
                     ref={searchInputRef}
                     type="text"
-                    placeholder="Titles, people, genres"
+                    placeholder="Search movies, genres..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-48 bg-transparent text-sm text-white placeholder-gray-400 outline-none"
@@ -148,7 +148,9 @@ export function Navbar() {
                     <p className="text-sm font-medium text-white">
                       {user.display_name || user.username}
                     </p>
-                    <p className="text-xs text-gray-400">{user.is_admin ? 'Admin' : 'User'}</p>
+                    <p className="text-xs text-gray-400">
+                      {user.is_admin ? 'Administrator' : 'User'}
+                    </p>
                   </div>
                   <div className="py-1">
                     <Link
@@ -165,7 +167,7 @@ export function Navbar() {
                       className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-netflix-gray hover:text-white"
                     >
                       <LuLogOut size={16} />
-                      Sign out
+                      Sign Out
                     </button>
                   </div>
                 </div>

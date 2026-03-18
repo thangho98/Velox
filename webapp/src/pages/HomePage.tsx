@@ -9,6 +9,7 @@ import {
 import { MediaRow } from '@/components/MediaRow'
 import { ContinueWatchingCard } from '@/components/ContinueWatchingCard'
 import { NextUpCard } from '@/components/NextUpCard'
+import { ScrollRow } from '@/components/ScrollRow'
 import { useAuthStore } from '@/stores/auth'
 import { LuPlay, LuFilm, LuLibrary } from 'react-icons/lu'
 
@@ -76,6 +77,12 @@ export function HomePage() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white lg:text-xl">Continue Watching</h2>
+            <Link
+              to="/recently-watched"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              See all →
+            </Link>
           </div>
           {continueLoading ? (
             <div className="hide-scrollbar flex gap-3 overflow-x-auto pb-2">
@@ -89,13 +96,13 @@ export function HomePage() {
               ))}
             </div>
           ) : (
-            <div className="hide-scrollbar flex gap-3 overflow-x-auto pb-2">
+            <ScrollRow>
               {continueWatching?.map((item) => (
                 <div key={item.media_id} className="w-48 shrink-0 lg:w-56">
                   <ContinueWatchingCard item={item} />
                 </div>
               ))}
-            </div>
+            </ScrollRow>
           )}
         </section>
       )}
@@ -105,6 +112,12 @@ export function HomePage() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white lg:text-xl">Next Up</h2>
+            <Link
+              to="/recently-watched"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              See all →
+            </Link>
           </div>
           {nextUpLoading ? (
             <div className="hide-scrollbar flex gap-3 overflow-x-auto pb-2">
@@ -118,13 +131,13 @@ export function HomePage() {
               ))}
             </div>
           ) : (
-            <div className="hide-scrollbar flex gap-3 overflow-x-auto pb-2">
+            <ScrollRow>
               {nextUp?.map((item) => (
                 <div key={item.media_id} className="w-48 shrink-0 lg:w-56">
                   <NextUpCard item={item} />
                 </div>
               ))}
-            </div>
+            </ScrollRow>
           )}
         </section>
       )}

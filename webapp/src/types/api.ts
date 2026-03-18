@@ -178,6 +178,33 @@ export interface MediaListItem {
   series_id?: number
 }
 
+// SeriesListItem is a superset of Series — all Series fields + genres, season/episode counts.
+// Used by GET /api/series list endpoint. No fields removed vs Series.
+export interface SeriesListItem {
+  id: number
+  library_id: number
+  title: string
+  sort_title: string
+  tmdb_id?: number
+  imdb_id?: string
+  tvdb_id?: number
+  overview: string
+  status: string
+  network: string
+  first_air_date: string
+  poster_path: string
+  backdrop_path: string
+  logo_path: string
+  thumb_path: string
+  metadata_locked: boolean
+  created_at: string
+  updated_at: string
+  // Extra fields beyond Series
+  genres: string[]
+  season_count?: number
+  episode_count?: number
+}
+
 // Series Types (from GET /api/series)
 export interface Series {
   id: number
@@ -264,6 +291,11 @@ export interface SeriesWithSeasons {
 
 export interface SeriesListParams {
   library_id?: number
+  // Filter params (Plan M)
+  search?: string
+  genre?: string
+  year?: string
+  sort?: 'newest' | 'oldest' | 'rating' | 'title'
   limit?: number
   offset?: number
 }
@@ -329,6 +361,11 @@ export interface ToggleFavoriteResponse {
 export interface MediaListParams {
   library_id?: number
   type?: 'movie' | 'episode'
+  // Filter params (Plan M)
+  search?: string
+  genre?: string
+  year?: string
+  sort?: 'newest' | 'oldest' | 'rating' | 'title'
   limit?: number
   offset?: number
 }
@@ -518,6 +555,35 @@ export interface PlaybackStats {
   plays_this_week: number
   plays_this_month: number
   total_plays: number
+}
+
+// Genre Types
+export interface Genre {
+  id: number
+  name: string
+  tmdb_id?: number
+}
+
+// Plan M: Browse Folder Types — matches backend BrowseResult/BrowseFolderItem
+export interface BrowseFolderItem {
+  name: string
+  path: string
+  media_count?: number
+  poster?: string
+}
+
+export interface BrowseResult {
+  library_id: number
+  path: string
+  parent: string
+  folders: BrowseFolderItem[]
+  media: MediaListItem[]
+}
+
+// Unified Search Result (from GET /api/search)
+export interface SearchResult {
+  movies: MediaListItem[]
+  series: SeriesListItem[]
 }
 
 // Server Info

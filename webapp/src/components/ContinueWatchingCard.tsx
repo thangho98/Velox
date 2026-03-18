@@ -66,7 +66,7 @@ export function ContinueWatchingCard({ item }: ContinueWatchingCardProps) {
       {/* Info */}
       <div className="absolute bottom-1 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-6">
         <p className="truncate text-sm font-medium text-white">{displayTitle}</p>
-        <p className="text-xs text-gray-400">{remainingMinutes} phút còn lại</p>
+        <p className="text-xs text-gray-400">{remainingMinutes}m remaining</p>
       </div>
 
       {/* Dismiss button */}

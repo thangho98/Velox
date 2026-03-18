@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
 )
 
@@ -21,21 +22,26 @@ func NewSeriesHandler(seriesRepo *repository.SeriesRepo, seasonRepo *repository.
 }
 
 // ListSeries returns a list of series with optional filtering.
-// GET /api/series?library_id=&limit=&offset=
+// GET /api/series?library_id=&search=&genre=&year=&sort=&limit=&offset=
 func (h *SeriesHandler) ListSeries(w http.ResponseWriter, r *http.Request) {
-	libraryID, err := parseInt64Query(r.URL.Query().Get("library_id"))
-	if err != nil {
-		libraryID = 0
-	}
-	limit := parseIntQuery(r, "limit", 50)
-	offset := parseIntQuery(r, "offset", 0)
+	libraryID, _ := parseInt64Query(r.URL.Query().Get("library_id"))
 
-	series, err := h.seriesRepo.List(r.Context(), libraryID, limit, offset)
+	// Always use ListFiltered — returns SeriesListItem[] (superset of Series[])
+	filter := model.SeriesListFilter{
+		LibraryID: libraryID,
+		Search:    r.URL.Query().Get("search"),
+		Genre:     r.URL.Query().Get("genre"),
+		Year:      r.URL.Query().Get("year"),
+		Sort:      r.URL.Query().Get("sort"),
+		Limit:     parseIntQuery(r, "limit", 50),
+		Offset:    parseIntQuery(r, "offset", 0),
+	}
+
+	series, err := h.seriesRepo.ListFiltered(r.Context(), filter)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	respondJSON(w, http.StatusOK, series)
 }
 

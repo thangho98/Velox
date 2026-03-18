@@ -11,6 +11,7 @@ import type {
   Season,
   Episode,
   Series,
+  SeriesListItem,
   SeriesListParams,
   StreamUrls,
   PlaybackInfo,
@@ -32,6 +33,9 @@ import type {
   SeriesMetadataEditRequest,
   EpisodeMetadataEditRequest,
   CreditWithPerson,
+  SearchResult,
+  Genre,
+  BrowseResult,
 } from '@/types/api'
 
 // Filesystem browser API (admin only)
@@ -103,6 +107,11 @@ const mediaApi = {
     const searchParams = new URLSearchParams()
     if (params.library_id) searchParams.append('library_id', String(params.library_id))
     if (params.type) searchParams.append('type', params.type)
+    // Plan M: filter params
+    if (params.search) searchParams.append('search', params.search)
+    if (params.genre) searchParams.append('genre', params.genre)
+    if (params.year) searchParams.append('year', params.year)
+    if (params.sort) searchParams.append('sort', params.sort)
     if (params.limit) searchParams.append('limit', String(params.limit))
     if (params.offset) searchParams.append('offset', String(params.offset))
 
@@ -314,10 +323,15 @@ const seriesApi = {
   list: (params: SeriesListParams = {}) => {
     const searchParams = new URLSearchParams()
     if (params.library_id) searchParams.append('library_id', String(params.library_id))
+    // Plan M: filter params
+    if (params.search) searchParams.append('search', params.search)
+    if (params.genre) searchParams.append('genre', params.genre)
+    if (params.year) searchParams.append('year', params.year)
+    if (params.sort) searchParams.append('sort', params.sort)
     if (params.limit) searchParams.append('limit', String(params.limit))
     if (params.offset) searchParams.append('offset', String(params.offset))
     const query = searchParams.toString()
-    return api.get<Series[]>(`/series${query ? `?${query}` : ''}`)
+    return api.get<SeriesListItem[]>(`/series${query ? `?${query}` : ''}`)
   },
   get: (id: number) => api.get<Series>(`/series/${id}`),
   search: (query: string, limit = 20) =>
@@ -592,12 +606,8 @@ export function useEditEpisodeMetadata(seriesId: number, seasonId: number) {
   })
 }
 
-export function useAllGenres() {
-  return useQuery({
-    queryKey: ['genres'],
-    queryFn: () => api.get<{ id: number; name: string }[]>('/genres'),
-    staleTime: 5 * 60 * 1000,
-  })
+export function useAllGenres(type?: 'movie' | 'series') {
+  return useGenres(type)
 }
 
 export function useMediaGenres(mediaId: number) {
@@ -633,5 +643,68 @@ export function useSeriesCredits(seriesId: number) {
     queryFn: () => api.get<CreditWithPerson[]>(`/series/${seriesId}/credits`),
     enabled: seriesId > 0,
     select: (data) => data ?? [],
+  })
+}
+
+// Plan M: Unified Search Hook
+const searchApi = {
+  search: (query: string, limit = 20) => {
+    const searchParams = new URLSearchParams()
+    searchParams.append('q', query)
+    if (limit) searchParams.append('limit', String(limit))
+    return api.get<SearchResult>(`/search?${searchParams.toString()}`)
+  },
+}
+
+export const searchKeys = {
+  all: ['search'] as const,
+  query: (query: string) => [...searchKeys.all, query] as const,
+}
+
+export function useSearch(query: string, limit = 20) {
+  return useQuery({
+    queryKey: searchKeys.query(query),
+    queryFn: () => searchApi.search(query, limit),
+    staleTime: 60 * 1000,
+    enabled: query.length > 0,
+  })
+}
+
+// Plan M: Enhanced Genres Hook with type filter
+export function useGenres(type?: 'movie' | 'series') {
+  const searchParams = new URLSearchParams()
+  if (type) searchParams.append('type', type)
+  const query = searchParams.toString()
+
+  return useQuery({
+    queryKey: ['genres', type ?? 'all'],
+    queryFn: () => api.get<Genre[]>(`/genres${query ? `?${query}` : ''}`),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// Plan M: Folder Browse Hook
+// No libraryId → returns all libraries as root folders
+// With libraryId + path → browse inside that library
+const browseApi = {
+  browse: (libraryId?: number, path: string = '') => {
+    const searchParams = new URLSearchParams()
+    if (libraryId) searchParams.append('library_id', String(libraryId))
+    if (path) searchParams.append('path', path)
+    return api.get<BrowseResult>(`/browse?${searchParams.toString()}`)
+  },
+}
+
+export const browseKeys = {
+  all: ['browse'] as const,
+  folder: (libraryId: number | undefined, path: string) =>
+    [...browseKeys.all, libraryId ?? 0, path] as const,
+}
+
+export function useFolderBrowse(libraryId?: number, path: string = '') {
+  return useQuery({
+    queryKey: browseKeys.folder(libraryId, path),
+    queryFn: () => browseApi.browse(libraryId, path),
+    staleTime: 60 * 1000,
   })
 }

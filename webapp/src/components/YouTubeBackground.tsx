@@ -1,28 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
-
-declare global {
-  interface Window {
-    YT?: {
-      Player: new (
-        el: HTMLElement,
-        config: {
-          videoId: string
-          playerVars?: Record<string, number | string>
-          events?: Record<string, (event: { target: YTPlayer }) => void>
-        },
-      ) => YTPlayer
-    }
-    onYouTubeIframeAPIReady?: () => void
-  }
-}
-
-interface YTPlayer {
-  playVideo: () => void
-  mute: () => void
-  unMute: () => void
-  isMuted: () => boolean
-  destroy: () => void
-}
+import { useRef, useEffect } from 'react'
 
 interface YouTubeBackgroundProps {
   videoId: string
@@ -31,98 +7,38 @@ interface YouTubeBackgroundProps {
   className?: string
 }
 
-let apiLoaded = false
-let apiReady = false
-const readyCallbacks: Array<() => void> = []
-
-function loadYTApi() {
-  if (apiLoaded) return
-  apiLoaded = true
-  const tag = document.createElement('script')
-  tag.src = 'https://www.youtube.com/iframe_api'
-  document.head.appendChild(tag)
-  window.onYouTubeIframeAPIReady = () => {
-    apiReady = true
-    readyCallbacks.forEach((cb) => cb())
-    readyCallbacks.length = 0
-  }
-}
-
-function onApiReady(cb: () => void) {
-  if (apiReady) {
-    cb()
-  } else {
-    readyCallbacks.push(cb)
-    loadYTApi()
-  }
-}
-
 export function YouTubeBackground({ videoId, muted, className }: YouTubeBackgroundProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const playerRef = useRef<YTPlayer | null>(null)
-  const [ready, setReady] = useState(false)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
 
+  // Control mute/unmute via postMessage (requires enablejsapi=1)
   useEffect(() => {
-    if (!containerRef.current) return
+    const iframe = iframeRef.current
+    if (!iframe?.contentWindow) return
+    const cmd = muted ? 'mute' : 'unMute'
+    iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: cmd, args: '' }), '*')
+  }, [muted])
 
-    const el = document.createElement('div')
-    containerRef.current.appendChild(el)
-
-    onApiReady(() => {
-      if (!window.YT || !containerRef.current) return
-      playerRef.current = new window.YT.Player(el, {
-        videoId,
-        playerVars: {
-          autoplay: 1,
-          controls: 0,
-          showinfo: 0,
-          rel: 0,
-          loop: 1,
-          playlist: videoId,
-          modestbranding: 1,
-          iv_load_policy: 3,
-          disablekb: 1,
-          fs: 0,
-          playsinline: 1,
-          mute: 1,
-        },
-        events: {
-          onReady: (event: { target: YTPlayer }) => {
-            event.target.playVideo()
-            event.target.mute()
-            setReady(true)
-          },
-        },
-      })
-    })
-
-    return () => {
-      playerRef.current?.destroy()
-      playerRef.current = null
-    }
-  }, [videoId])
-
-  useEffect(() => {
-    if (!ready || !playerRef.current) return
-    if (muted) {
-      playerRef.current.mute()
-    } else {
-      playerRef.current.unMute()
-    }
-  }, [muted, ready])
+  const src = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${videoId}&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0&playsinline=1&enablejsapi=1&origin=${window.location.origin}`
 
   return (
-    <div className={className} style={{ overflow: 'hidden' }}>
-      <div
-        ref={containerRef}
-        style={{
-          width: '160%',
-          height: '160%',
-          marginLeft: '-30%',
-          marginTop: '-15%',
-          pointerEvents: 'none',
-        }}
-      />
+    <div className={className}>
+      <div className="relative h-full w-full overflow-hidden">
+        <iframe
+          ref={iframeRef}
+          src={src}
+          allow="autoplay; encrypted-media"
+          style={{
+            border: 'none',
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '200%',
+            height: '200%',
+            pointerEvents: 'none',
+          }}
+        />
+      </div>
     </div>
   )
 }

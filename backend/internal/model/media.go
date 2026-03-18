@@ -85,11 +85,26 @@ type MediaWithFiles struct {
 
 // MediaListItem represents a media item for list views with genres
 type MediaListItem struct {
-	ID         int64    `json:"id"`
-	Title      string   `json:"title"`
-	SortTitle  string   `json:"sort_title"`
-	PosterPath string   `json:"poster_path"`
-	MediaType  string   `json:"media_type"`
-	Genres     []string `json:"genres"`
-	SeriesID   int64    `json:"series_id,omitempty"`
+	ID          int64    `json:"id"`
+	Title       string   `json:"title"`
+	SortTitle   string   `json:"sort_title"`
+	PosterPath  string   `json:"poster_path"`
+	MediaType   string   `json:"media_type"`
+	Genres      []string `json:"genres"`
+	SeriesID    int64    `json:"series_id,omitempty"`
+	ReleaseDate string   `json:"release_date,omitempty"`
+	Rating      float64  `json:"rating,omitempty"`
+	Overview    string   `json:"overview,omitempty"`
+}
+
+// MediaListFilter represents filter parameters for media list queries
+type MediaListFilter struct {
+	LibraryID int64
+	MediaType string // "movie" | "episode" | ""
+	Search    string // LIKE on title + sort_title
+	Genre     string // exact match genre name
+	Year      string // 4-digit year string
+	Sort      string // "newest" | "oldest" | "rating" | "title"
+	Limit     int
+	Offset    int
 }

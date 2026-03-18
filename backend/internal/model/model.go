@@ -92,3 +92,9 @@ type AudioTrack struct {
 	Title         string `json:"title"`
 	IsDefault     bool   `json:"is_default"`
 }
+
+// SearchResult returns movies and series in separate arrays.
+type SearchResult struct {
+	Movies []MediaListItem  `json:"movies"`
+	Series []SeriesListItem `json:"series"`
+}

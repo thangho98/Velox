@@ -1,47 +1,32 @@
-import { useState } from 'react'
-import { useSeriesList } from '@/hooks/stores/useMedia'
+import { useSeriesList, useGenres } from '@/hooks/stores/useMedia'
+import { useFilterParams } from '@/hooks/useFilterParams'
 import { MediaCard } from '@/components/MediaCard'
-import { LuX, LuTv } from 'react-icons/lu'
-import type { Series } from '@/types/api'
+import { FilterBar } from '@/components/FilterBar'
+import { AlphaIndex, useAlphaScroll } from '@/components/AlphaIndex'
+import { LuTv } from 'react-icons/lu'
+import type { SeriesListItem } from '@/types/api'
 
 export function SeriesPage() {
-  const [filters, setFilters] = useState({
-    year: '',
-    sortBy: 'newest',
-  })
-  const { data: series, isLoading } = useSeriesList({ limit: 100 })
+  const { filters, setGenre, setYear, setSort, clearFilters, hasActiveFilters } = useFilterParams()
 
-  // Filter
-  const filteredSeries = series?.filter((s: Series) => {
-    if (filters.year) {
-      const year = s.first_air_date ? new Date(s.first_air_date).getFullYear() : null
-      if (year !== Number(filters.year)) return false
-    }
-    return true
+  const { data: series, isLoading } = useSeriesList({
+    genre: filters.genre || undefined,
+    year: filters.year || undefined,
+    sort: filters.sort,
+    limit: 500,
   })
 
-  // Sort
-  const sortedSeries = filteredSeries?.sort((a: Series, b: Series) => {
-    switch (filters.sortBy) {
-      case 'newest':
-        return new Date(b.first_air_date || 0).getTime() - new Date(a.first_air_date || 0).getTime()
-      case 'oldest':
-        return new Date(a.first_air_date || 0).getTime() - new Date(b.first_air_date || 0).getTime()
-      case 'title':
-        return a.title.localeCompare(b.title)
-      default:
-        return 0
-    }
-  })
+  const { data: genreList } = useGenres('series')
+  const genres = genreList?.map((g) => g.name) ?? []
 
-  // Years for filter
-  const years = [
-    ...new Set(
-      series
-        ?.map((s: Series) => (s.first_air_date ? new Date(s.first_air_date).getFullYear() : null))
-        .filter((y): y is number => y !== null && !Number.isNaN(y)) || [],
-    ),
-  ].sort((a, b) => b - a)
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: currentYear - 1950 + 1 }, (_, i) => String(currentYear - i))
+
+  const { activeLetters, currentLetter, scrollToLetter, getLetterForTitle } = useAlphaScroll(series)
+
+  const showAlphaIndex = filters.sort === 'title' && (series?.length ?? 0) > 0
+
+  const seenLetters = new Set<string>()
 
   return (
     <div className="space-y-6">
@@ -50,87 +35,71 @@ export function SeriesPage() {
         <div>
           <h1 className="text-3xl font-bold text-white">Series</h1>
           <p className="text-gray-400">
-            {sortedSeries?.length || 0} {sortedSeries?.length === 1 ? 'series' : 'series'}
+            {series?.length || 0} {series?.length === 1 ? 'series' : 'series'}
           </p>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3">
-          {/* Year Filter */}
-          <select
-            value={filters.year}
-            onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-            className="rounded-lg bg-netflix-dark px-4 py-2 text-sm text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
-          >
-            <option value="">All Years</option>
-            {years.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-
-          {/* Sort */}
-          <select
-            value={filters.sortBy}
-            onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
-            className="rounded-lg bg-netflix-dark px-4 py-2 text-sm text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="title">Title A-Z</option>
-          </select>
         </div>
       </div>
 
-      {/* Active Filters */}
-      {filters.year && (
-        <div className="flex flex-wrap gap-2">
-          <span className="flex items-center gap-1 rounded-full bg-purple-500/20 px-3 py-1 text-sm text-purple-400">
-            {filters.year}
-            <button
-              onClick={() => setFilters({ ...filters, year: '' })}
-              className="ml-1 hover:text-white"
-            >
-              <LuX size={16} />
-            </button>
-          </span>
-          <button
-            onClick={() => setFilters({ year: '', sortBy: 'newest' })}
-            className="text-sm text-gray-400 hover:text-white"
-          >
-            Clear all
-          </button>
-        </div>
+      {/* Filter Bar */}
+      <FilterBar
+        genre={filters.genre}
+        year={filters.year}
+        sort={filters.sort}
+        genres={genres}
+        years={years}
+        sortOptions={[
+          { value: 'newest', label: 'Newest' },
+          { value: 'oldest', label: 'Oldest' },
+          { value: 'title', label: 'Title A-Z' },
+        ]}
+        onGenreChange={setGenre}
+        onYearChange={setYear}
+        onSortChange={setSort}
+        onClearFilters={clearFilters}
+        hasActiveFilters={hasActiveFilters}
+      />
+
+      {showAlphaIndex && (
+        <AlphaIndex
+          activeLetters={activeLetters}
+          currentLetter={currentLetter}
+          onSelect={scrollToLetter}
+        />
       )}
 
       {/* Series Grid */}
       {isLoading ? (
         <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#e50914] border-t-transparent" />
         </div>
-      ) : sortedSeries?.length === 0 ? (
-        <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-netflix-dark">
+      ) : series?.length === 0 ? (
+        <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-[#1a1a1a]">
           <LuTv size={48} className="mb-4 text-gray-600" />
           <p className="text-gray-400">
-            {series?.length === 0
-              ? 'No series found in your libraries.'
-              : 'No series match your filters.'}
+            {hasActiveFilters ? 'No series match your filters.' : 'No series in your library yet.'}
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {sortedSeries?.map((s: Series) => (
-            <MediaCard
-              key={s.id}
-              id={s.id}
-              title={s.title}
-              posterPath={s.poster_path}
-              type="series"
-              seriesId={s.id}
-              year={s.first_air_date ? new Date(s.first_air_date).getFullYear() : undefined}
-            />
-          ))}
+        <div
+          className={`grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 ${showAlphaIndex ? 'pr-8' : ''}`}
+        >
+          {series?.map((s: SeriesListItem) => {
+            const letter = getLetterForTitle(s.sort_title || s.title)
+            const isFirstOfLetter = showAlphaIndex && !seenLetters.has(letter)
+            if (isFirstOfLetter) seenLetters.add(letter)
+            return (
+              <div key={s.id} {...(isFirstOfLetter ? { 'data-alpha-letter': letter } : {})}>
+                <MediaCard
+                  id={s.id}
+                  title={s.title}
+                  posterPath={s.poster_path}
+                  type="series"
+                  seriesId={s.id}
+                  year={s.first_air_date ? new Date(s.first_air_date).getFullYear() : undefined}
+                />
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

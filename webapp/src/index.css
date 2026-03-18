@@ -78,8 +78,8 @@ body {
   display: none;
 }
 
-/* Custom focus styles */
-*:focus-visible {
+/* Custom focus styles — skip inputs/selects (they have their own focus styles) */
+*:focus-visible:not(input):not(select):not(textarea) {
   outline: 2px solid #e50914;
   outline-offset: 2px;
 }
