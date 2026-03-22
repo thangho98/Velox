@@ -1,0 +1,22 @@
+{
+  "nav": {
+    "home": "Home",
+    "movies": "Movies",
+    "series": "Series",
+    "browse": "Browse",
+    "favorites": "Favorites",
+    "recentlyWatched": "Recently Watched",
+    "settings": "Settings",
+    "search": "Search"
+  },
+  "userMenu": {
+    "settings": "Settings",
+    "signOut": "Sign Out",
+    "admin": "Administrator",
+    "user": "User"
+  },
+  "search": {
+    "placeholder": "Search movies, genres..."
+  },
+  "back": "Back"
+}

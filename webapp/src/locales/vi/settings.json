@@ -1,0 +1,98 @@
+{
+  "groups": {
+    "websettings": "Cài đặt Web",
+    "adminpreferences": "Cài đặt Quản trị",
+    "veloxserver": "Máy chủ Velox"
+  },
+  "sections": {
+    "profile": {
+      "title": "Hồ sơ",
+      "description": "Quản lý thông tin tài khoản"
+    },
+    "preferences": {
+      "title": "Tùy chọn",
+      "description": "Tùy chỉnh trải nghiệm xem phim"
+    },
+    "security": {
+      "title": "Bảo mật",
+      "description": "Thay đổi mật khẩu"
+    },
+    "sessions": {
+      "title": "Phiên đăng nhập",
+      "description": "Quản lý phiên hoạt động"
+    },
+    "metadata": {
+      "title": "Metadata",
+      "description": "Cấu hình nhà cung cấp metadata"
+    },
+    "subtitles": {
+      "title": "Phụ đề",
+      "description": "Cấu hình nhà cung cấp phụ đề"
+    },
+    "playback": {
+      "title": "Phát lại",
+      "description": "Chính sách phát lại toàn server"
+    },
+    "cinema": {
+      "title": "Chế độ Rạp phim",
+      "description": "Phát trailer trước phim chính"
+    },
+    "general": {
+      "title": "Bảng điều khiển",
+      "description": "Thông tin và trạng thái máy chủ"
+    },
+    "libraries": {
+      "title": "Thư viện",
+      "description": "Quản lý thư viện phương tiện"
+    },
+    "users": {
+      "title": "Người dùng",
+      "description": "Quản lý tài khoản người dùng"
+    },
+    "activity": {
+      "title": "Hoạt động",
+      "description": "Hoạt động gần đây trên máy chủ"
+    },
+    "tasks": {
+      "title": "Tác vụ",
+      "description": "Tác vụ nền và bảo trì"
+    },
+    "webhooks": {
+      "title": "Webhooks",
+      "description": "Cấu hình thông báo webhook"
+    }
+  },
+  "fields": {
+    "username": "Tên đăng nhập",
+    "displayName": "Tên hiển thị",
+    "password": "Mật khẩu",
+    "confirmPassword": "Xác nhận mật khẩu",
+    "currentPassword": "Mật khẩu hiện tại",
+    "newPassword": "Mật khẩu mới",
+    "role": "Vai trò",
+    "language": "Ngôn ngữ",
+    "subtitleLanguage": "Ngôn ngữ phụ đề",
+    "audioLanguage": "Ngôn ngữ âm thanh",
+    "maxQuality": "Chất lượng phát tối đa",
+    "theme": "Giao diện"
+  },
+  "options": {
+    "theme": {
+      "system": "Theo hệ thống",
+      "dark": "Tối",
+      "light": "Sáng"
+    },
+    "quality": {
+      "original": "Gốc",
+      "4k": "4K",
+      "1080p": "1080p",
+      "720p": "720p",
+      "480p": "480p"
+    },
+    "language": {
+      "auto": "Tự động",
+      "en": "Tiếng Anh",
+      "vi": "Tiếng Việt"
+    }
+  }
+}

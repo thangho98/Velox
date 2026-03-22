@@ -1,0 +1,70 @@
+{
+  "actions": {
+    "play": "Play",
+    "resume": "Resume",
+    "fromBeginning": "From Beginning",
+    "playEpisode": "Play S{{season}}E{{episode}}",
+    "playFirstEpisode": "Play First Episode",
+    "continue": "Continue {{title}}",
+    "addToFavorites": "Add to Favorites",
+    "removeFromFavorites": "Remove from Favorites",
+    "moreInfo": "More Info",
+    "trailer": "Trailer",
+    "cast": "Cast",
+    "crew": "Crew",
+    "similar": "Similar",
+    "copyStreamUrl": "Copy Stream URL",
+    "markAsWatched": "Mark as watched",
+    "markAsUnwatched": "Mark as unwatched",
+    "copied": "Copied!",
+    "editMetadata": "Edit metadata",
+    "edit": "Edit"
+  },
+  "filters": {
+    "genre": "Genre",
+    "year": "Year",
+    "rating": "Rating",
+    "sort": "Sort",
+    "sortBy": "Sort By",
+    "sortOptions": {
+      "added": "Date Added",
+      "title": "Title",
+      "year": "Year",
+      "rating": "Rating",
+      "releaseDate": "Release Date"
+    }
+  },
+  "search": {
+    "placeholder": "Search movies, series, genres...",
+    "results": "Results for",
+    "noResults": "No results found"
+  },
+  "library": {
+    "movies": "Movies",
+    "tvshows": "TV Shows",
+    "mixed": "Mixed"
+  },
+  "detail": {
+    "overview": "Overview",
+    "videos": "Videos",
+    "episodes": "Episodes",
+    "season": "Season",
+    "seasons": "Seasons",
+    "seasonNumber": "Season {{number}}",
+    "releaseDate": "Release Date",
+    "runtime": "Runtime",
+    "director": "Director",
+    "writers": "Writers",
+    "genres": "Genres",
+    "noEpisodes": "No episodes found",
+    "percentWatched": "{{percent}}% watched",
+    "metadataLocked": "Metadata locked",
+    "seriesNotFound": "Series not found"
+  },
+  "browse": {
+    "title": "Browse",
+    "back": "Back",
+    "empty": "No media in this folder",
+    "folders": "Folders ({{count}})"
+  }
+}

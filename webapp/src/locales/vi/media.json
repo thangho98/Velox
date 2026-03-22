@@ -1,0 +1,70 @@
+{
+  "actions": {
+    "play": "Xem ngay",
+    "resume": "Tiếp tục xem",
+    "fromBeginning": "Xem từ đầu",
+    "playEpisode": "Xem T{{season}}T{{episode}}",
+    "playFirstEpisode": "Xem tập đầu",
+    "continue": "Tiếp tục {{title}}",
+    "addToFavorites": "Thêm vào yêu thích",
+    "removeFromFavorites": "Xóa khỏi yêu thích",
+    "moreInfo": "Thông tin thêm",
+    "trailer": "Trailer",
+    "cast": "Diễn viên",
+    "crew": "Đoàn làm phim",
+    "similar": "Phim tương tự",
+    "copyStreamUrl": "Sao chép link stream",
+    "markAsWatched": "Đánh dấu đã xem",
+    "markAsUnwatched": "Đánh dấu chưa xem",
+    "copied": "Đã sao chép!",
+    "editMetadata": "Sửa metadata",
+    "edit": "Sửa"
+  },
+  "filters": {
+    "genre": "Thể loại",
+    "year": "Năm",
+    "rating": "Đánh giá",
+    "sort": "Sắp xếp",
+    "sortBy": "Sắp xếp theo",
+    "sortOptions": {
+      "added": "Ngày thêm",
+      "title": "Tên phim",
+      "year": "Năm",
+      "rating": "Đánh giá",
+      "releaseDate": "Ngày phát hành"
+    }
+  },
+  "search": {
+    "placeholder": "Tìm phim, series, thể loại...",
+    "results": "Kết quả cho",
+    "noResults": "Không tìm thấy kết quả"
+  },
+  "library": {
+    "movies": "Phim lẻ",
+    "tvshows": "Phim bộ",
+    "mixed": "Hỗn hợp"
+  },
+  "detail": {
+    "overview": "Tóm tắt",
+    "videos": "Video",
+    "episodes": "Tập",
+    "season": "Mùa",
+    "seasons": "Mùa",
+    "seasonNumber": "Mùa {{number}}",
+    "releaseDate": "Ngày phát hành",
+    "runtime": "Thời lượng",
+    "director": "Đạo diễn",
+    "writers": "Tác giả",
+    "genres": "Thể loại",
+    "noEpisodes": "Không có tập nào",
+    "percentWatched": "Đã xem {{percent}}%",
+    "metadataLocked": "Metadata đã khóa",
+    "seriesNotFound": "Không tìm thấy series"
+  },
+  "browse": {
+    "title": "Duyệt phim",
+    "back": "Quay lại",
+    "empty": "Không có media trong thư mục này",
+    "folders": "Thư mục ({{count}})"
+  }
+}

@@ -34,10 +34,12 @@ import { tmdbImage } from '@/lib/image'
 import { MetadataEditor } from '@/components/metadata/MetadataEditor'
 import { useTrailers } from '@/hooks/useCinemaMode'
 import { YouTubeBackground } from '@/components/YouTubeBackground'
+import { useTranslation } from '@/hooks/useTranslation'
 
 export function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
   const mediaId = Number(id)
+  const { t } = useTranslation('media')
 
   const { data: media, isLoading } = useMediaWithFiles(mediaId)
   const { data: progress } = useProgress(mediaId)
@@ -241,14 +243,14 @@ export function MediaDetailPage() {
                       className="flex items-center gap-2 rounded bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
                     >
                       <LuPlay size={18} className="fill-current" />
-                      Resume
+                      {t('actions.resume')}
                     </Link>
                     <Link
                       to={`/watch/${mediaId}?t=0`}
                       className="flex items-center gap-2 rounded bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
                     >
                       <LuPlay size={16} />
-                      From Beginning
+                      {t('actions.fromBeginning')}
                     </Link>
                   </>
                 ) : (
@@ -257,7 +259,7 @@ export function MediaDetailPage() {
                     className="flex items-center gap-2 rounded bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
                   >
                     <LuPlay size={18} className="fill-current" />
-                    Play
+                    {t('actions.play')}
                   </Link>
                 )}
 

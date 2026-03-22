@@ -1,0 +1,12 @@
+{
+  "generic": "Đã xảy ra lỗi",
+  "network": "Lỗi kết nối mạng. Vui lòng kiểm tra kết nối.",
+  "notFound": "Không tìm thấy",
+  "unauthorized": "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.",
+  "forbidden": "Không có quyền truy cập",
+  "validation": "Dữ liệu không hợp lệ",
+  "server": "Lỗi máy chủ. Vui lòng thử lại sau.",
+  "required": "Trường này là bắt buộc",
+  "minLength": "Phải có ít nhất {{count}} ký tự",
+  "invalidCredentials": "Tên đăng nhập hoặc mật khẩu không đúng"
+}

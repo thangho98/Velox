@@ -1,0 +1,22 @@
+{
+  "nav": {
+    "home": "Trang chủ",
+    "movies": "Phim lẻ",
+    "series": "Phim bộ",
+    "browse": "Duyệt phim",
+    "favorites": "Yêu thích",
+    "recentlyWatched": "Xem gần đây",
+    "settings": "Cài đặt",
+    "search": "Tìm kiếm"
+  },
+  "userMenu": {
+    "settings": "Cài đặt",
+    "signOut": "Đăng xuất",
+    "admin": "Quản trị viên",
+    "user": "Người dùng"
+  },
+  "search": {
+    "placeholder": "Tìm phim, thể loại..."
+  },
+  "back": "Quay lại"
+}

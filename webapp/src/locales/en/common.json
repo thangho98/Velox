@@ -1,0 +1,32 @@
+{
+  "app": {
+    "name": "Velox",
+    "tagline": "Your personal media server"
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "close": "Close",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "saving": "Saving...",
+    "scanning": "Scanning...",
+    "searching": "Searching...",
+    "signIn": "Sign In",
+    "signOut": "Sign Out"
+  },
+  "states": {
+    "empty": "No items found",
+    "error": "Something went wrong",
+    "success": "Success!",
+    "active": "Active",
+    "inactive": "Inactive",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "notFound": "Not found",
+    "goBackHome": "Go back home"
+  }
+}

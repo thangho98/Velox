@@ -1,0 +1,32 @@
+{
+  "app": {
+    "name": "Velox",
+    "tagline": "Máy chủ phương tiện cá nhân của bạn"
+  },
+  "actions": {
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "delete": "Xóa",
+    "edit": "Sửa",
+    "create": "Tạo",
+    "close": "Đóng",
+    "confirm": "Xác nhận",
+    "loading": "Đang tải...",
+    "saving": "Đang lưu...",
+    "scanning": "Đang quét...",
+    "searching": "Đang tìm...",
+    "signIn": "Đăng nhập",
+    "signOut": "Đăng xuất"
+  },
+  "states": {
+    "empty": "Không có mục nào",
+    "error": "Đã xảy ra lỗi",
+    "success": "Thành công!",
+    "active": "Đang hoạt động",
+    "inactive": "Không hoạt động",
+    "enabled": "Đã bật",
+    "disabled": "Đã tắt",
+    "notFound": "Không tìm thấy",
+    "goBackHome": "Về trang chủ"
+  }
+}

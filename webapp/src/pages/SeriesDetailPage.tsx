@@ -20,12 +20,15 @@ import { MetadataEditor } from '@/components/metadata/MetadataEditor'
 import { EpisodeEditDialog } from '@/components/metadata/EpisodeEditDialog'
 import { useSeriesTrailers } from '@/hooks/useCinemaMode'
 import { YouTubeBackground } from '@/components/YouTubeBackground'
+import { useTranslation } from '@/hooks/useTranslation'
 import type { Episode } from '@/types/api'
 
 export function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>()
   const id = Number(seriesId)
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null)
+  const { t } = useTranslation('media')
+  const { t: tCommon } = useTranslation('common')
 
   const { data: series, isLoading: seriesLoading } = useSeriesDetail(id)
   const { data: seasons, isLoading: seasonsLoading } = useSeasons(id)
@@ -68,9 +71,9 @@ export function SeriesDetailPage() {
     return (
       <div className="flex h-screen flex-col items-center justify-center">
         <h1 className="mb-4 text-4xl font-bold text-white">404</h1>
-        <p className="mb-8 text-xl text-gray-400">Series not found</p>
+        <p className="mb-8 text-xl text-gray-400">{t('detail.seriesNotFound')}</p>
         <Link to="/" className="text-netflix-blue hover:underline">
-          Go back home
+          {tCommon('states.goBackHome')}
         </Link>
       </div>
     )
@@ -83,12 +86,15 @@ export function SeriesDetailPage() {
   const nextUpItem = nextUp.find((item) => item.series_id === id)
   const playTargetMediaId = resumeItem?.media_id ?? nextUpItem?.media_id ?? episodes?.[0]?.media_id
   const playLabel = resumeItem
-    ? 'Resume'
+    ? t('actions.resume')
     : nextUpItem
-      ? `Play S${nextUpItem.season_number}E${nextUpItem.episode_number}`
-      : 'Play First Episode'
+      ? t('actions.playEpisode', {
+          season: nextUpItem.season_number,
+          episode: nextUpItem.episode_number,
+        })
+      : t('actions.playFirstEpisode')
   const playSubtitle = resumeItem
-    ? `Continue ${resumeItem.title}`
+    ? t('actions.continue', { title: resumeItem.title })
     : nextUpItem
       ? nextUpItem.episode_title
       : null
@@ -161,18 +167,18 @@ export function SeriesDetailPage() {
                 {user?.is_admin && series.metadata_locked && (
                   <span
                     className="flex items-center gap-1 rounded-full bg-amber-600/20 px-2 py-0.5 text-xs text-amber-400"
-                    title="Metadata locked"
+                    title={t('detail.metadataLocked')}
                   >
-                    <LuLock size={12} /> Locked
+                    <LuLock size={12} /> {t('actions.editMetadata')}
                   </span>
                 )}
                 {user?.is_admin && (
                   <button
                     onClick={() => setShowEditor(true)}
                     className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-0.5 text-xs text-gray-300 hover:bg-white/20"
-                    title="Edit metadata"
+                    title={t('actions.editMetadata')}
                   >
-                    <LuPencil size={12} /> Edit
+                    <LuPencil size={12} /> {t('actions.edit')}
                   </button>
                 )}
               </div>
@@ -201,7 +207,7 @@ export function SeriesDetailPage() {
 
           {/* Seasons and Episodes */}
           <div className="mt-12">
-            <h2 className="mb-6 text-2xl font-bold text-white">Episodes</h2>
+            <h2 className="mb-6 text-2xl font-bold text-white">{t('detail.episodes')}</h2>
 
             {/* Season Selector */}
             {seasonsLoading ? (
@@ -221,7 +227,7 @@ export function SeriesDetailPage() {
                           : 'bg-netflix-dark text-gray-300 hover:bg-netflix-gray'
                       }`}
                     >
-                      Season {season.season_number}
+                      {t('detail.season')} {season.season_number}
                     </button>
                   ))}
                 </div>
@@ -251,7 +257,7 @@ export function SeriesDetailPage() {
               </div>
             ) : (
               <div className="flex h-32 flex-col items-center justify-center rounded-lg bg-netflix-dark">
-                <p className="text-gray-400">No episodes found</p>
+                <p className="text-gray-400">{t('detail.noEpisodes')}</p>
               </div>
             )}
           </div>

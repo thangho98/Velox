@@ -53,6 +53,7 @@ import { WatchPlaybackStatsOverlay } from '@/components/watch/WatchPlaybackStats
 import { WatchTopBar } from '@/components/watch/WatchTopBar'
 import { SkipIntroCredits } from '@/components/watch/SkipIntroCredits'
 import { useChromecast } from '@/hooks/useChromecast'
+import { useTranslation } from '@/hooks/useTranslation'
 import {
   DETAIL_PANEL_ANIMATION_MS,
   formatChannelLayout,
@@ -111,6 +112,7 @@ export function WatchPage() {
   const seekFeedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qualityIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lowBandwidthToastShown = useRef(false)
+  const { t } = useTranslation('watch')
 
   const {
     available: castAvailable,
@@ -184,6 +186,15 @@ export function WatchPage() {
   const isEpisode = media?.media.media_type === 'episode'
   const seriesId = media?.series_id ?? 0
   const seasonId = media?.season_id ?? 0
+
+  // Handle back navigation - go to detail page instead of history back
+  const handleBack = () => {
+    if (isEpisode && seriesId > 0) {
+      navigate(`/series/${seriesId}`)
+    } else {
+      navigate(`/movie/${mediaId}`)
+    }
+  }
   const { data: seasons = [] } = useSeasons(isEpisode ? seriesId : 0)
   const [seasonPanelSeasonId, setSeasonPanelSeasonId] = useState(0)
   const { data: seasonEpisodes = [] } = useEpisodes(
@@ -853,7 +864,7 @@ export function WatchPage() {
 
   const currentQualityLabel =
     maxQuality === 'auto'
-      ? 'Auto'
+      ? t('controls.auto')
       : (QUALITY_OPTIONS.find(
           (q) => q.height === maxQuality.height && q.bitrateKbps === maxQuality.bitrateKbps,
         )?.label ?? `${maxQuality.height}p`)
@@ -885,10 +896,7 @@ export function WatchPage() {
       <div className="flex h-screen items-center justify-center bg-[#141414] text-white">
         <div className="text-center">
           <p className="text-lg text-red-400">{error || 'Media not found'}</p>
-          <button
-            onClick={() => navigate(-1)}
-            className="mt-4 text-sm text-white/60 hover:text-white"
-          >
+          <button onClick={handleBack} className="mt-4 text-sm text-white/60 hover:text-white">
             Go back
           </button>
         </div>
@@ -975,7 +983,7 @@ export function WatchPage() {
         <div className="pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1 text-sm text-white/90">
           {availableLevels.find((l) => l.level === currentLevel)?.height
             ? `${availableLevels.find((l) => l.level === currentLevel)?.height}p`
-            : 'Auto'}
+            : t('controls.auto')}
           {bandwidth !== null && ` · ${bandwidth.toFixed(1)} Mbps`}
         </div>
       )}
@@ -1075,7 +1083,7 @@ export function WatchPage() {
           <WatchTopBar
             isMuted={isMuted}
             volume={volume}
-            onBack={() => navigate(-1)}
+            onBack={handleBack}
             onMuteToggle={toggleMute}
             onVolumeChange={(nextVolume) => {
               setVolume(nextVolume)
@@ -1185,7 +1193,7 @@ export function WatchPage() {
                           ? 'border-white bg-white/20 text-white'
                           : 'border-white/30 bg-white/5 text-white/70 hover:border-white/60 hover:text-white'
                       }`}
-                      title="Subtitles"
+                      title={t('controls.subtitles')}
                     >
                       <LuCaptions size={18} />
                     </button>
@@ -1229,7 +1237,7 @@ export function WatchPage() {
                           setShowSettings(false)
                         }}
                         className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
-                        title="Audio"
+                        title={t('controls.audio')}
                       >
                         <LuMusic size={17} />
                       </button>
@@ -1262,7 +1270,7 @@ export function WatchPage() {
                           ? 'border-white bg-white/20 text-white'
                           : 'border-white/30 bg-white/5 text-white/70 hover:border-white/60 hover:text-white'
                       }`}
-                      title="Speed"
+                      title={t('controls.speed')}
                     >
                       <span className="text-xs font-bold tabular-nums">
                         {playbackRate === 1 ? '1×' : `${playbackRate}×`}
@@ -1271,7 +1279,7 @@ export function WatchPage() {
                     {showSpeedMenu && (
                       <div className="absolute bottom-full right-0 mb-2 w-44 rounded-xl bg-[#1e1e1e] py-2 shadow-2xl ring-1 ring-white/10">
                         <p className="px-4 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                          Playback Speed
+                          {t('controls.playbackSpeed')}
                         </p>
                         {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => (
                           <button
@@ -1313,7 +1321,7 @@ export function WatchPage() {
                           ? 'border-white bg-white/20 text-white'
                           : 'border-white/30 bg-white/5 text-white/70 hover:border-white/60 hover:text-white'
                       }`}
-                      title="Settings"
+                      title={t('controls.settings')}
                     >
                       <LuSettings size={17} />
                     </button>
@@ -1327,7 +1335,7 @@ export function WatchPage() {
                               className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5 text-xs font-semibold text-white/70 hover:text-white"
                             >
                               <LuChevronLeft size={14} />
-                              Quality
+                              {t('controls.quality')}
                             </button>
                             <div className="max-h-[50vh] overflow-y-auto py-1">
                               {QUALITY_OPTIONS.map((q) => {
@@ -1367,7 +1375,7 @@ export function WatchPage() {
                                     : 'text-white/70 hover:bg-white/5 hover:text-white'
                                 }`}
                               >
-                                Auto
+                                {t('controls.auto')}
                                 {maxQuality === 'auto' && (
                                   <LuCheck size={14} className="text-white" />
                                 )}
@@ -1380,7 +1388,7 @@ export function WatchPage() {
                             {/* Aspect Ratio */}
                             <div>
                               <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                                <LuExpand size={10} /> Aspect Ratio
+                                <LuExpand size={10} /> {t('controls.aspectRatio')}
                               </p>
                               <div className="grid grid-cols-3 gap-1">
                                 {(['contain', 'cover', 'fill'] as const).map((r) => (
@@ -1394,7 +1402,7 @@ export function WatchPage() {
                                     }`}
                                   >
                                     {r === 'contain'
-                                      ? 'Auto'
+                                      ? t('controls.auto')
                                       : r.charAt(0).toUpperCase() + r.slice(1)}
                                   </button>
                                 ))}
@@ -1404,7 +1412,7 @@ export function WatchPage() {
                             {/* Subtitle Appearance */}
                             <div className="border-t border-white/10 pt-3">
                               <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                                <LuCaptions size={10} /> Subtitles
+                                <LuCaptions size={10} /> {t('controls.subtitles')}
                               </p>
                               <div className="grid grid-cols-3 gap-1 mb-2">
                                 {(['small', 'medium', 'large'] as const).map((s) => (
@@ -1423,10 +1431,10 @@ export function WatchPage() {
                               </div>
                               <div className="grid grid-cols-3 gap-1 mb-2">
                                 {[
-                                  { value: 'none' as const, label: 'None' },
-                                  { value: 'semi' as const, label: 'Semi' },
-                                  { value: 'solid' as const, label: 'Solid' },
-                                ].map(({ value, label }) => (
+                                  { value: 'none' as const, labelKey: 'controls.none' },
+                                  { value: 'semi' as const, labelKey: 'controls.semi' },
+                                  { value: 'solid' as const, labelKey: 'controls.solid' },
+                                ].map(({ value, labelKey }) => (
                                   <button
                                     key={value}
                                     onClick={() => setSubtitleBackground(value)}
@@ -1436,7 +1444,7 @@ export function WatchPage() {
                                         : 'bg-white/5 text-white/70 hover:bg-white/15 hover:text-white'
                                     }`}
                                   >
-                                    {label}
+                                    {t(labelKey)}
                                   </button>
                                 ))}
                               </div>
@@ -1550,7 +1558,7 @@ export function WatchPage() {
                             {/* More */}
                             <div className="border-t border-white/10 pt-3">
                               <button
-                                onClick={() => navigate(-1)}
+                                onClick={handleBack}
                                 className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
                               >
                                 <LuExternalLink size={13} /> Back
@@ -1592,7 +1600,7 @@ export function WatchPage() {
                       toggleFullscreen()
                     }}
                     className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
-                    title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                    title={isFullscreen ? t('controls.exitFullscreen') : t('controls.fullscreen')}
                   >
                     {isFullscreen ? <LuMinimize2 size={17} /> : <LuMaximize2 size={17} />}
                   </button>
@@ -1695,7 +1703,7 @@ export function WatchPage() {
                   }`}
                 >
                   <LuInfo size={14} />
-                  Info
+                  {t('detail.info')}
                 </button>
                 {isEpisode && (
                   <button
@@ -1705,7 +1713,7 @@ export function WatchPage() {
                     }`}
                   >
                     <LuListMusic size={12} />
-                    Season
+                    {t('detail.season')}
                   </button>
                 )}
               </div>

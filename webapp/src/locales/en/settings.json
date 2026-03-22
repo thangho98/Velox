@@ -1,0 +1,98 @@
+{
+  "groups": {
+    "websettings": "Web Settings",
+    "adminpreferences": "Admin Preferences",
+    "veloxserver": "Velox Server"
+  },
+  "sections": {
+    "profile": {
+      "title": "Profile",
+      "description": "Manage your account information"
+    },
+    "preferences": {
+      "title": "Preferences",
+      "description": "Customize your viewing experience"
+    },
+    "security": {
+      "title": "Security",
+      "description": "Change your password"
+    },
+    "sessions": {
+      "title": "Sessions",
+      "description": "Manage your active sessions"
+    },
+    "metadata": {
+      "title": "Metadata",
+      "description": "Configure metadata providers for movies and TV shows"
+    },
+    "subtitles": {
+      "title": "Subtitles",
+      "description": "Configure external subtitle providers"
+    },
+    "playback": {
+      "title": "Playback",
+      "description": "Server-wide playback policy"
+    },
+    "cinema": {
+      "title": "Cinema Mode",
+      "description": "Play trailers and a custom intro video before the main feature"
+    },
+    "general": {
+      "title": "Dashboard",
+      "description": "Server information and status"
+    },
+    "libraries": {
+      "title": "Libraries",
+      "description": "Manage media libraries"
+    },
+    "users": {
+      "title": "Users",
+      "description": "Manage user accounts"
+    },
+    "activity": {
+      "title": "Activity",
+      "description": "Recent server activity and user actions"
+    },
+    "tasks": {
+      "title": "Tasks",
+      "description": "Background tasks and maintenance jobs"
+    },
+    "webhooks": {
+      "title": "Webhooks",
+      "description": "Configure webhook notifications"
+    }
+  },
+  "fields": {
+    "username": "Username",
+    "displayName": "Display Name",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "role": "Role",
+    "language": "Language",
+    "subtitleLanguage": "Subtitle Language",
+    "audioLanguage": "Audio Language",
+    "maxQuality": "Max Streaming Quality",
+    "theme": "Theme"
+  },
+  "options": {
+    "theme": {
+      "system": "System",
+      "dark": "Dark",
+      "light": "Light"
+    },
+    "quality": {
+      "original": "Original",
+      "4k": "4K",
+      "1080p": "1080p",
+      "720p": "720p",
+      "480p": "480p"
+    },
+    "language": {
+      "auto": "Auto",
+      "en": "English",
+      "vi": "Vietnamese"
+    }
+  }
+}

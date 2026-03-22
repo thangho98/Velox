@@ -82,13 +82,15 @@ import {
   useRunTask,
 } from '@/hooks/stores/useAdmin'
 import { DirectoryPicker } from '@/components/DirectoryPicker'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { useTranslation } from '@/hooks/useTranslation'
 import type { User, Webhook } from '@/types/api'
 
 // ── Section Definitions ───────────────────────────────────────────────────────
 
 interface Section {
   id: string
-  label: string
+  labelKey: string
   icon: React.ReactNode
   group: string
   adminOnly?: boolean
@@ -96,40 +98,55 @@ interface Section {
 
 const ALL_SECTIONS: Section[] = [
   // Web Settings (all users)
-  { id: 'profile', label: 'Profile', icon: <LuUser size={18} />, group: 'Web Settings' },
+  {
+    id: 'profile',
+    labelKey: 'sections.profile.title',
+    icon: <LuUser size={18} />,
+    group: 'Web Settings',
+  },
   {
     id: 'preferences',
-    label: 'Preferences',
+    labelKey: 'sections.preferences.title',
     icon: <LuSettings size={18} />,
     group: 'Web Settings',
   },
-  { id: 'security', label: 'Security', icon: <LuShield size={18} />, group: 'Web Settings' },
-  { id: 'sessions', label: 'Sessions', icon: <LuMonitor size={18} />, group: 'Web Settings' },
+  {
+    id: 'security',
+    labelKey: 'sections.security.title',
+    icon: <LuShield size={18} />,
+    group: 'Web Settings',
+  },
+  {
+    id: 'sessions',
+    labelKey: 'sections.sessions.title',
+    icon: <LuMonitor size={18} />,
+    group: 'Web Settings',
+  },
   // Admin Preferences (admin only)
   {
     id: 'metadata',
-    label: 'Metadata',
+    labelKey: 'sections.metadata.title',
     icon: <LuFilm size={18} />,
     group: 'Admin Preferences',
     adminOnly: true,
   },
   {
     id: 'subtitles',
-    label: 'Subtitles',
+    labelKey: 'sections.subtitles.title',
     icon: <LuCaptions size={18} />,
     group: 'Admin Preferences',
     adminOnly: true,
   },
   {
     id: 'playback',
-    label: 'Playback',
+    labelKey: 'sections.playback.title',
     icon: <LuPlay size={18} />,
     group: 'Admin Preferences',
     adminOnly: true,
   },
   {
     id: 'cinema',
-    label: 'Cinema Mode',
+    labelKey: 'sections.cinema.title',
     icon: <LuFilm size={18} />,
     group: 'Admin Preferences',
     adminOnly: true,
@@ -137,42 +154,42 @@ const ALL_SECTIONS: Section[] = [
   // Velox Server (admin only)
   {
     id: 'general',
-    label: 'Dashboard',
+    labelKey: 'sections.general.title',
     icon: <LuServer size={18} />,
     group: 'Velox Server',
     adminOnly: true,
   },
   {
     id: 'libraries',
-    label: 'Libraries',
+    labelKey: 'sections.libraries.title',
     icon: <LuLibrary size={18} />,
     group: 'Velox Server',
     adminOnly: true,
   },
   {
     id: 'users',
-    label: 'Users',
+    labelKey: 'sections.users.title',
     icon: <LuUsers size={18} />,
     group: 'Velox Server',
     adminOnly: true,
   },
   {
     id: 'activity',
-    label: 'Activity',
+    labelKey: 'sections.activity.title',
     icon: <LuActivity size={18} />,
     group: 'Velox Server',
     adminOnly: true,
   },
   {
     id: 'tasks',
-    label: 'Tasks',
+    labelKey: 'sections.tasks.title',
     icon: <LuClock size={18} />,
     group: 'Velox Server',
     adminOnly: true,
   },
   {
     id: 'webhooks',
-    label: 'Webhooks',
+    labelKey: 'sections.webhooks.title',
     icon: <LuWebhook size={18} />,
     group: 'Velox Server',
     adminOnly: true,
@@ -186,6 +203,7 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeSection = searchParams.get('section') || 'profile'
   const isAdmin = user?.is_admin ?? false
+  const { t } = useTranslation('settings')
 
   const setSection = (id: string) => setSearchParams({ section: id })
 
@@ -205,7 +223,7 @@ export function SettingsPage() {
         >
           {Object.entries(groups).map(([group, items], gi) => (
             <div key={group} className={gi > 0 ? 'mt-3' : ''}>
-              <SidebarGroupHeader label={group} />
+              <SidebarGroupHeader label={t(`groups.${group.toLowerCase().replace(/ /g, '')}`)} />
               {items.map((item) => (
                 <button
                   key={item.id}
@@ -217,7 +235,7 @@ export function SettingsPage() {
                   }`}
                 >
                   <span className="shrink-0">{item.icon}</span>
-                  <span className="flex-1 text-left">{item.label}</span>
+                  <span className="flex-1 text-left">{t(item.labelKey)}</span>
                 </button>
               ))}
             </div>
@@ -340,6 +358,7 @@ function PreferencesSection() {
       audio_language: prefs.audio_language,
       max_streaming_quality: prefs.max_streaming_quality,
       theme: prefs.theme,
+      language: preferences?.language || 'en',
     })
     setTheme(prefs.theme)
   }
@@ -393,6 +412,9 @@ function PreferencesSection() {
             <option value="dark">Dark</option>
             <option value="light">Light</option>
           </select>
+        </Field>
+        <Field label="Language">
+          <LanguageSwitcher />
         </Field>
         <SaveButton isPending={isPending} />
       </form>

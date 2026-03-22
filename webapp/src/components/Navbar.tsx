@@ -2,15 +2,17 @@ import { Link, useNavigate, useLocation } from 'react-router'
 import { useState, useRef, useEffect } from 'react'
 import { LuSearch, LuX, LuChevronDown, LuLogOut, LuSettings } from 'react-icons/lu'
 import { Logo } from './Logo'
+import { LanguageSwitcher } from './LanguageSwitcher'
 import { useAuthStore } from '@/stores/auth'
 import { useLogout } from '@/hooks/stores/useAuth'
+import { useTranslation } from '@/hooks/useTranslation'
 import { useUIStore } from '@/stores/ui'
 
 const navItems = [
-  { label: 'Home', path: '/' },
-  { label: 'Movies', path: '/movies' },
-  { label: 'Series', path: '/series' },
-  { label: 'Browse', path: '/browse' },
+  { labelKey: 'nav.home', path: '/' },
+  { labelKey: 'nav.movies', path: '/movies' },
+  { labelKey: 'nav.series', path: '/series' },
+  { labelKey: 'nav.browse', path: '/browse' },
 ]
 
 export function Navbar() {
@@ -19,6 +21,7 @@ export function Navbar() {
   const { user, isAuthenticated } = useAuthStore()
   const { mutate: logout } = useLogout()
   const { isSearchOpen, toggleSearch } = useUIStore()
+  const { t } = useTranslation('navigation')
 
   const [scrolled, setScrolled] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -80,7 +83,7 @@ export function Navbar() {
                       : 'text-gray-300'
                   }`}
                 >
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               ))}
             </nav>
@@ -100,7 +103,7 @@ export function Navbar() {
                   <input
                     ref={searchInputRef}
                     type="text"
-                    placeholder="Search movies, genres..."
+                    placeholder={t('search.placeholder')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-48 bg-transparent text-sm text-white placeholder-gray-400 outline-none"
@@ -149,17 +152,18 @@ export function Navbar() {
                       {user.display_name || user.username}
                     </p>
                     <p className="text-xs text-gray-400">
-                      {user.is_admin ? 'Administrator' : 'User'}
+                      {user.is_admin ? t('userMenu.admin') : t('userMenu.user')}
                     </p>
                   </div>
                   <div className="py-1">
+                    <LanguageSwitcher compact />
                     <Link
                       to="/settings"
                       className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-netflix-gray hover:text-white"
                       onClick={() => setIsUserMenuOpen(false)}
                     >
                       <LuSettings size={16} />
-                      Settings
+                      {t('userMenu.settings')}
                     </Link>
                     <div className="my-1 border-t border-netflix-gray" />
                     <button
@@ -167,7 +171,7 @@ export function Navbar() {
                       className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-netflix-gray hover:text-white"
                     >
                       <LuLogOut size={16} />
-                      Sign Out
+                      {t('userMenu.signOut')}
                     </button>
                   </div>
                 </div>

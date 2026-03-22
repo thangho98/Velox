@@ -11,6 +11,7 @@ import { tmdbImage } from '@/lib/image'
 import { ActionMenu } from '@/components/ActionMenu'
 import type { ActionMenuItem } from '@/components/ActionMenu'
 import type { Episode } from '@/types/api'
+import { useTranslation } from '@/hooks/useTranslation'
 
 interface EpisodeCardProps {
   episode: Episode
@@ -19,6 +20,7 @@ interface EpisodeCardProps {
 }
 
 export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
+  const { t } = useTranslation('media')
   const { data: progress } = useProgress(episode.media_id)
   const { mutate: updateProgress } = useUpdateProgress()
   const { mutate: dismissProgress } = useDismissProgress()
@@ -30,7 +32,7 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
 
   const menuItems: ActionMenuItem[] = [
     {
-      label: progress?.completed ? 'Mark as unwatched' : 'Mark as watched',
+      label: progress?.completed ? t('actions.markAsUnwatched') : t('actions.markAsWatched'),
       icon: progress?.completed ? <LuCircle size={16} /> : <LuCheck size={16} />,
       onClick: () => {
         if (progress?.completed) {
@@ -44,7 +46,7 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
       },
     },
     {
-      label: copied ? 'Copied!' : 'Copy stream URL',
+      label: copied ? t('actions.copied') : t('actions.copyStreamUrl'),
       icon: <LuLink size={16} className={copied ? 'text-green-400' : ''} />,
       onClick: () => {
         getStreamUrl(undefined, {
@@ -57,7 +59,7 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
       },
     },
     {
-      label: 'Edit metadata',
+      label: t('actions.editMetadata'),
       icon: <LuPencil size={16} />,
       onClick: () => onEdit?.(episode),
       adminOnly: true,
@@ -108,7 +110,9 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <p className="mt-1 text-xs text-gray-500">{Math.round(progressPercent)}% watched</p>
+            <p className="mt-1 text-xs text-gray-500">
+              {t('detail.percentWatched', { percent: Math.round(progressPercent) })}
+            </p>
           </div>
         )}
         {episode.duration && (
@@ -123,7 +127,7 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
           className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white opacity-0 transition-all group-hover:opacity-100 hover:bg-netflix-red"
         >
           <LuPlay size={16} />
-          {hasProgress ? 'Resume' : 'Play'}
+          {hasProgress ? t('actions.resume') : t('actions.play')}
         </Link>
         <ActionMenu items={menuItems} isAdmin={isAdmin} size={18} />
       </div>

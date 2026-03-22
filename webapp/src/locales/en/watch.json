@@ -1,0 +1,65 @@
+{
+  "controls": {
+    "play": "Play",
+    "pause": "Pause",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit Fullscreen",
+    "nextEpisode": "Next Episode",
+    "skipIntro": "Skip Intro",
+    "skipCredits": "Skip Credits",
+    "volume": "Volume",
+    "settings": "Settings",
+    "auto": "Auto",
+    "subtitles": "Subtitles",
+    "audio": "Audio",
+    "speed": "Speed",
+    "playbackSpeed": "Playback Speed",
+    "aspectRatio": "Aspect Ratio",
+    "none": "None",
+    "semi": "Semi",
+    "solid": "Solid",
+    "quality": "Quality"
+  },
+  "subtitles": {
+    "title": "Subtitles",
+    "off": "Off",
+    "custom": "Custom...",
+    "search": "Search Subtitles",
+    "translate": "Translate",
+    "loading": "Loading subtitles..."
+  },
+  "audio": {
+    "title": "Audio",
+    "auto": "Auto"
+  },
+  "quality": {
+    "title": "Quality",
+    "auto": "Auto"
+  },
+  "casting": {
+    "title": "Cast to",
+    "disconnect": "Disconnect",
+    "connected": "Connected to {{device}}"
+  },
+  "stats": {
+    "video": "Video",
+    "audio": "Audio",
+    "directPlay": "Direct Play",
+    "transcoding": "Transcoding",
+    "videoCodec": "Video Codec",
+    "audioCodec": "Audio Codec",
+    "resolution": "Resolution",
+    "bitrate": "Bitrate"
+  },
+  "detail": {
+    "info": "Info",
+    "season": "Season",
+    "nowPlaying": "Now Playing",
+    "episode": "Episode {{number}}",
+    "previousEpisodes": "Previous episodes",
+    "nextEpisodes": "Next episodes",
+    "noEpisodesFound": "No episodes found for this season."
+  }
+}

@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { LuChevronLeft, LuVolume1, LuVolume2, LuVolumeX, LuCast } from 'react-icons/lu'
+import { useTranslation } from '@/hooks/useTranslation'
 
 interface WatchTopBarProps {
   isMuted: boolean
@@ -24,6 +25,7 @@ export const WatchTopBar = memo(function WatchTopBar({
   casting,
   onCastClick,
 }: WatchTopBarProps) {
+  const { t } = useTranslation('navigation')
   const VolumeIcon = isMuted || volume === 0 ? LuVolumeX : volume < 0.5 ? LuVolume1 : LuVolume2
 
   return (
@@ -36,7 +38,7 @@ export const WatchTopBar = memo(function WatchTopBar({
         className="flex items-center gap-1.5 text-white/80 transition-colors hover:text-white"
       >
         <LuChevronLeft size={22} />
-        <span className="text-sm font-medium">Back</span>
+        <span className="text-sm font-medium">{t('back')}</span>
       </button>
 
       <div className="flex items-center gap-3">

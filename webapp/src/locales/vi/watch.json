@@ -1,0 +1,65 @@
+{
+  "controls": {
+    "play": "Phát",
+    "pause": "Tạm dừng",
+    "mute": "Tắt tiếng",
+    "unmute": "Bật tiếng",
+    "fullscreen": "Toàn màn hình",
+    "exitFullscreen": "Thoát toàn màn hình",
+    "nextEpisode": "Tập tiếp theo",
+    "skipIntro": "Bỏ qua giới thiệu",
+    "skipCredits": "Bỏ qua credit",
+    "volume": "Âm lượng",
+    "settings": "Cài đặt",
+    "auto": "Tự động",
+    "subtitles": "Phụ đề",
+    "audio": "Âm thanh",
+    "speed": "Tốc độ",
+    "playbackSpeed": "Tốc độ phát",
+    "aspectRatio": "Tỷ lệ khung hình",
+    "none": "Không",
+    "semi": "Nửa",
+    "solid": "Đặc",
+    "quality": "Chất lượng"
+  },
+  "subtitles": {
+    "title": "Phụ đề",
+    "off": "Tắt",
+    "custom": "Tùy chỉnh...",
+    "search": "Tìm phụ đề",
+    "translate": "Dịch",
+    "loading": "Đang tải phụ đề..."
+  },
+  "audio": {
+    "title": "Âm thanh",
+    "auto": "Tự động"
+  },
+  "quality": {
+    "title": "Chất lượng",
+    "auto": "Tự động"
+  },
+  "casting": {
+    "title": "Truyền tới",
+    "disconnect": "Ngắt kết nối",
+    "connected": "Đã kết nối {{device}}"
+  },
+  "stats": {
+    "video": "Video",
+    "audio": "Âm thanh",
+    "directPlay": "Phát trực tiếp",
+    "transcoding": "Chuyển mã",
+    "videoCodec": "Mã video",
+    "audioCodec": "Mã âm thanh",
+    "resolution": "Độ phân giải",
+    "bitrate": "Bitrate"
+  },
+  "detail": {
+    "info": "Thông tin",
+    "season": "Mùa",
+    "nowPlaying": "Đang phát",
+    "episode": "Tập {{number}}",
+    "previousEpisodes": "Tập trước",
+    "nextEpisodes": "Tập sau",
+    "noEpisodesFound": "Không có tập nào trong mùa này."
+  }
+}

@@ -73,6 +73,7 @@ export interface UserPreferences {
   audio_language: string
   max_streaming_quality: string
   theme: string
+  language: string
 }
 
 export interface UpdateProfileRequest {

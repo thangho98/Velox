@@ -2,21 +2,23 @@ import { Link, useLocation } from 'react-router'
 import { LuHouse, LuFilm, LuTv, LuHeart, LuClock, LuSettings, LuFolderOpen } from 'react-icons/lu'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
+import { useTranslation } from '@/hooks/useTranslation'
 
 const sidebarItems = [
-  { label: 'Home', path: '/', icon: LuHouse },
-  { label: 'Movies', path: '/movies', icon: LuFilm },
-  { label: 'Series', path: '/series', icon: LuTv },
-  { label: 'Browse', path: '/browse', icon: LuFolderOpen },
-  { label: 'Favorites', path: '/favorites', icon: LuHeart },
-  { label: 'Recently Watched', path: '/recently-watched', icon: LuClock },
-  { label: 'Settings', path: '/settings', icon: LuSettings },
+  { labelKey: 'nav.home', path: '/', icon: LuHouse },
+  { labelKey: 'nav.movies', path: '/movies', icon: LuFilm },
+  { labelKey: 'nav.series', path: '/series', icon: LuTv },
+  { labelKey: 'nav.browse', path: '/browse', icon: LuFolderOpen },
+  { labelKey: 'nav.favorites', path: '/favorites', icon: LuHeart },
+  { labelKey: 'nav.recentlyWatched', path: '/recently-watched', icon: LuClock },
+  { labelKey: 'nav.settings', path: '/settings', icon: LuSettings },
 ]
 
 export function Sidebar() {
   const location = useLocation()
   const { isAuthenticated } = useAuthStore()
   const { sidebarCollapsed } = useUIStore()
+  const { t } = useTranslation('navigation')
 
   if (!isAuthenticated) return null
 
@@ -41,10 +43,10 @@ export function Sidebar() {
                     ? 'bg-netflix-gray text-white'
                     : 'text-gray-400 hover:bg-netflix-gray/50 hover:text-white'
                 } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                title={sidebarCollapsed ? item.label : undefined}
+                title={sidebarCollapsed ? t(item.labelKey) : undefined}
               >
                 <Icon size={20} className="flex-shrink-0" />
-                {!sidebarCollapsed && <span>{item.label}</span>}
+                {!sidebarCollapsed && <span>{t(item.labelKey)}</span>}
               </Link>
             )
           })}
@@ -65,7 +67,7 @@ export function Sidebar() {
               }`}
             >
               <Icon size={20} />
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
             </Link>
           )
         })}

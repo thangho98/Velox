@@ -3,6 +3,7 @@ import { LuChevronLeft, LuChevronRight, LuInfo, LuListMusic, LuPlay } from 'reac
 import { tmdbImage } from '@/lib/image'
 import type { Episode, MediaWithFiles, Season } from '@/types/api'
 import { DETAIL_PANEL_ANIMATION_MS, formatTime } from './watchHelpers'
+import { useTranslation } from '@/hooks/useTranslation'
 
 type DetailPanel = 'none' | 'info' | 'season'
 
@@ -59,6 +60,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
   seasonPanelSeasonId,
   seasons,
 }: WatchDetailSheetProps) {
+  const { t } = useTranslation('watch')
   return (
     <div
       className={`absolute inset-x-0 bottom-0 z-20 px-6 pb-4 will-change-transform transition-[opacity,transform,filter] duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
@@ -82,7 +84,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
             }`}
           >
             <LuInfo size={14} />
-            Info
+            {t('detail.info')}
           </button>
           {isEpisode && (
             <button
@@ -92,7 +94,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
               }`}
             >
               <LuListMusic size={12} />
-              Season
+              {t('detail.season')}
             </button>
           )}
         </div>
@@ -187,7 +189,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
                       : 'border-white/8 bg-white/8 text-white/70 hover:border-white/15 hover:bg-white/14 hover:text-white'
                   }`}
                 >
-                  Season {season.season_number}
+                  {t('detail.season')} {season.season_number}
                 </button>
               ))}
             </div>
@@ -199,7 +201,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
                     type="button"
                     onClick={() => onScrollSeasonCarousel('prev')}
                     className="absolute left-3 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/62 text-white/78 backdrop-blur-md transition-all duration-200 hover:scale-105 hover:border-white/20 hover:bg-black/78 hover:text-white"
-                    aria-label="Previous episodes"
+                    aria-label={t('detail.previousEpisodes')}
                   >
                     <LuChevronLeft size={18} />
                   </button>
@@ -208,7 +210,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
                     type="button"
                     onClick={() => onScrollSeasonCarousel('next')}
                     className="absolute right-3 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/62 text-white/78 backdrop-blur-md transition-all duration-200 hover:scale-105 hover:border-white/20 hover:bg-black/78 hover:text-white"
-                    aria-label="Next episodes"
+                    aria-label={t('detail.nextEpisodes')}
                   >
                     <LuChevronRight size={18} />
                   </button>
@@ -255,7 +257,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
                         </span>
                         {isCurrentEpisode && (
                           <span className="rounded-full bg-netflix-red px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[0_8px_18px_rgba(229,9,20,0.35)]">
-                            Now Playing
+                            {t('detail.nowPlaying')}
                           </span>
                         )}
                       </div>
@@ -265,7 +267,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
                           {episode.title}
                         </p>
                         <div className="mt-1.5 flex items-center gap-2 text-[11px] font-medium text-white/65">
-                          <span>Episode {episode.episode_number}</span>
+                          <span>{t('detail.episode', { number: episode.episode_number })}</span>
                           {episode.duration ? <span>{formatTime(episode.duration)}</span> : null}
                         </div>
                       </div>
@@ -275,7 +277,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
 
                 {seasonPanelEpisodes.length === 0 && (
                   <div className="w-full rounded-[24px] border border-white/8 bg-black/55 px-5 py-6 text-sm text-white/48">
-                    No episodes found for this season.
+                    {t('detail.noEpisodesFound')}
                   </div>
                 )}
               </div>

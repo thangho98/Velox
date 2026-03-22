@@ -159,6 +159,7 @@ function PreferencesTab() {
       audio_language: prefs.audio_language,
       max_streaming_quality: prefs.max_streaming_quality,
       theme: prefs.theme,
+      language: preferences?.language || 'en',
     })
     setTheme(prefs.theme)
   }

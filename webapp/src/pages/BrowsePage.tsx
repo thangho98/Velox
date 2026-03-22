@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 import { useFolderBrowse } from '@/hooks/stores/useMedia'
+import { useTranslation } from '@/hooks/useTranslation'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { FolderCard } from '@/components/FolderCard'
 import { MediaCard } from '@/components/MediaCard'
@@ -8,6 +9,7 @@ import { LuFolder, LuChevronLeft } from 'react-icons/lu'
 
 export function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { t } = useTranslation('media')
 
   // Parse URL: ?library_id=1&path=Action/Marvel
   // Root (no params) → shows all libraries
@@ -19,7 +21,7 @@ export function BrowsePage() {
 
   // Build breadcrumb
   const breadcrumbs = useMemo(() => {
-    const crumbs = [{ name: 'Browse', path: '', isRoot: true }]
+    const crumbs = [{ name: t('browse.title'), path: '', isRoot: true }]
 
     if (!libraryId && !currentPath) return crumbs
 
@@ -85,7 +87,7 @@ export function BrowsePage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4">
-        <h1 className="text-3xl font-bold text-white">Browse</h1>
+        <h1 className="text-3xl font-bold text-white">{t('browse.title')}</h1>
 
         {showBack && (
           <div className="flex items-center gap-4">
@@ -94,7 +96,7 @@ export function BrowsePage() {
               className="flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors"
             >
               <LuChevronLeft className="w-4 h-4" />
-              Back
+              {t('browse.back')}
             </button>
             <Breadcrumb items={breadcrumbs} onNavigate={handleNavigate} />
           </div>
@@ -109,7 +111,7 @@ export function BrowsePage() {
       ) : isEmpty ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-[#1a1a1a]">
           <LuFolder className="h-12 w-12 text-gray-600 mb-4" />
-          <p className="text-gray-400">No media in this folder</p>
+          <p className="text-gray-400">{t('browse.empty')}</p>
         </div>
       ) : (
         <div className="space-y-8">
@@ -118,7 +120,7 @@ export function BrowsePage() {
             <section>
               {(media.length > 0 || currentPath) && (
                 <h2 className="mb-4 text-lg font-semibold text-white">
-                  Folders ({folders.length})
+                  {t('browse.folders', { count: folders.length })}
                 </h2>
               )}
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">

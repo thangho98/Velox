@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { LuSkipForward } from 'react-icons/lu'
 import type { SkipSegment } from '@/types/api'
+import { useTranslation } from '@/hooks/useTranslation'
 
 interface SkipIntroCreditsProps {
   segments?: SkipSegment[]
@@ -19,6 +20,7 @@ export function SkipIntroCredits({
   visible,
   hideCredits = false,
 }: SkipIntroCreditsProps) {
+  const { t } = useTranslation('watch')
   // Track which segments the user already skipped (by start time) to avoid re-showing
   const skippedRef = useRef<Set<number>>(new Set())
   const lastMediaSegmentsRef = useRef<SkipSegment[] | undefined>(undefined)
@@ -41,7 +43,7 @@ export function SkipIntroCredits({
 
   if (!activeSegment || !visible) return null
 
-  const label = activeSegment.type === 'intro' ? 'Skip Intro' : 'Skip Credits'
+  const label = activeSegment.type === 'intro' ? t('controls.skipIntro') : t('controls.skipCredits')
 
   return (
     <div className="absolute bottom-56 right-6 z-30">

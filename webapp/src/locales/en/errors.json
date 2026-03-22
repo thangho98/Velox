@@ -1,0 +1,12 @@
+{
+  "generic": "Something went wrong",
+  "network": "Network error. Please check your connection.",
+  "notFound": "Not found",
+  "unauthorized": "Session expired. Please sign in again.",
+  "forbidden": "Access denied",
+  "validation": "Invalid input",
+  "server": "Server error. Please try again later.",
+  "required": "This field is required",
+  "minLength": "Must be at least {{count}} characters",
+  "invalidCredentials": "Invalid username or password"
+}
