@@ -1,21 +1,36 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTokenRefresh } from '@/hooks/stores/useAuth'
 import { Layout } from '@/components/Layout'
-import { HomePage } from '@/pages/HomePage'
-import { LoginPage } from '@/pages/LoginPage'
-import { SetupPage } from '@/pages/SetupPage'
-import { LibraryListPage } from '@/pages/LibraryListPage'
-import { MediaDetailPage } from '@/pages/MediaDetailPage'
-import { SeriesDetailPage } from '@/pages/SeriesDetailPage'
-import { WatchPage } from '@/pages/WatchPage'
-import { SettingsPage } from '@/pages/SettingsPage'
-import { MoviesPage } from '@/pages/MoviesPage'
-import { SeriesPage } from '@/pages/SeriesPage'
-import { FavoritesPage } from '@/pages/FavoritesPage'
-import { RecentlyWatchedPage } from '@/pages/RecentlyWatchedPage'
-import { SearchPage } from '@/pages/SearchPage'
-import { BrowsePage } from '@/pages/BrowsePage'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+
+const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })))
+const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
+const SetupPage = lazy(() => import('@/pages/SetupPage').then((m) => ({ default: m.SetupPage })))
+const LibraryListPage = lazy(() =>
+  import('@/pages/LibraryListPage').then((m) => ({ default: m.LibraryListPage })),
+)
+const MediaDetailPage = lazy(() =>
+  import('@/pages/MediaDetailPage').then((m) => ({ default: m.MediaDetailPage })),
+)
+const SeriesDetailPage = lazy(() =>
+  import('@/pages/SeriesDetailPage').then((m) => ({ default: m.SeriesDetailPage })),
+)
+const WatchPage = lazy(() => import('@/pages/WatchPage').then((m) => ({ default: m.WatchPage })))
+const SettingsPage = lazy(() =>
+  import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+)
+const MoviesPage = lazy(() => import('@/pages/MoviesPage').then((m) => ({ default: m.MoviesPage })))
+const SeriesPage = lazy(() => import('@/pages/SeriesPage').then((m) => ({ default: m.SeriesPage })))
+const FavoritesPage = lazy(() =>
+  import('@/pages/FavoritesPage').then((m) => ({ default: m.FavoritesPage })),
+)
+const RecentlyWatchedPage = lazy(() =>
+  import('@/pages/RecentlyWatchedPage').then((m) => ({ default: m.RecentlyWatchedPage })),
+)
+const SearchPage = lazy(() => import('@/pages/SearchPage').then((m) => ({ default: m.SearchPage })))
+const BrowsePage = lazy(() => import('@/pages/BrowsePage').then((m) => ({ default: m.BrowsePage })))
 
 // Auth guard component - wraps content with Layout
 function RequireAuth() {
@@ -57,48 +72,70 @@ function NotFoundPage() {
   )
 }
 
+function PageLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-netflix-black">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-600 border-t-white" />
+    </div>
+  )
+}
+
 export function RouterProvider() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/setup" element={<SetupPage />} />
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/setup" element={<SetupPage />} />
 
-        {/* Protected routes with Layout */}
-        <Route element={<RequireAuth />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/movies" element={<MoviesPage />} />
-          <Route path="/movies/:id" element={<MediaDetailPage />} />
-          <Route path="/series" element={<SeriesPage />} />
-          <Route path="/series/:seriesId" element={<SeriesDetailPage />} />
-          <Route path="/favorites" element={<FavoritesPage />} />
-          <Route path="/recently-watched" element={<RecentlyWatchedPage />} />
-          <Route path="/libraries" element={<LibraryListPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/browse" element={<BrowsePage />} />
-          {/* Redirects for old routes */}
-          <Route path="/profile" element={<Navigate to="/settings?section=profile" replace />} />
-          <Route
-            path="/admin/libraries"
-            element={<Navigate to="/settings?section=libraries" replace />}
-          />
-          <Route path="/admin/users" element={<Navigate to="/settings?section=users" replace />} />
-          <Route
-            path="/admin/settings"
-            element={<Navigate to="/settings?section=subtitles" replace />}
-          />
-        </Route>
+            {/* Protected routes with Layout */}
+            <Route element={<RequireAuth />}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/movies" element={<MoviesPage />} />
+              <Route path="/movies/:id" element={<MediaDetailPage />} />
+              <Route path="/series" element={<SeriesPage />} />
+              <Route path="/series/:seriesId" element={<SeriesDetailPage />} />
+              <Route path="/favorites" element={<FavoritesPage />} />
+              <Route path="/recently-watched" element={<RecentlyWatchedPage />} />
+              <Route path="/libraries" element={<LibraryListPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/browse" element={<BrowsePage />} />
+              {/* Redirects for old/missing routes */}
+              <Route
+                path="/notifications"
+                element={<Navigate to="/settings?section=activity" replace />}
+              />
+              <Route
+                path="/profile"
+                element={<Navigate to="/settings?section=profile" replace />}
+              />
+              <Route
+                path="/admin/libraries"
+                element={<Navigate to="/settings?section=libraries" replace />}
+              />
+              <Route
+                path="/admin/users"
+                element={<Navigate to="/settings?section=users" replace />}
+              />
+              <Route
+                path="/admin/settings"
+                element={<Navigate to="/settings?section=subtitles" replace />}
+              />
+            </Route>
 
-        {/* Fullscreen routes (player) */}
-        <Route element={<RequireAuthFullScreen />}>
-          <Route path="/watch/:id" element={<WatchPage />} />
-        </Route>
+            {/* Fullscreen routes (player) */}
+            <Route element={<RequireAuthFullScreen />}>
+              <Route path="/watch/:id" element={<WatchPage />} />
+            </Route>
 
-        {/* 404 */}
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+            {/* 404 */}
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,6 +31,7 @@ import (
 	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/internal/trickplay"
 	"github.com/thawng/velox/internal/watcher"
+	"github.com/thawng/velox/internal/websocket"
 	"github.com/thawng/velox/pkg/fanart"
 	"github.com/thawng/velox/pkg/omdb"
 	"github.com/thawng/velox/pkg/thetvdb"
@@ -148,6 +150,11 @@ func runServer() {
 	webhookRepo := repository.NewWebhookRepo(db)
 	markerRepo := repository.NewMediaMarkerRepo(db)
 	fpRepo := repository.NewAudioFingerprintRepo(db)
+	notificationRepo := repository.NewNotificationRepo(db)
+
+	// WebSocket Hub
+	wsHub := websocket.NewHub(slog.Default())
+	go wsHub.Run()
 
 	// Services
 	pipeline := scanner.NewPipeline(
@@ -158,67 +165,81 @@ func runServer() {
 	)
 	// TMDb metadata enrichment (Phase 04)
 	appSettingsRepo := repository.NewAppSettingsRepo(db)
+
+	var tmdbClient *tmdb.Client
+	var metadataSvc *service.MetadataService
+
 	tmdbAPIKey, _ := appSettingsRepo.Get(context.Background(), model.SettingTMDbAPIKey)
 	if tmdbAPIKey == "" {
-		tmdbAPIKey = tmdb.DefaultAPIKey
-		log.Println("TMDb using built-in API key (override in Settings → Metadata)")
-	} else {
-		log.Println("TMDb using custom API key from settings")
+		tmdbAPIKey = cfg.TMDbAPIKey
 	}
-	tmdbClient := tmdb.New(tmdbAPIKey)
-	metadataSvc := service.NewMetadataService(tmdbClient, mediaRepo, mediaFileRepo, seriesRepo, seasonRepo, episodeRepo, genreRepo, personRepo)
-	if metadataSvc != nil {
-		pipeline.SetMetadataMatcher(metadataSvc)
-		log.Println("TMDb metadata enrichment enabled")
-	}
+	if tmdbAPIKey != "" {
+		if cfg.TMDbAPIKey != "" && tmdbAPIKey == cfg.TMDbAPIKey {
+			log.Println("TMDb using built-in API key from env (override in Settings → Metadata)")
+		} else {
+			log.Println("TMDb using custom API key from settings")
+		}
+		tmdbClient = tmdb.New(tmdbAPIKey)
+		metadataSvc = service.NewMetadataService(tmdbClient, mediaRepo, mediaFileRepo, seriesRepo, seasonRepo, episodeRepo, genreRepo, personRepo)
+		if metadataSvc != nil {
+			pipeline.SetMetadataMatcher(metadataSvc)
+			log.Println("TMDb metadata enrichment enabled")
+		}
+		// OMDb ratings enrichment
+		omdbAPIKey, _ := appSettingsRepo.Get(context.Background(), model.SettingOMDbAPIKey)
+		if omdbAPIKey == "" {
+			omdbAPIKey = cfg.OMDbAPIKey
+		}
+		if omdbAPIKey != "" {
+			if cfg.OMDbAPIKey != "" && omdbAPIKey == cfg.OMDbAPIKey {
+				log.Println("OMDb using built-in API key from env (override in Settings → Metadata)")
+			} else {
+				log.Println("OMDb using custom API key from settings")
+			}
+			omdbClient := omdb.New(omdbAPIKey)
+			metadataSvc.SetOMDbClient(omdbClient)
+			log.Println("OMDb ratings enrichment enabled (IMDb, Rotten Tomatoes, Metacritic)")
+		}
 
-	// OMDb ratings enrichment
-	omdbAPIKey, _ := appSettingsRepo.Get(context.Background(), model.SettingOMDbAPIKey)
-	if omdbAPIKey == "" {
-		omdbAPIKey = omdb.DefaultAPIKey
-		log.Println("OMDb using built-in API key (override in Settings → Metadata)")
-	} else {
-		log.Println("OMDb using custom API key from settings")
-	}
-	omdbClient := omdb.New(omdbAPIKey)
-	if metadataSvc != nil {
-		metadataSvc.SetOMDbClient(omdbClient)
-		log.Println("OMDb ratings enrichment enabled (IMDb, Rotten Tomatoes, Metacritic)")
-	}
+		// TheTVDB metadata enrichment
+		tvdbAPIKey, _ := appSettingsRepo.Get(context.Background(), model.SettingTVDBAPIKey)
+		if tvdbAPIKey == "" {
+			tvdbAPIKey = cfg.TVDBAPIKey
+		}
+		if tvdbAPIKey != "" {
+			if cfg.TVDBAPIKey != "" && tvdbAPIKey == cfg.TVDBAPIKey {
+				log.Println("TheTVDB using built-in API key from env (override in Settings → Metadata)")
+			} else {
+				log.Println("TheTVDB using custom API key from settings")
+			}
+			tvdbClient := thetvdb.New(tvdbAPIKey)
+			metadataSvc.SetTVDBClient(tvdbClient)
+			log.Println("TheTVDB metadata enrichment enabled")
+		}
 
-	// TheTVDB metadata enrichment
-	tvdbAPIKey, _ := appSettingsRepo.Get(context.Background(), model.SettingTVDBAPIKey)
-	if tvdbAPIKey == "" {
-		tvdbAPIKey = thetvdb.DefaultAPIKey
-		log.Println("TheTVDB using built-in API key (override in Settings → Metadata)")
-	} else {
-		log.Println("TheTVDB using custom API key from settings")
-	}
-	tvdbClient := thetvdb.New(tvdbAPIKey)
-	if metadataSvc != nil {
-		metadataSvc.SetTVDBClient(tvdbClient)
-		log.Println("TheTVDB metadata enrichment enabled")
-	}
+		// Fanart.tv artwork enrichment
+		fanartAPIKey, _ := appSettingsRepo.Get(context.Background(), model.SettingFanartAPIKey)
+		if fanartAPIKey == "" {
+			fanartAPIKey = cfg.FanartAPIKey
+		}
+		if fanartAPIKey != "" {
+			if cfg.FanartAPIKey != "" && fanartAPIKey == cfg.FanartAPIKey {
+				log.Println("fanart.tv using built-in API key from env (override in Settings → Metadata)")
+			} else {
+				log.Println("fanart.tv using custom API key from settings")
+			}
+			fanartClient := fanart.New(fanartAPIKey)
+			metadataSvc.SetFanartClient(fanartClient)
+			log.Println("fanart.tv artwork enrichment enabled (logos, thumbs)")
+		}
 
-	// Fanart.tv artwork enrichment
-	fanartAPIKey, _ := appSettingsRepo.Get(context.Background(), model.SettingFanartAPIKey)
-	if fanartAPIKey == "" {
-		fanartAPIKey = fanart.DefaultAPIKey
-		log.Println("fanart.tv using built-in API key (override in Settings → Metadata)")
-	} else {
-		log.Println("fanart.tv using custom API key from settings")
-	}
-	fanartClient := fanart.New(fanartAPIKey)
-	if metadataSvc != nil {
-		metadataSvc.SetFanartClient(fanartClient)
-		log.Println("fanart.tv artwork enrichment enabled (logos, thumbs)")
-	}
-
-	// TVmaze TV enrichment (free, no API key)
-	tvmazeClient := tvmaze.New()
-	if metadataSvc != nil {
+		// TVmaze TV enrichment (free, no API key)
+		tvmazeClient := tvmaze.New()
 		metadataSvc.SetTVmazeClient(tvmazeClient)
 		log.Println("TVmaze enrichment enabled (network, schedule, ID cross-reference)")
+	} else {
+		log.Println("TMDb API key not configured. Metadata enrichment disabled.")
+		log.Println("Set VELOX_TMDB_API_KEY env var or configure in Settings → Metadata")
 	}
 
 	// Resolve hardware accelerator
@@ -255,6 +276,13 @@ func runServer() {
 	defer activitySvc.Close()
 	adminSvc := service.NewAdminService(db, userRepo, startTime, hwAccel, cfg.DatabasePath)
 	webhookSvc := service.NewWebhookService(webhookRepo)
+	notificationSvc := service.NewNotificationService(notificationRepo, userRepo, wsHub, slog.Default())
+	notificationSvc.SetWebhookService(webhookSvc)
+	librarySvc.SetNotificationService(notificationSvc)
+	streamSvc.SetNotificationService(notificationSvc)
+	if metadataSvc != nil {
+		metadataSvc.SetNotificationService(notificationSvc)
+	}
 
 	// Handlers
 	libraryHandler := handler.NewLibraryHandler(librarySvc)
@@ -267,8 +295,18 @@ func runServer() {
 	playbackHandler := handler.NewPlaybackHandler(mediaSvc, streamSvc, userDataSvc, subtitleSvc, audioTrackSvc, markerSvc, prefsRepo, appSettingsRepo)
 	subtitleHandler := handler.NewSubtitleHandler(subtitleSvc, mediaFileRepo, appSettingsRepo, cfg.SubtitleCachePath)
 	audioTrackHandler := handler.NewAudioTrackHandler(audioTrackSvc)
-	settingsHandler := handler.NewSettingsHandler(appSettingsRepo)
+	// Settings handler
+	builtinKeys := map[string]bool{
+		"tmdb":   cfg.TMDbAPIKey != "",
+		"omdb":   cfg.OMDbAPIKey != "",
+		"tvdb":   cfg.TVDBAPIKey != "",
+		"fanart": cfg.FanartAPIKey != "",
+		"subdl":  cfg.SubdlAPIKey != "",
+	}
+	settingsHandler := handler.NewSettingsHandler(appSettingsRepo, builtinKeys)
 	subtitleSearchSvc := service.NewSubtitleSearchService(mediaRepo, mediaFileRepo, subtitleRepo, appSettingsRepo, episodeRepo, seasonRepo, seriesRepo, cfg.SubtitleCachePath)
+	subtitleSearchSvc.SetBuiltinSubdlKey(cfg.SubdlAPIKey)
+	subtitleSearchSvc.SetNotificationService(notificationSvc)
 	subtitleSearchHandler := handler.NewSubtitleSearchHandler(subtitleSearchSvc)
 	pipeline.SetSubtitleAutoDownloader(subtitleSearchSvc)
 
@@ -289,10 +327,19 @@ func runServer() {
 	activityHandler := handler.NewActivityHandler(activitySvc)
 	adminHandler := handler.NewAdminHandler(adminSvc)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc)
-	markerAdminHandler := handler.NewMarkerAdminHandler(markerSvc) // NEW: marker admin handler for backfill
+	markerAdminHandler := handler.NewMarkerAdminHandler(markerSvc)
+	notificationHandler := handler.NewNotificationHandler(notificationSvc)
+	wsHandler := handler.NewWebSocketHandler(wsHub, jwtManager, slog.Default()) // NEW: marker admin handler for backfill
 
 	// Router
 	mux := http.NewServeMux()
+
+	// Health check (public — used by Docker, load balancers, uptime monitors)
+	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 
 	// Setup routes (public, only works before configured)
 	mux.HandleFunc("GET /api/setup/status", setupHandler.Status)
@@ -1019,6 +1066,16 @@ func runServer() {
 	mux.HandleFunc("GET /api/media/{id}/subtitles/search", subtitleSearchHandler.Search)
 	mux.HandleFunc("POST /api/media/{id}/subtitles/download", subtitleSearchHandler.Download)
 
+	// API routes - Notifications (WebSocket + REST)
+	mux.HandleFunc("GET /api/ws", wsHandler.Handle)
+	mux.HandleFunc("GET /api/notifications", notificationHandler.List)
+	mux.HandleFunc("GET /api/notifications/unread-count", notificationHandler.UnreadCount)
+	mux.HandleFunc("GET /api/notifications/types", notificationHandler.Types)
+	mux.HandleFunc("PATCH /api/notifications/read", notificationHandler.MarkAsRead)
+	mux.HandleFunc("PATCH /api/notifications/read-all", notificationHandler.MarkAllAsRead)
+	mux.HandleFunc("DELETE /api/notifications/{id}", notificationHandler.DeleteOne)
+	mux.HandleFunc("POST /api/notifications/delete", notificationHandler.Delete)
+
 	// API routes - Audio Tracks (admin only for write, authenticated for read)
 	mux.HandleFunc("GET /api/media-files/{media_file_id}/audio-tracks", audioTrackHandler.ListByMediaFile)
 	mux.Handle("POST /api/audio-tracks", middleware.RequireAdmin(http.HandlerFunc(audioTrackHandler.Create)))
@@ -1028,6 +1085,7 @@ func runServer() {
 
 	// Auth middleware with paths that don't require auth
 	authMiddleware := middleware.RequireAuth(jwtManager, apiKeyStore,
+		"/api/health",
 		"/api/setup/status",
 		"/api/setup",
 		"/api/auth/login",
@@ -1073,6 +1131,16 @@ func runServer() {
 				}
 				if err := pipeline.RunJob(ctx, job, false); err != nil {
 					log.Printf("watcher: scan job failed for %s: %v", path, err)
+				}
+				// Notify users when watcher scan finds new files
+				if job.NewFiles > 0 {
+					libName := fmt.Sprintf("Library #%d", libraryID)
+					if lib, err := libraryRepo.GetByID(context.Background(), libraryID); err == nil {
+						libName = lib.Name
+					}
+					if err := notificationSvc.NotifyLibraryWatcher(context.Background(), libraryID, libName, job.NewFiles); err != nil {
+						log.Printf("watcher: notify library %d: %v", libraryID, err)
+					}
 				}
 			},
 			// onRemove: mark file as missing via verifier
@@ -1154,6 +1222,18 @@ func runServer() {
 			if err := pipeline.RunJob(ctx, job, false); err != nil {
 				log.Printf("scheduled scan: library %d job %d failed: %v", lib.ID, job.ID, err)
 			}
+		}
+		return nil
+	})
+	scheduler.Register("notification-cleanup", 24*time.Hour, func(ctx context.Context) error {
+		// Delete notifications older than 30 days that are already read
+		before := time.Now().Add(-30 * 24 * time.Hour)
+		deleted, err := notificationRepo.DeleteOld(ctx, before)
+		if err != nil {
+			return fmt.Errorf("cleanup old notifications: %w", err)
+		}
+		if deleted > 0 {
+			log.Printf("notification cleanup: deleted %d old notifications", deleted)
 		}
 		return nil
 	})

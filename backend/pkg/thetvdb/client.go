@@ -15,10 +15,6 @@ import (
 
 const (
 	baseURL = "https://api4.thetvdb.com/v4"
-
-	// DefaultAPIKey is a built-in TheTVDB v4 API key.
-	// Users can override this with their own key via Settings → Metadata.
-	DefaultAPIKey = "34fd1f37-fd18-49d3-9601-93d9ebf3e038"
 )
 
 // Client for TheTVDB API v4.

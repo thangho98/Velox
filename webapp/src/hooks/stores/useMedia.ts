@@ -200,7 +200,7 @@ export function useProgress(mediaId: number) {
   return useQuery({
     queryKey: userDataKeys.progress(mediaId),
     queryFn: () => userDataApi.getProgress(mediaId),
-    staleTime: 0, // Always fresh
+    staleTime: 30 * 1000, // 30s — progress is invalidated by useUpdateProgress on save
   })
 }
 

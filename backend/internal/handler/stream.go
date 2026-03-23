@@ -140,7 +140,8 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	playlistPath, err := h.svc.PrepareHLS(r.Context(), id, hlsFileID, subtitleStreamIndex)
+	videoCopy := r.URL.Query().Get("vcopy") == "1"
+	playlistPath, err := h.svc.PrepareHLS(r.Context(), id, hlsFileID, subtitleStreamIndex, videoCopy)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "transcoding failed: "+err.Error())
 		return
@@ -228,7 +229,7 @@ func buildHLSRedirectURL(mediaID, fileID int64, original url.Values) string {
 	query := make(url.Values)
 	query.Set("fid", strconv.FormatInt(fileID, 10))
 
-	for _, key := range []string{"token", "at", "si"} {
+	for _, key := range []string{"token", "at", "si", "vcopy"} {
 		if value := original.Get(key); value != "" {
 			query.Set(key, value)
 		}

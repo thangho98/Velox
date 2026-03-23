@@ -23,6 +23,7 @@ interface MediaCardProps {
   showFavorite?: boolean
   aspectRatio?: 'poster' | 'wide'
   size?: 'sm' | 'md' | 'lg'
+  directPlay?: boolean // browse mode: skip detail page, go straight to /watch/{id}
 }
 
 export function MediaCard({
@@ -38,6 +39,7 @@ export function MediaCard({
   showFavorite = true,
   aspectRatio = 'poster',
   size = 'md',
+  directPlay = false,
 }: MediaCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [trailerKey, setTrailerKey] = useState<string | null>(null)
@@ -104,8 +106,12 @@ export function MediaCard({
   const aspectClass = aspectRatio === 'poster' ? 'aspect-[2/3]' : 'aspect-video'
   const sizeClasses = { sm: 'text-xs', md: 'text-sm', lg: 'text-base' }
 
-  // Type-aware link
-  const linkTo = isSeries ? `/series/${seriesId || id}` : `/movies/${id}`
+  // Type-aware link — directPlay skips detail page and goes straight to watch
+  const linkTo = directPlay
+    ? `/watch/${id}`
+    : isSeries
+      ? `/series/${seriesId || id}`
+      : `/movies/${id}`
 
   return (
     <div
@@ -141,6 +147,8 @@ export function MediaCard({
               alt={title}
               className="h-full w-full object-cover"
               loading="lazy"
+              width={500}
+              height={750}
             />
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center bg-netflix-gray p-4">

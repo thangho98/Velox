@@ -1,11 +1,25 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/service"
 )
+
+// validateEvents checks that events is a valid JSON string array and returns it normalized.
+func validateEvents(raw string) (string, bool) {
+	if raw == "" {
+		return "[]", true
+	}
+	var arr []string
+	if err := json.Unmarshal([]byte(raw), &arr); err != nil {
+		return "", false
+	}
+	b, _ := json.Marshal(arr)
+	return string(b), true
+}
 
 // WebhookHandler handles webhook CRUD endpoints.
 type WebhookHandler struct {
@@ -46,8 +60,10 @@ func (h *WebhookHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "url is required")
 		return
 	}
-	if req.Events == "" {
-		req.Events = "[]"
+	events, ok := validateEvents(req.Events)
+	if !ok {
+		respondError(w, http.StatusBadRequest, "events must be a JSON array of strings")
+		return
 	}
 
 	active := true
@@ -57,7 +73,7 @@ func (h *WebhookHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	webhook := &model.Webhook{
 		URL:    req.URL,
-		Events: req.Events,
+		Events: events,
 		Secret: req.Secret,
 		Active: active,
 	}
@@ -101,7 +117,12 @@ func (h *WebhookHandler) Update(w http.ResponseWriter, r *http.Request) {
 		existing.URL = *req.URL
 	}
 	if req.Events != nil {
-		existing.Events = *req.Events
+		events, ok := validateEvents(*req.Events)
+		if !ok {
+			respondError(w, http.StatusBadRequest, "events must be a JSON array of strings")
+			return
+		}
+		existing.Events = events
 	}
 	if req.Secret != nil {
 		existing.Secret = *req.Secret

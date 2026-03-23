@@ -29,6 +29,14 @@ type Config struct {
 
 	// File watcher (Phase 03)
 	FileWatcherEnabled bool
+
+	// Built-in API keys from env (optional - for open-source distribution)
+	// If set, these act as default keys when user hasn't configured custom keys
+	TMDbAPIKey   string // VELOX_TMDB_API_KEY
+	OMDbAPIKey   string // VELOX_OMDB_API_KEY
+	TVDBAPIKey   string // VELOX_TVDB_API_KEY
+	FanartAPIKey string // VELOX_FANART_API_KEY
+	SubdlAPIKey  string // VELOX_SUBDL_API_KEY
 }
 
 // LoadDotEnv loads the first .env file found from a small set of common paths.
@@ -69,6 +77,13 @@ func Load() *Config {
 		TrickplayInterval: envOrDefaultInt("VELOX_TRICKPLAY_INTERVAL", 10),
 
 		FileWatcherEnabled: envOrDefaultBool("VELOX_FILE_WATCHER", true),
+
+		// Built-in API keys from env (optional)
+		TMDbAPIKey:   envOrDefault("VELOX_TMDB_API_KEY", ""),
+		OMDbAPIKey:   envOrDefault("VELOX_OMDB_API_KEY", ""),
+		TVDBAPIKey:   envOrDefault("VELOX_TVDB_API_KEY", ""),
+		FanartAPIKey: envOrDefault("VELOX_FANART_API_KEY", ""),
+		SubdlAPIKey:  envOrDefault("VELOX_SUBDL_API_KEY", ""),
 	}
 }
 

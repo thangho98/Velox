@@ -34,7 +34,8 @@ func setupUserTestDB(t *testing.T) *sql.DB {
 			subtitle_language      TEXT DEFAULT '',
 			audio_language         TEXT DEFAULT '',
 			max_streaming_quality  TEXT DEFAULT 'auto',
-			theme                  TEXT DEFAULT 'dark'
+			theme                  TEXT DEFAULT 'dark',
+			language               TEXT DEFAULT 'en' CHECK (language IN ('en', 'vi'))
 		);
 
 		CREATE TABLE user_library_access (
@@ -325,6 +326,7 @@ func TestUserPreferencesRepo_Update(t *testing.T) {
 		AudioLanguage:       "en",
 		MaxStreamingQuality: "1080p",
 		Theme:               "light",
+		Language:            "en",
 	}
 
 	err := prefsRepo.Update(ctx, prefs)

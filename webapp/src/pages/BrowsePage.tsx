@@ -153,6 +153,7 @@ export function BrowsePage() {
                     seriesId={item.series_id || undefined}
                     year={item.release_date ? new Date(item.release_date).getFullYear() : undefined}
                     rating={item.rating}
+                    directPlay
                   />
                 ))}
               </div>

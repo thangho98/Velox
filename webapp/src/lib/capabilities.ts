@@ -176,8 +176,14 @@ export function detectCapabilities(): ClientCapabilities {
   }
 }
 
+// Module-level in-memory cache — avoids repeated localStorage.getItem + JSON.parse
+// on every call to supportsVideoCodec(), canDirectPlay(), shouldUseHLS(), etc.
+let _memCache: ClientCapabilities | null = null
+
 // Get cached capabilities or detect new
 export function getCapabilities(): ClientCapabilities {
+  if (_memCache) return _memCache
+
   try {
     const cached = localStorage.getItem(STORAGE_KEY)
     if (cached) {
@@ -186,6 +192,7 @@ export function getCapabilities(): ClientCapabilities {
       const detectedAt = new Date(parsed.detectedAt)
       const daysSince = (Date.now() - detectedAt.getTime()) / (1000 * 60 * 60 * 24)
       if (daysSince < 7) {
+        _memCache = parsed
         return parsed
       }
     }
@@ -196,12 +203,14 @@ export function getCapabilities(): ClientCapabilities {
   // Detect and cache
   const caps = detectCapabilities()
   localStorage.setItem(STORAGE_KEY, JSON.stringify(caps))
+  _memCache = caps
   return caps
 }
 
 // Clear cached capabilities
 export function clearCapabilities(): void {
   localStorage.removeItem(STORAGE_KEY)
+  _memCache = null
 }
 
 // Check if specific codec is supported

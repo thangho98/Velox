@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"sync"
 
 	"github.com/thawng/velox/internal/metadata"
 	"github.com/thawng/velox/internal/model"
@@ -22,19 +23,30 @@ import (
 
 // MetadataService orchestrates metadata matching and persistence.
 type MetadataService struct {
-	tmdbClient    *tmdb.Client
-	omdbClient    *omdb.Client
-	tvdbClient    *thetvdb.Client
-	fanartClient  *fanart.Client
-	tvmazeClient  *tvmaze.Client
-	matcher       *metadata.Matcher
-	mediaRepo     *repository.MediaRepo
-	mediaFileRepo *repository.MediaFileRepo
-	seriesRepo    *repository.SeriesRepo
-	seasonRepo    *repository.SeasonRepo
-	episodeRepo   *repository.EpisodeRepo
-	genreRepo     *repository.GenreRepo
-	personRepo    *repository.PersonRepo
+	tmdbClient      *tmdb.Client
+	omdbClient      *omdb.Client
+	tvdbClient      *thetvdb.Client
+	fanartClient    *fanart.Client
+	tvmazeClient    *tvmaze.Client
+	matcher         *metadata.Matcher
+	mediaRepo       *repository.MediaRepo
+	mediaFileRepo   *repository.MediaFileRepo
+	seriesRepo      *repository.SeriesRepo
+	seasonRepo      *repository.SeasonRepo
+	episodeRepo     *repository.EpisodeRepo
+	genreRepo       *repository.GenreRepo
+	personRepo      *repository.PersonRepo
+	notificationSvc *NotificationService
+
+	// Mutexes protecting find-or-create operations against concurrent duplicate
+	// creation when the scanner processes multiple episodes in parallel.
+	seriesCreateMu sync.Mutex
+	seasonCreateMu sync.Mutex
+}
+
+// SetNotificationService sets the optional notification service for identify events.
+func (s *MetadataService) SetNotificationService(svc *NotificationService) {
+	s.notificationSvc = svc
 }
 
 // SetOMDbClient sets an optional OMDb client for rating enrichment.
@@ -200,15 +212,41 @@ func (s *MetadataService) MatchAndPersistEpisode(ctx context.Context, media *mod
 }
 
 // findOrCreateSeries looks up a series by TMDb ID, or creates one.
+// The DB check+create is protected by seriesCreateMu to prevent duplicate rows
+// when multiple scanner workers process episodes from the same series in parallel.
+// HTTP enrichment happens outside the lock so it doesn't stall other workers.
 func (s *MetadataService) findOrCreateSeries(ctx context.Context, result *metadata.TVMatchResult, libraryID int64) (*model.Series, error) {
+	series, isNew, err := s.ensureSeries(ctx, result, libraryID)
+	if err != nil || !isNew {
+		return series, err
+	}
+
+	// Enrichment for newly created series only — safe outside the lock because
+	// series.ID is now stable and no other worker will create the same row.
+	s.syncSeriesGenres(ctx, series.ID, result.Genres)
+	s.syncSeriesCredits(ctx, series.ID, result.Cast, result.Crew)
+	s.enrichTVDBSeries(ctx, series)
+	s.enrichFanartShow(ctx, series)
+	s.enrichTVmazeSeries(ctx, series)
+
+	return series, nil
+}
+
+// ensureSeries performs the find-or-create under a mutex to prevent TOCTOU races
+// when parallel workers process episodes from the same series simultaneously.
+// Returns (series, isNew, err).
+func (s *MetadataService) ensureSeries(ctx context.Context, result *metadata.TVMatchResult, libraryID int64) (*model.Series, bool, error) {
+	s.seriesCreateMu.Lock()
+	defer s.seriesCreateMu.Unlock()
+
 	if result.SeriesID > 0 {
 		tmdbID := int64(result.SeriesID)
 		existing, err := s.seriesRepo.GetByTmdbID(ctx, tmdbID)
 		if err == nil && existing != nil {
-			return existing, nil
+			return existing, false, nil
 		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
+			return nil, false, err
 		}
 	}
 
@@ -239,30 +277,21 @@ func (s *MetadataService) findOrCreateSeries(ctx context.Context, result *metada
 	}
 
 	if err := s.seriesRepo.Create(ctx, series); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-
-	// Sync genres for series
-	s.syncSeriesGenres(ctx, series.ID, result.Genres)
-	s.syncSeriesCredits(ctx, series.ID, result.Cast, result.Crew)
-
-	// Enrich with TheTVDB data (IMDb ID, status, etc.)
-	s.enrichTVDBSeries(ctx, series)
-
-	// Enrich with fanart.tv artwork (logo, thumb)
-	s.enrichFanartShow(ctx, series)
-
-	// Enrich with TVmaze data (network, schedule)
-	s.enrichTVmazeSeries(ctx, series)
-
-	return series, nil
+	return series, true, nil
 }
 
 // findOrCreateSeason looks up or creates a season for a series.
+// Protected by seasonCreateMu to prevent duplicate rows when parallel workers
+// process episodes from the same season simultaneously.
 func (s *MetadataService) findOrCreateSeason(ctx context.Context, seriesID int64, seasonNumber int) (*model.Season, error) {
 	if seasonNumber <= 0 {
 		seasonNumber = 1
 	}
+
+	s.seasonCreateMu.Lock()
+	defer s.seasonCreateMu.Unlock()
 
 	existing, err := s.seasonRepo.GetBySeriesAndNumber(ctx, seriesID, seasonNumber)
 	if err == nil && existing != nil {
@@ -745,18 +774,13 @@ func (s *MetadataService) BulkRefreshAllMetadata(ctx context.Context) (int, erro
 	for i := range items {
 		m := &items[i]
 
-		// Step 1: Auto-match unmatched media against TMDb
+		// Step 1: Auto-match unmatched media against TMDb.
+		// MatchAndPersistMovie mutates *m in-place, so no re-read needed.
 		if m.TmdbID == nil {
 			if err := s.AutoMatchAndRefresh(ctx, m); err != nil {
 				log.Printf("Auto-match failed for media %d (%s): %v", m.ID, m.Title, err)
 				continue
 			}
-			// Re-read after match to get updated fields
-			refreshed, err := s.mediaRepo.GetByID(ctx, m.ID)
-			if err != nil {
-				continue
-			}
-			*m = *refreshed
 			if m.TmdbID != nil {
 				updated++
 			}

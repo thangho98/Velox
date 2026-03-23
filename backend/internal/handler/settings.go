@@ -9,12 +9,25 @@ import (
 
 // SettingsHandler handles admin settings endpoints.
 type SettingsHandler struct {
-	repo *repository.AppSettingsRepo
+	repo             *repository.AppSettingsRepo
+	hasBuiltinTMDb   bool
+	hasBuiltinOMDb   bool
+	hasBuiltinTVDB   bool
+	hasBuiltinFanart bool
+	hasBuiltinSubdl  bool
 }
 
 // NewSettingsHandler creates a new settings handler.
-func NewSettingsHandler(repo *repository.AppSettingsRepo) *SettingsHandler {
-	return &SettingsHandler{repo: repo}
+// builtinKeys indicates which providers have env-based default keys configured.
+func NewSettingsHandler(repo *repository.AppSettingsRepo, builtinKeys map[string]bool) *SettingsHandler {
+	return &SettingsHandler{
+		repo:             repo,
+		hasBuiltinTMDb:   builtinKeys["tmdb"],
+		hasBuiltinOMDb:   builtinKeys["omdb"],
+		hasBuiltinTVDB:   builtinKeys["tvdb"],
+		hasBuiltinFanart: builtinKeys["fanart"],
+		hasBuiltinSubdl:  builtinKeys["subdl"],
+	}
 }
 
 // openSubsResponse is the JSON shape for GET /api/admin/settings/opensubtitles.
@@ -86,7 +99,8 @@ func (h *SettingsHandler) UpdateOpenSubtitles(w http.ResponseWriter, r *http.Req
 
 // tmdbResponse is the JSON shape for GET /api/admin/settings/tmdb.
 type tmdbResponse struct {
-	APIKey string `json:"api_key"`
+	APIKey     string `json:"api_key"`
+	HasBuiltin bool   `json:"has_builtin"` // true if VELOX_TMDB_API_KEY env var is set
 }
 
 // tmdbRequest is the JSON shape for PUT /api/admin/settings/tmdb.
@@ -102,7 +116,7 @@ func (h *SettingsHandler) GetTMDb(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, tmdbResponse{APIKey: val})
+	respondJSON(w, http.StatusOK, tmdbResponse{APIKey: val, HasBuiltin: h.hasBuiltinTMDb})
 }
 
 // UpdateTMDb saves the TMDb API key.
@@ -124,7 +138,8 @@ func (h *SettingsHandler) UpdateTMDb(w http.ResponseWriter, r *http.Request) {
 
 // omdbResponse is the JSON shape for GET /api/admin/settings/omdb.
 type omdbResponse struct {
-	APIKey string `json:"api_key"`
+	APIKey     string `json:"api_key"`
+	HasBuiltin bool   `json:"has_builtin"` // true if VELOX_OMDB_API_KEY env var is set
 }
 
 // omdbRequest is the JSON shape for PUT /api/admin/settings/omdb.
@@ -140,7 +155,7 @@ func (h *SettingsHandler) GetOMDb(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, omdbResponse{APIKey: val})
+	respondJSON(w, http.StatusOK, omdbResponse{APIKey: val, HasBuiltin: h.hasBuiltinOMDb})
 }
 
 // UpdateOMDb saves the OMDb API key.
@@ -162,7 +177,8 @@ func (h *SettingsHandler) UpdateOMDb(w http.ResponseWriter, r *http.Request) {
 
 // tvdbResponse is the JSON shape for GET /api/admin/settings/tvdb.
 type tvdbResponse struct {
-	APIKey string `json:"api_key"`
+	APIKey     string `json:"api_key"`
+	HasBuiltin bool   `json:"has_builtin"` // true if VELOX_TVDB_API_KEY env var is set
 }
 
 // tvdbRequest is the JSON shape for PUT /api/admin/settings/tvdb.
@@ -178,7 +194,7 @@ func (h *SettingsHandler) GetTVDB(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, tvdbResponse{APIKey: val})
+	respondJSON(w, http.StatusOK, tvdbResponse{APIKey: val, HasBuiltin: h.hasBuiltinTVDB})
 }
 
 // UpdateTVDB saves the TheTVDB API key.
@@ -246,7 +262,8 @@ func (h *SettingsHandler) UpdatePlayback(w http.ResponseWriter, r *http.Request)
 
 // fanartResponse is the JSON shape for GET /api/admin/settings/fanart.
 type fanartResponse struct {
-	APIKey string `json:"api_key"`
+	APIKey     string `json:"api_key"`
+	HasBuiltin bool   `json:"has_builtin"` // true if VELOX_FANART_API_KEY env var is set
 }
 
 // fanartRequest is the JSON shape for PUT /api/admin/settings/fanart.
@@ -262,7 +279,7 @@ func (h *SettingsHandler) GetFanart(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, fanartResponse{APIKey: val})
+	respondJSON(w, http.StatusOK, fanartResponse{APIKey: val, HasBuiltin: h.hasBuiltinFanart})
 }
 
 // UpdateFanart saves the fanart.tv API key.
@@ -322,7 +339,8 @@ func (h *SettingsHandler) UpdateAutoSubtitles(w http.ResponseWriter, r *http.Req
 
 // subdlResponse is the JSON shape for GET /api/admin/settings/subdl.
 type subdlResponse struct {
-	APIKey string `json:"api_key"`
+	APIKey     string `json:"api_key"`
+	HasBuiltin bool   `json:"has_builtin"` // true if VELOX_SUBDL_API_KEY env var is set
 }
 
 // subdlRequest is the JSON shape for PUT /api/admin/settings/subdl.
@@ -338,7 +356,7 @@ func (h *SettingsHandler) GetSubdl(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, subdlResponse{APIKey: val})
+	respondJSON(w, http.StatusOK, subdlResponse{APIKey: val, HasBuiltin: h.hasBuiltinSubdl})
 }
 
 // UpdateSubdl saves the Subdl API key.

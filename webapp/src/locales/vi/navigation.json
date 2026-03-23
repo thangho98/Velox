@@ -18,5 +18,19 @@
   "search": {
     "placeholder": "Tìm phim, thể loại..."
   },
+  "notifications": {
+    "title": "Thông báo",
+    "empty": "Không có thông báo",
+    "markAllRead": "Đánh dấu tất cả đã đọc",
+    "markRead": "Đánh dấu đã đọc",
+    "delete": "Xóa",
+    "viewAll": "Xem tất cả thông báo",
+    "time": {
+      "justNow": "Vừa xong",
+      "minutesAgo": "{{count}} phút trước",
+      "hoursAgo": "{{count}} giờ trước",
+      "daysAgo": "{{count}} ngày trước"
+    }
+  },
   "back": "Quay lại"
 }

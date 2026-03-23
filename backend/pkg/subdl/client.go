@@ -21,9 +21,6 @@ const (
 	searchURL   = "https://api.subdl.com/api/v1/subtitles"
 	downloadURL = "https://dl.subdl.com/subtitle"
 	userAgent   = "Velox v0.1.0"
-
-	// DefaultAPIKey is a built-in Subdl API key.
-	DefaultAPIKey = "WW5Plhi1rJ-ryg4NARz8QYT1RY52JfqL"
 )
 
 // Client is a Subdl.com subtitle API client.

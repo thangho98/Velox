@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thawng/velox/internal/model"
@@ -44,11 +45,20 @@ func detectSubtitlesFilter() bool {
 	return strings.Contains(string(out), "subtitles")
 }
 
+// transcodeJob tracks a background FFmpeg transcode.
+// Multiple HTTP requests waiting for the same transcode all share one job.
+type transcodeJob struct {
+	done chan struct{} // closed (not sent) when FFmpeg exits
+	err  error         // set before done is closed
+}
+
 // Transcoder manages FFmpeg-based HLS transcoding and remuxing.
 type Transcoder struct {
 	outputDir string
 	hwAccel   string        // resolved HW accel type ("videotoolbox", "nvenc", "vaapi", "qsv", or "")
 	semaphore chan struct{} // limits concurrent FFmpeg transcode jobs
+	mu        sync.Mutex
+	active    map[string]*transcodeJob // masterPath → in-progress job
 }
 
 // New creates a Transcoder.
@@ -69,7 +79,86 @@ func New(outputDir string, hwAccel string, maxConcurrent int) *Transcoder {
 		outputDir: outputDir,
 		hwAccel:   hwAccel,
 		semaphore: sem,
+		active:    make(map[string]*transcodeJob),
 	}
+}
+
+// isHLSComplete reports whether a media playlist has been fully written
+// (i.e. FFmpeg added #EXT-X-ENDLIST at the end).
+func isHLSComplete(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "#EXT-X-ENDLIST")
+}
+
+// waitForFirstSegment polls until segPath exists OR the job finishes.
+// Returns nil as soon as the first segment appears (FFmpeg still running in background).
+// Returns job.err if FFmpeg exits before the segment appears.
+func (t *Transcoder) waitForFirstSegment(job *transcodeJob, segPath string) error {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.After(3 * time.Minute)
+
+	for {
+		select {
+		case <-job.done:
+			// FFmpeg exited — either finished OK (all segments written) or failed.
+			return job.err
+		case <-ticker.C:
+			if _, err := os.Stat(segPath); err == nil {
+				return nil // first segment ready; FFmpeg continues in background
+			}
+		case <-timeout:
+			return fmt.Errorf("transcode start timeout: first segment not ready after 3 minutes")
+		}
+	}
+}
+
+// startHLSBackground launches FFmpeg for a single-stream HLS transcode in the
+// background. Returns as soon as the first .ts segment exists (or an error).
+// Deduplicates: a second call for the same masterPath joins the existing job.
+func (t *Transcoder) startHLSBackground(masterPath, firstSeg, inputPath, dir, prefix string, siIdx int, hdr bool, hwAccel string, videoCopy bool) error {
+	// Check active map first (in-progress transcode).
+	t.mu.Lock()
+	if job, ok := t.active[masterPath]; ok {
+		t.mu.Unlock()
+		return t.waitForFirstSegment(job, firstSeg)
+	}
+	// Full cache hit: complete playlist on disk and not currently running.
+	if isHLSComplete(masterPath) {
+		t.mu.Unlock()
+		return nil
+	}
+	// Start new background transcode.
+	job := &transcodeJob{done: make(chan struct{})}
+	t.active[masterPath] = job
+	t.mu.Unlock()
+
+	go func() {
+		release := t.acquireSlot()
+		defer release()
+
+		err := t.runHLSFFmpeg(inputPath, dir, prefix, siIdx, hdr, hwAccel, videoCopy)
+		// Only retry with software encoder when HW encoding was attempted (not for video copy).
+		if err != nil && hwAccel != "" && !videoCopy {
+			log.Printf("transcoder: HW encode failed (%v), retrying with software", err)
+			err = t.runHLSFFmpeg(inputPath, dir, prefix, siIdx, hdr, "", videoCopy)
+		}
+
+		t.mu.Lock()
+		job.err = err
+		delete(t.active, masterPath)
+		t.mu.Unlock()
+
+		if err != nil {
+			log.Printf("transcoder: background transcode failed for %s: %v", masterPath, err)
+		}
+		close(job.done)
+	}()
+
+	return t.waitForFirstSegment(job, firstSeg)
 }
 
 // acquireSlot blocks until a transcode slot is available.
@@ -85,11 +174,15 @@ func (t *Transcoder) HLSDir(mediaID int64) string {
 }
 
 // hlsPrefix returns the filename prefix used for HLS output files.
-// Encodes both the file version and subtitle burn-in index so each unique
-// (file, subtitle) combination gets its own cached playlist.
+// Encodes file version, subtitle burn-in index, and video copy mode so each
+// unique (file, subtitle, videoCopy) combination gets its own cached playlist.
 // Example: fileID=5, siIdx=2 → "f5_sub2_"
-func hlsPrefix(fileID int64, subtitleStreamIndex int) string {
+// Example: fileID=5, videoCopy=true → "vcf5_"
+func hlsPrefix(fileID int64, subtitleStreamIndex int, videoCopy bool) string {
 	var prefix string
+	if videoCopy {
+		prefix += "vc"
+	}
 	if fileID > 0 {
 		prefix += fmt.Sprintf("f%d_", fileID)
 	}
@@ -100,10 +193,10 @@ func hlsPrefix(fileID int64, subtitleStreamIndex int) string {
 }
 
 // MasterPlaylistPath returns the expected path to the master playlist for the
-// given (mediaID, fileID, subtitleStreamIndex) combination.
+// given (mediaID, fileID, subtitleStreamIndex, videoCopy) combination.
 // Used by StreamService to retrieve the correct playlist path after transcoding.
-func (t *Transcoder) MasterPlaylistPath(mediaID, fileID int64, subtitleStreamIndex int) string {
-	return filepath.Join(t.HLSDir(mediaID), hlsPrefix(fileID, subtitleStreamIndex)+"master.m3u8")
+func (t *Transcoder) MasterPlaylistPath(mediaID, fileID int64, subtitleStreamIndex int, videoCopy bool) string {
+	return filepath.Join(t.HLSDir(mediaID), hlsPrefix(fileID, subtitleStreamIndex, videoCopy)+"master.m3u8")
 }
 
 // ABRMasterPath returns the path to the adaptive bitrate master playlist.
@@ -117,58 +210,64 @@ func (t *Transcoder) ABRCached(mediaID, fileID int64) bool {
 	return err == nil
 }
 
-// GenerateHLS transcodes a video file into HLS segments.
-// Skips if already cached. Acquires a semaphore slot for the duration.
-// On HW encoder failure, automatically retries with the software encoder.
-func (t *Transcoder) GenerateHLS(mediaID int64, inputPath string, fileID int64, subtitleStreamIndex int) error {
+// GenerateHLS transcodes (or stream-copies) a video file into HLS segments.
+// videoCopy=true: copies the video stream unchanged and only transcodes audio.
+// Returns as soon as the first segment is ready (FFmpeg continues in background).
+// Skips if already cached. Deduplicates concurrent requests for the same media.
+func (t *Transcoder) GenerateHLS(mediaID int64, inputPath string, fileID int64, subtitleStreamIndex int, videoCopy bool) error {
 	dir := t.HLSDir(mediaID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	prefix := hlsPrefix(fileID, subtitleStreamIndex)
+	prefix := hlsPrefix(fileID, subtitleStreamIndex, videoCopy)
 	masterPath := filepath.Join(dir, prefix+"master.m3u8")
-
-	if _, err := os.Stat(masterPath); err == nil {
-		return nil // cached
-	}
-
-	release := t.acquireSlot()
-	defer release()
-
+	firstSeg := filepath.Join(dir, prefix+"seg_0000.ts")
 	hdr := isHDRFile(inputPath)
-	if err := t.runHLSFFmpeg(inputPath, dir, prefix, subtitleStreamIndex, hdr, t.hwAccel); err != nil {
-		if t.hwAccel != "" {
-			log.Printf("transcoder: HW encode failed (%v), retrying with software", err)
-			return t.runHLSFFmpeg(inputPath, dir, prefix, subtitleStreamIndex, hdr, "")
-		}
-		return err
-	}
-	return nil
+
+	return t.startHLSBackground(masterPath, firstSeg, inputPath, dir, prefix, subtitleStreamIndex, hdr, t.hwAccel, videoCopy)
 }
 
 // runHLSFFmpeg runs FFmpeg for single-quality HLS with the given encoder.
+// videoCopy=true: copies the video stream unchanged (-c:v copy), transcodes audio only.
 // hwAccel="" forces software encoding regardless of t.hwAccel.
-func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr bool, hwAccel string) error {
+func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr bool, hwAccel string, videoCopy bool) error {
 	masterPath := filepath.Join(dir, prefix+"master.m3u8")
 	segPattern := filepath.Join(dir, prefix+"seg_%04d.ts")
 
-	args := []string{"-hide_banner", "-loglevel", "warning"}
-	args = append(args, buildFFmpegInputArgs(hwAccel)...)
-	args = append(args, "-i", inputPath)
-	if siIdx >= 0 {
-		args = append(args, buildImageSubtitleBurnInArgs(hwAccel, hdr, siIdx)...)
+	var args []string
+	if videoCopy {
+		// Video copy: no re-encode. Segment boundaries follow source keyframes.
+		args = []string{"-hide_banner", "-loglevel", "warning",
+			"-probesize", "50000000", "-analyzeduration", "100000000",
+			"-i", inputPath,
+			"-map", "0:v:0", "-c:v", "copy",
+			"-avoid_negative_ts", "make_zero",
+			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
+			"-f", "hls",
+			"-hls_time", "6",
+			"-hls_list_size", "0",
+			"-hls_segment_filename", segPattern,
+			masterPath,
+		}
 	} else {
-		args = append(args, buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)...)
+		args = []string{"-hide_banner", "-loglevel", "warning"}
+		args = append(args, buildFFmpegInputArgs(hwAccel)...)
+		args = append(args, "-i", inputPath)
+		if siIdx >= 0 {
+			args = append(args, buildImageSubtitleBurnInArgs(hwAccel, hdr, siIdx)...)
+		} else {
+			args = append(args, buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)...)
+		}
+		args = append(args,
+			"-c:a", "aac", "-b:a", "128k", "-ac", "2",
+			"-f", "hls",
+			"-hls_time", "6",
+			"-hls_list_size", "0",
+			"-hls_segment_filename", segPattern,
+			masterPath,
+		)
 	}
-	args = append(args,
-		"-c:a", "aac", "-b:a", "128k", "-ac", "2",
-		"-f", "hls",
-		"-hls_time", "6",
-		"-hls_list_size", "0",
-		"-hls_segment_filename", segPattern,
-		masterPath,
-	)
 
 	cmd := exec.Command("ffmpeg", args...)
 	var stderr bytes.Buffer
@@ -190,29 +289,40 @@ type AudioVariant struct {
 // GenerateHLSWithAudio generates HLS with multiple audio tracks using #EXT-X-MEDIA.
 // Creates separate audio playlists and a master playlist that references them.
 // Falls back to simple HLS when <= 1 audio track.
-func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audioTracks []model.AudioTrack, fileID int64, subtitleStreamIndex int) error {
+// videoCopy=true: copies the video stream unchanged, transcodes audio only.
+func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audioTracks []model.AudioTrack, fileID int64, subtitleStreamIndex int, videoCopy bool) error {
 	dir := t.HLSDir(mediaID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	prefix := hlsPrefix(fileID, subtitleStreamIndex)
+	prefix := hlsPrefix(fileID, subtitleStreamIndex, videoCopy)
 	masterPath := filepath.Join(dir, prefix+"master.m3u8")
 
-	if _, err := os.Stat(masterPath); err == nil {
-		return nil // cached
-	}
-
 	if len(audioTracks) <= 1 {
-		return t.GenerateHLS(mediaID, inputPath, fileID, subtitleStreamIndex)
+		return t.GenerateHLS(mediaID, inputPath, fileID, subtitleStreamIndex, videoCopy)
 	}
 
-	release := t.acquireSlot()
-	defer release()
+	// Check active map first (in-progress transcode).
+	firstVideoSeg := filepath.Join(dir, prefix+"video_0000.ts")
+	t.mu.Lock()
+	if job, ok := t.active[masterPath]; ok {
+		t.mu.Unlock()
+		return t.waitForFirstSegment(job, firstVideoSeg)
+	}
+	// Full cache hit: master exists and video playlist is complete.
+	videoPlaylist := filepath.Join(dir, prefix+"video.m3u8")
+	if isHLSComplete(videoPlaylist) {
+		t.mu.Unlock()
+		return nil
+	}
+	job := &transcodeJob{done: make(chan struct{})}
+	t.active[masterPath] = job
+	t.mu.Unlock()
 
 	hdr := isHDRFile(inputPath)
 
-	// Build variants list
+	// Build variants list (fast, synchronous).
 	variants := make([]AudioVariant, 0, len(audioTracks))
 	for _, track := range audioTracks {
 		name := track.Title
@@ -232,88 +342,122 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 		})
 	}
 
-	// Generate per-track audio playlists
-	audioPlaylistPaths := make(map[int]string)
-	for _, v := range variants {
-		audioPlaylist := filepath.Join(dir, fmt.Sprintf("audio_%d.m3u8", v.StreamIndex))
-		audioPlaylistPaths[v.StreamIndex] = audioPlaylist
+	// Run all encoding in a background goroutine so the HTTP handler can return
+	// as soon as the first video segment is ready.
+	go func() {
+		release := t.acquireSlot()
+		defer release()
 
-		// Use absolute stream index (0:N), not relative audio index (0:a:N).
-		cmd := exec.Command("ffmpeg",
-			"-hide_banner", "-loglevel", "warning",
-			"-probesize", "50000000",
-			"-analyzeduration", "100000000",
-			"-i", inputPath,
-			"-map", fmt.Sprintf("0:%d", v.StreamIndex),
-			"-c:a", "aac", "-b:a", "128k", "-ac", "2",
-			"-f", "hls",
-			"-hls_time", "6",
-			"-hls_list_size", "0",
-			"-hls_segment_filename", filepath.Join(dir, fmt.Sprintf("audio_%d_%%04d.ts", v.StreamIndex)),
-			audioPlaylist,
-		)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("transcode audio stream %d: %w — %s", v.StreamIndex, err, stderr.String())
-		}
-	}
+		job.err = func() error {
+			// --- Audio tracks (audio-only encode, much faster than video) ---
+			audioPlaylistPaths := make(map[int]string)
+			for _, v := range variants {
+				audioPlaylist := filepath.Join(dir, fmt.Sprintf("audio_%d.m3u8", v.StreamIndex))
+				audioPlaylistPaths[v.StreamIndex] = audioPlaylist
 
-	// Generate video-only playlist (no audio), optionally with subtitle burn-in
-	videoPlaylist := filepath.Join(dir, prefix+"video.m3u8")
-	videoArgs := []string{"-hide_banner", "-loglevel", "warning"}
-	videoArgs = append(videoArgs, buildFFmpegInputArgs(t.hwAccel)...)
-	videoArgs = append(videoArgs, "-i", inputPath)
-	if subtitleStreamIndex >= 0 {
-		videoArgs = append(videoArgs, buildImageSubtitleBurnInVideoOnlyArgs(t.hwAccel, hdr, subtitleStreamIndex)...)
-	} else {
-		videoArgs = append(videoArgs, "-map", "0:v:0")
-		videoArgs = append(videoArgs, buildVideoEncodeArgs(t.hwAccel, hdr, subtitleStreamIndex, inputPath)...)
-	}
-	videoArgs = append(videoArgs,
-		"-an",
-		"-f", "hls",
-		"-hls_time", "6",
-		"-hls_list_size", "0",
-		"-hls_segment_filename", filepath.Join(dir, prefix+"video_%04d.ts"),
-		videoPlaylist,
-	)
-
-	cmd := exec.Command("ffmpeg", videoArgs...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if t.hwAccel != "" {
-			log.Printf("transcoder: HW encode failed for video track (%v), retrying with software", err)
-			swArgs := []string{
-				"-hide_banner", "-loglevel", "warning",
-				"-probesize", "50000000",
-				"-analyzeduration", "100000000",
-				"-i", inputPath,
+				cmd := exec.Command("ffmpeg",
+					"-hide_banner", "-loglevel", "warning",
+					"-probesize", "50000000",
+					"-analyzeduration", "100000000",
+					"-i", inputPath,
+					"-map", fmt.Sprintf("0:%d", v.StreamIndex),
+					"-c:a", "aac", "-b:a", "128k", "-ac", "2",
+					"-f", "hls",
+					"-hls_time", "6",
+					"-hls_list_size", "0",
+					"-hls_segment_filename", filepath.Join(dir, fmt.Sprintf("audio_%d_%%04d.ts", v.StreamIndex)),
+					audioPlaylist,
+				)
+				var stderr bytes.Buffer
+				cmd.Stderr = &stderr
+				if err := cmd.Run(); err != nil {
+					return fmt.Errorf("transcode audio stream %d: %w — %s", v.StreamIndex, err, stderr.String())
+				}
 			}
-			if subtitleStreamIndex >= 0 {
-				swArgs = append(swArgs, buildImageSubtitleBurnInVideoOnlyArgs("", hdr, subtitleStreamIndex)...)
+
+			// Write master.m3u8 before video starts so it is available as soon
+			// as the first video segment appears (caller polls for that segment).
+			if err := t.writeMasterPlaylistWithAudio(masterPath, variants, audioPlaylistPaths, prefix); err != nil {
+				return err
+			}
+
+			// --- Video track (the slow part — runs fully in background) ---
+			vp := filepath.Join(dir, prefix+"video.m3u8")
+			segFile := filepath.Join(dir, prefix+"video_%04d.ts")
+			var videoArgs []string
+			if videoCopy {
+				videoArgs = []string{
+					"-hide_banner", "-loglevel", "warning",
+					"-probesize", "50000000", "-analyzeduration", "100000000",
+					"-i", inputPath,
+					"-map", "0:v:0", "-c:v", "copy",
+					"-avoid_negative_ts", "make_zero",
+					"-an", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
+					"-hls_segment_filename", segFile,
+					vp,
+				}
 			} else {
-				swArgs = append(swArgs, "-map", "0:v:0")
-				swArgs = append(swArgs, buildVideoEncodeArgs("", hdr, subtitleStreamIndex, inputPath)...)
+				videoArgs = []string{"-hide_banner", "-loglevel", "warning"}
+				videoArgs = append(videoArgs, buildFFmpegInputArgs(t.hwAccel)...)
+				videoArgs = append(videoArgs, "-i", inputPath)
+				if subtitleStreamIndex >= 0 {
+					videoArgs = append(videoArgs, buildImageSubtitleBurnInVideoOnlyArgs(t.hwAccel, hdr, subtitleStreamIndex)...)
+				} else {
+					videoArgs = append(videoArgs, "-map", "0:v:0")
+					videoArgs = append(videoArgs, buildVideoEncodeArgs(t.hwAccel, hdr, subtitleStreamIndex, inputPath)...)
+				}
+				videoArgs = append(videoArgs,
+					"-an", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
+					"-hls_segment_filename", segFile,
+					vp,
+				)
 			}
-			swArgs = append(swArgs,
-				"-an", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
-				"-hls_segment_filename", filepath.Join(dir, prefix+"video_%04d.ts"),
-				videoPlaylist,
-			)
-			cmdSW := exec.Command("ffmpeg", swArgs...)
-			var stderr2 bytes.Buffer
-			cmdSW.Stderr = &stderr2
-			if err2 := cmdSW.Run(); err2 != nil {
-				return fmt.Errorf("transcode video: %w — %s", err2, stderr2.String())
+			cmd := exec.Command("ffmpeg", videoArgs...)
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			if err := cmd.Run(); err != nil {
+				if t.hwAccel != "" && !videoCopy {
+					log.Printf("transcoder: HW encode failed for video track (%v), retrying with software", err)
+					swArgs := []string{
+						"-hide_banner", "-loglevel", "warning",
+						"-probesize", "50000000",
+						"-analyzeduration", "100000000",
+						"-i", inputPath,
+					}
+					if subtitleStreamIndex >= 0 {
+						swArgs = append(swArgs, buildImageSubtitleBurnInVideoOnlyArgs("", hdr, subtitleStreamIndex)...)
+					} else {
+						swArgs = append(swArgs, "-map", "0:v:0")
+						swArgs = append(swArgs, buildVideoEncodeArgs("", hdr, subtitleStreamIndex, inputPath)...)
+					}
+					swArgs = append(swArgs,
+						"-an", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
+						"-hls_segment_filename", segFile,
+						vp,
+					)
+					cmdSW := exec.Command("ffmpeg", swArgs...)
+					var stderr2 bytes.Buffer
+					cmdSW.Stderr = &stderr2
+					if err2 := cmdSW.Run(); err2 != nil {
+						return fmt.Errorf("transcode video: %w — %s", err2, stderr2.String())
+					}
+				} else {
+					return fmt.Errorf("transcode video: %w — %s", err, stderr.String())
+				}
 			}
-		} else {
-			return fmt.Errorf("transcode video: %w — %s", err, stderr.String())
-		}
-	}
+			return nil
+		}()
 
-	return t.writeMasterPlaylistWithAudio(masterPath, variants, audioPlaylistPaths, prefix)
+		t.mu.Lock()
+		delete(t.active, masterPath)
+		t.mu.Unlock()
+		if job.err != nil {
+			log.Printf("transcoder: background multi-audio transcode failed for %s: %v", masterPath, job.err)
+		}
+		close(job.done)
+	}()
+
+	return t.waitForFirstSegment(job, firstVideoSeg)
 }
 
 // writeMasterPlaylistWithAudio creates the master playlist with #EXT-X-MEDIA tags.
@@ -432,7 +576,7 @@ func (t *Transcoder) generateABRVariant(inputPath, playlistPath, segPattern stri
 		"-c:v", hwVideoCodec(hwAccel),
 	)
 	if hwAccel == "" {
-		args = append(args, "-preset", "fast", "-profile:v", "high", "-level", "4.1")
+		args = append(args, "-preset", "veryfast", "-profile:v", "high", "-level", "4.1", "-threads", "0")
 	}
 	args = append(args,
 		"-b:v", bitrateStr,
@@ -606,7 +750,7 @@ func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string)
 
 	args = append(args, "-c:v", hwVideoCodec(hwAccel))
 	if hwAccel == "" {
-		args = append(args, "-preset", "fast", "-crf", "22")
+		args = append(args, "-preset", "veryfast", "-crf", "23", "-threads", "0")
 	}
 	args = append(args, "-pix_fmt", "yuv420p")
 	return args
@@ -624,7 +768,7 @@ func buildImageSubtitleBurnInArgs(hwAccel string, hdr bool, subtitleStreamIndex 
 		"-c:v", hwVideoCodec(hwAccel),
 	}
 	if hwAccel == "" {
-		args = append(args, "-preset", "fast", "-crf", "22")
+		args = append(args, "-preset", "veryfast", "-crf", "23", "-threads", "0")
 	}
 	args = append(args, "-pix_fmt", "yuv420p")
 	return args
@@ -640,7 +784,7 @@ func buildImageSubtitleBurnInVideoOnlyArgs(hwAccel string, hdr bool, subtitleStr
 		"-c:v", hwVideoCodec(hwAccel),
 	}
 	if hwAccel == "" {
-		args = append(args, "-preset", "fast", "-crf", "22")
+		args = append(args, "-preset", "veryfast", "-crf", "23", "-threads", "0")
 	}
 	args = append(args, "-pix_fmt", "yuv420p")
 	return args

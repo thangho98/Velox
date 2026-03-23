@@ -314,6 +314,9 @@ export function WatchPage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  // knownDuration: ffprobe-reported total duration — used as floor so the player
+  // never shows a partial duration while HLS transcoding is still in progress.
+  const knownDurationRef = useRef(0)
   const [buffered, setBuffered] = useState(0)
   const [showControls, setShowControls] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -334,6 +337,17 @@ export function WatchPage() {
     const t = setInterval(() => setWallClock(getWallClock()), 30000)
     return () => clearInterval(t)
   }, [])
+
+  // Sync knownDurationRef and duration state from playback info (ffprobe value).
+  // This is the floor: duration state never drops below this even while HLS
+  // transcoding is in progress and the live-like playlist only has partial segments.
+  useEffect(() => {
+    const d = playbackInfo?.duration ?? 0
+    if (d > 0) {
+      knownDurationRef.current = d
+      setDuration((prev) => (prev < d ? d : prev))
+    }
+  }, [playbackInfo?.duration])
 
   // Seek feedback
   const [seekFeedback, setSeekFeedback] = useState<{ dir: 'back' | 'fwd'; n: number } | null>(null)
@@ -603,11 +617,13 @@ export function WatchPage() {
           )
           if (idx >= 0 && idx !== hls.audioTrack) hls.audioTrack = idx
         }
-        // HLS VOD: update duration once manifest is parsed
+        // Set duration from playback info immediately (true duration from ffprobe),
+        // so the player shows correct total even while transcoding is in progress.
+        const knownDur = playbackInfo?.duration ?? 0
         const v = videoRef.current
-        if (v && v.duration && isFinite(v.duration)) {
-          setDuration(v.duration)
-        }
+        const videoDur = v?.duration && isFinite(v.duration) ? v.duration : 0
+        const initDur = knownDur > videoDur ? knownDur : videoDur
+        if (initDur > 0) setDuration(initDur)
         // Resume position (initial load or after subtitle/quality change)
         const seekTo = usePlayerStore.getState().lastPositions[mediaId] ?? 0
         if (seekTo > 0 && v) {
@@ -620,9 +636,13 @@ export function WatchPage() {
         v?.play().catch(() => {})
       })
       hls.on(Hls.Events.LEVEL_LOADED, (_e, data) => {
-        if (data.details?.totalduration) {
-          setDuration(data.details.totalduration)
-        }
+        const playlistDur = data.details?.totalduration ?? 0
+        // While transcoding in background, the playlist only contains segments
+        // encoded so far. Use playback info duration (from ffprobe) if it's larger
+        // so the player always shows the correct total duration.
+        const knownDur = playbackInfo?.duration ?? 0
+        const trueDur = knownDur > playlistDur ? knownDur : playlistDur
+        if (trueDur > 0) setDuration(trueDur)
       })
       hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
         setCurrentLevel(data.level)
@@ -724,7 +744,7 @@ export function WatchPage() {
     const onTimeUpdate = () => {
       setCurrentTime(video.currentTime)
       if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
-        setDuration(video.duration)
+        setDuration((prev) => Math.max(prev, video.duration, knownDurationRef.current))
       }
       setLastPosition(mediaId, video.currentTime)
       const now = Date.now()
@@ -747,7 +767,7 @@ export function WatchPage() {
     const onCanPlay = () => setIsBuffering(false)
     const onDurationChange = () => {
       if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
-        setDuration(video.duration)
+        setDuration((prev) => Math.max(prev, video.duration, knownDurationRef.current))
       }
     }
     video.addEventListener('timeupdate', onTimeUpdate)

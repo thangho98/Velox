@@ -132,6 +132,30 @@ func All() []Migration {
 			Up:      up021,
 			Down:    down021,
 		},
+		{
+			Version: 22,
+			Name:    "language_preference",
+			Up:      up022,
+			Down:    down022,
+		},
+		{
+			Version: 23,
+			Name:    "notifications",
+			Up:      up023,
+			Down:    down023,
+		},
+		{
+			Version: 24,
+			Name:    "webhook_events_json",
+			Up:      up024,
+			Down:    down024,
+		},
+		{
+			Version: 25,
+			Name:    "metadata_lock_backfill",
+			Up:      up025,
+			Down:    down025,
+		},
 	}
 }
 
@@ -732,13 +756,30 @@ func down020(tx *sql.Tx) error {
 }
 
 // 021: Metadata lock — allow admin to lock metadata from rescan override + add tagline field.
+// Uses existence checks so it is safe to apply even if the columns were added manually
+// (e.g. on a DB that skipped this migration and had the columns patched by hand).
 func up021(tx *sql.Tx) error {
-	_, err := tx.Exec(`
-		ALTER TABLE media ADD COLUMN tagline TEXT NOT NULL DEFAULT '';
-		ALTER TABLE media ADD COLUMN metadata_locked INTEGER NOT NULL DEFAULT 0;
-		ALTER TABLE series ADD COLUMN metadata_locked INTEGER NOT NULL DEFAULT 0;
-	`)
-	return err
+	checks := []struct {
+		table  string
+		column string
+		ddl    string
+	}{
+		{"media", "tagline", `ALTER TABLE media ADD COLUMN tagline TEXT NOT NULL DEFAULT ''`},
+		{"media", "metadata_locked", `ALTER TABLE media ADD COLUMN metadata_locked INTEGER NOT NULL DEFAULT 0`},
+		{"series", "metadata_locked", `ALTER TABLE series ADD COLUMN metadata_locked INTEGER NOT NULL DEFAULT 0`},
+	}
+	for _, c := range checks {
+		exists, err := columnExists(tx, c.table, c.column)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if _, err := tx.Exec(c.ddl); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func down021(tx *sql.Tx) error {
@@ -747,6 +788,21 @@ func down021(tx *sql.Tx) error {
 		ALTER TABLE media DROP COLUMN tagline;
 		ALTER TABLE media DROP COLUMN metadata_locked;
 		ALTER TABLE series DROP COLUMN metadata_locked;
+	`)
+	return err
+}
+
+// 022: Add language preference to user_preferences
+func up022(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		ALTER TABLE user_preferences ADD COLUMN language TEXT DEFAULT 'en' CHECK (language IN ('en', 'vi'));
+	`)
+	return err
+}
+
+func down022(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		ALTER TABLE user_preferences DROP COLUMN language;
 	`)
 	return err
 }

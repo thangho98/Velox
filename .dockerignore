@@ -32,6 +32,8 @@ docs
 plans
 *.md
 !webapp/README.md
+.brain
+CLAUDE.md
 
 # OS
 .DS_Store

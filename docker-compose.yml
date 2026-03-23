@@ -29,10 +29,10 @@ services:
       # ---- Subscene scraper ----
       - SUBSCENE_ENABLED=true          # Set false to skip Xvfb/Chrome
 
-    # GPU passthrough for hardware transcoding (uncomment as needed)
-    # ---- Intel QSV (Synology DS920+, DS923+, etc.) ----
-    # devices:
-    #   - /dev/dri:/dev/dri
+    # GPU passthrough for hardware transcoding
+    # ---- Intel VAAPI/QSV (Synology DS920+, DS923+, Intel NUC, etc.) ----
+    devices:
+      - /dev/dri:/dev/dri
 
     # ---- NVIDIA GPU ----
     # deploy:

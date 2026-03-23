@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/thawng/velox/internal/model"
 )
@@ -28,12 +29,28 @@ func (r *ActivityRepo) Insert(ctx context.Context, userID *int64, action string,
 	return nil
 }
 
-// InsertBatch inserts multiple activity entries in a single batch.
+// InsertBatch inserts multiple activity entries in a single multi-value INSERT.
 func (r *ActivityRepo) InsertBatch(ctx context.Context, entries []ActivityEntry) error {
-	for _, e := range entries {
-		if err := r.Insert(ctx, e.UserID, e.Action, e.MediaID, e.Details, e.IP); err != nil {
-			return err
-		}
+	if len(entries) == 0 {
+		return nil
+	}
+	if len(entries) == 1 {
+		e := entries[0]
+		return r.Insert(ctx, e.UserID, e.Action, e.MediaID, e.Details, e.IP)
+	}
+
+	placeholders := make([]string, len(entries))
+	args := make([]any, 0, len(entries)*5)
+	for i, e := range entries {
+		placeholders[i] = "(?,?,?,?,?)"
+		args = append(args, e.UserID, e.Action, e.MediaID, e.Details, e.IP)
+	}
+
+	query := `INSERT INTO activity_log (user_id, action, media_id, details_json, ip_address) VALUES ` +
+		strings.Join(placeholders, ",")
+	_, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("batch inserting activity log: %w", err)
 	}
 	return nil
 }

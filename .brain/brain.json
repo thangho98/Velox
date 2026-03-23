@@ -1,7 +1,7 @@
 {
   "meta": {
     "schema_version": "1.1.0",
-    "updated_at": "2026-03-17",
+    "updated_at": "2026-03-23",
     "plan_status": {
       "A": "✅ Done — Core Domain & Ingestion (all 5 phases 100%)",
       "B": "✅ Done — Auth & Sessions",
@@ -13,7 +13,8 @@
       "J": "✅ Done — Netflix-style Series Grouping + URL Routing (4 phases)",
       "K": "✅ Done — Intro/Credits Skip (4 phases: chapter regex, chromaprint, blackframe)",
       "L": "✅ Done — Metadata Editor (4 phases: PATCH API, image upload, editor UI, NFO write)",
-      "M": "🟡 Designed — Search, Filter & Folder Browser (3 phases, plan + design reviewed)"
+      "M": "🟡 Designed — Search, Filter & Folder Browser (3 phases, plan + design reviewed)",
+      "N": "🟡 In Progress — Multi-language Support (i18n infrastructure ✅, SettingsPage ✅, remaining pages pending)"
     }
   },
   "project": {
@@ -110,17 +111,18 @@
     "cinema_mode": "Netflix-style: trailer autoplay muted in detail page backdrop via YouTube IFrame API (YouTubeBackground component). Hover media card 2s → trailer preview. GET /api/media|series/{id}/cinema returns trailer list from TMDb videos. Admin settings: cinema_mode_enabled, cinema_max_trailers, cinema_intro_path."
   },
   "metadata_providers": {
-    "TMDb": "Primary — movies + TV. Built-in API key, rate-limited (40req/10s token bucket). Now fetches videos (trailers) via append_to_response.",
-    "OMDb": "Enrichment — IMDb rating, Rotten Tomatoes %, Metacritic score. Built-in key.",
-    "TheTVDB": "TV enrichment — TVDB IDs, IMDb cross-reference, series status. Built-in key.",
-    "Fanart.tv": "Artwork enrichment — HD clearlogos, thumbnails. Built-in key.",
+    "TMDb": "Primary — movies + TV. Env-based API key (VELOX_TMDB_API_KEY). Rate-limited (40req/10s token bucket). Fetches videos (trailers) via append_to_response.",
+    "OMDb": "Enrichment — IMDb rating, Rotten Tomatoes %, Metacritic score. Env-based API key (VELOX_OMDB_API_KEY).",
+    "TheTVDB": "TV enrichment — TVDB IDs, IMDb cross-reference, series status. Env-based API key (VELOX_TVDB_API_KEY).",
+    "Fanart.tv": "Artwork enrichment — HD clearlogos, thumbnails. Env-based API key (VELOX_FANART_API_KEY).",
     "TVmaze": "TV enrichment — network, status, external ID cross-reference. Free, no key needed.",
-    "NFO": "Local override — NFO files take priority over TMDb search. NFO write support added (Plan L)."
+    "NFO": "Local override — NFO files take priority over TMDb search. NFO write support added (Plan L).",
+    "config": "All provider API keys configurable via: 1) Environment variables (server admin) → 2) Admin Settings UI (custom override). UI shows has_builtin status."
   },
   "subtitle_providers": {
     "OpenSubtitles_v2": "REST v2 API. Requires API key + username + password. Used when user configures settings. VIP needed for media servers.",
     "OpenSubtitles_legacy": "Legacy REST API (rest.opensubtitles.org). Free, no key needed. Search by IMDB ID + season/episode. Default when v2 not configured.",
-    "Subdl": "REST API. API key via admin settings (built-in fallback). Best for TV (episode→series resolution). Primary provider.",
+    "Subdl": "REST API. Env-based API key (VELOX_SUBDL_API_KEY) or custom via admin settings. Best for TV (episode→series resolution). Primary provider.",
     "BSPlayer": "SOAP/XML API. Anonymous auth (no API key). Search by file hash + IMDb ID.",
     "Podnapisi": "XML API. No API key. Often returns 429 (overloaded).",
     "Subscene": "Web scraper via Python (DrissionPage + Chrome). Bypasses Cloudflare. Slowest (~30s). Used in AutoDownload Phase 2 fallback only."
@@ -158,7 +160,8 @@
     "action_menu": "ActionMenu.tsx — reusable dropdown (portal-based, z-9999). Used in EpisodeCard + MediaDetailPage.",
     "metadata_editor": "MetadataEditor.tsx — slide-over panel. GenreEditor, CreditEditor, ImageUploader sub-components.",
     "youtube_background": "YouTubeBackground.tsx — YouTube IFrame API wrapper. Programmatic mute/unmute (no YouTube UI visible).",
-    "cinema_overlay": "CinemaOverlay.tsx — fullscreen intro/trailer player (kept for potential future use)."
+    "cinema_overlay": "CinemaOverlay.tsx — fullscreen intro/trailer player (kept for potential future use).",
+    "i18n": "Full i18n support: react-i18next + i18next-browser-languagedetector. Namespaces: common, auth, navigation, settings, media, watch, errors. SettingsPage fully translated (en/vi)."
   },
   "deployment": {
     "dockerfile": "Dockerfile (root)",
@@ -169,6 +172,11 @@
       "PUID": "Host user ID", "PGID": "Host group ID",
       "VELOX_DATA_DIR": "/data", "VELOX_HW_ACCEL": "auto|vaapi|nvenc|qsv|videotoolbox|none",
       "VELOX_MAX_TRANSCODES": "2", "VELOX_FILE_WATCHER": "true",
+      "VELOX_TMDB_API_KEY": "TMDb v4 Read Access Token (optional)",
+      "VELOX_OMDB_API_KEY": "OMDb API key (optional)",
+      "VELOX_TVDB_API_KEY": "TheTVDB API key (optional)",
+      "VELOX_FANART_API_KEY": "Fanart.tv API key (optional)",
+      "VELOX_SUBDL_API_KEY": "Subdl API key (optional)",
       "TZ": "Asia/Ho_Chi_Minh", "SUBSCENE_ENABLED": "true"
     }
   },
@@ -183,7 +191,8 @@
     "J": "Netflix-style Series Grouping + URL Routing (4 phases)",
     "K": "Intro/Credits Skip (4 phases)",
     "L": "Metadata Editor (4 phases: PATCH API, image upload, editor UI, NFO write)",
-    "M": "Search, Filter & Folder Browser (3 phases: backend API, frontend filter, folder browser)"
+    "M": "Search, Filter & Folder Browser (3 phases: backend API, frontend filter, folder browser)",
+    "N": "Multi-language Support (5 phases: i18n setup, English strings, Vietnamese, switcher, polish)"
   },
   "conventions": {
     "language": "Vietnamese in plans, English in code/commits",

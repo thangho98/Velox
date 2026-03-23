@@ -81,7 +81,7 @@ export function ActionMenu({ items, isAdmin, size = 20 }: ActionMenuProps) {
             style={{ top: pos.top, left: pos.left, transform: 'translateX(-100%)' }}
           >
             {visibleItems.map((item, i) => (
-              <div key={i}>
+              <div key={item.label}>
                 {item.separator && i > 0 && <div className="my-1 border-t border-gray-700" />}
                 <button
                   onClick={(e) => {

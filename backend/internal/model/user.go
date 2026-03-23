@@ -19,6 +19,7 @@ type UserPreferences struct {
 	AudioLanguage       string `json:"audio_language"`
 	MaxStreamingQuality string `json:"max_streaming_quality"`
 	Theme               string `json:"theme"`
+	Language            string `json:"language"`
 }
 
 // UserLibraryAccess links users to libraries they can access

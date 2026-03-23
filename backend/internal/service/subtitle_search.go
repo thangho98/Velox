@@ -24,14 +24,16 @@ import (
 
 // SubtitleSearchService orchestrates subtitle search across external providers.
 type SubtitleSearchService struct {
-	mediaRepo    *repository.MediaRepo
-	mfRepo       *repository.MediaFileRepo
-	subtitleRepo *repository.SubtitleRepo
-	settingsRepo *repository.AppSettingsRepo
-	episodeRepo  *repository.EpisodeRepo
-	seasonRepo   *repository.SeasonRepo
-	seriesRepo   *repository.SeriesRepo
-	downloadDir  string // e.g. ~/.velox/subtitles/downloaded
+	mediaRepo       *repository.MediaRepo
+	mfRepo          *repository.MediaFileRepo
+	subtitleRepo    *repository.SubtitleRepo
+	settingsRepo    *repository.AppSettingsRepo
+	episodeRepo     *repository.EpisodeRepo
+	seasonRepo      *repository.SeasonRepo
+	seriesRepo      *repository.SeriesRepo
+	downloadDir     string // e.g. ~/.velox/subtitles/downloaded
+	builtinSubdlKey string // VELOX_SUBDL_API_KEY from env (optional)
+	notificationSvc *NotificationService
 }
 
 // NewSubtitleSearchService creates a new subtitle search service.
@@ -55,6 +57,17 @@ func NewSubtitleSearchService(
 		seriesRepo:   seriesRepo,
 		downloadDir:  downloadDir,
 	}
+}
+
+// SetBuiltinSubdlKey sets the built-in Subdl API key from env (optional).
+// This allows open-source distributions to provide a default key.
+func (s *SubtitleSearchService) SetBuiltinSubdlKey(key string) {
+	s.builtinSubdlKey = key
+}
+
+// SetNotificationService sets the optional notification service for subtitle events.
+func (s *SubtitleSearchService) SetNotificationService(svc *NotificationService) {
+	s.notificationSvc = svc
 }
 
 // episodeInfo holds series-level metadata resolved from an episode media item.
@@ -373,11 +386,11 @@ func (s *SubtitleSearchService) buildOpenSubsClient(ctx context.Context) (*opens
 }
 
 // buildSubdlClient loads the API key from DB and creates a client.
-// Falls back to the built-in key if none is configured.
+// Falls back to the built-in env key if none is configured.
 func (s *SubtitleSearchService) buildSubdlClient(ctx context.Context) (*subdl.Client, error) {
 	apiKey, _ := s.settingsRepo.Get(ctx, model.SettingSubdlAPIKey)
 	if apiKey == "" {
-		apiKey = subdl.DefaultAPIKey
+		apiKey = s.builtinSubdlKey
 	}
 	return subdl.New(apiKey), nil
 }

@@ -87,7 +87,7 @@ func (r *WebhookRepo) ListByEvent(ctx context.Context, event string) ([]model.We
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT w.id, w.url, w.events, w.secret, w.active, w.created_at, w.updated_at
 		 FROM webhooks w, json_each(w.events) e
-		 WHERE w.active = 1 AND (e.value = ? OR e.value = '*')`,
+		 WHERE w.active = 1 AND json_valid(w.events) AND (e.value = ? OR e.value = '*')`,
 		event)
 	if err != nil {
 		return nil, fmt.Errorf("listing webhooks for event %s: %w", event, err)

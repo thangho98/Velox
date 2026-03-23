@@ -277,6 +277,7 @@ function SidebarGroupHeader({ label }: { label: string }) {
 // ── Web Settings: Profile ─────────────────────────────────────────────────────
 
 function ProfileSection() {
+  const { t } = useTranslation('settings')
   const { data: profile } = useProfile()
   const { mutate: updateProfile, isPending } = useUpdateProfile()
   const [edited, setEdited] = useState<string | null>(null)
@@ -289,20 +290,26 @@ function ProfileSection() {
     setSuccess('')
     updateProfile(
       { display_name: displayName },
-      { onSuccess: () => setSuccess('Profile updated successfully') },
+      {
+        onSuccess: () =>
+          setSuccess(t('sections.profile.success') || 'Profile updated successfully'),
+      },
     )
   }
 
   return (
     <div className="max-w-xl">
-      <SectionHeader title="Profile" description="Manage your account information" />
+      <SectionHeader
+        title={t('sections.profile.title')}
+        description={t('sections.profile.description')}
+      />
       <form onSubmit={handleSubmit} className="mt-6 space-y-5">
         {success && <SuccessMsg>{success}</SuccessMsg>}
-        <Field label="Username">
+        <Field label={t('fields.username')}>
           <input type="text" value={profile?.username || ''} disabled className={inputDisabled} />
           <p className="mt-1 text-xs text-gray-500">Username cannot be changed</p>
         </Field>
-        <Field label="Display Name">
+        <Field label={t('fields.displayName')}>
           <input
             type="text"
             value={displayName}
@@ -310,7 +317,7 @@ function ProfileSection() {
             className={inputClass}
           />
         </Field>
-        <Field label="Role">
+        <Field label={t('fields.role')}>
           <span
             className={`inline-block rounded px-3 py-1 text-sm ${
               profile?.is_admin
@@ -330,6 +337,7 @@ function ProfileSection() {
 // ── Web Settings: Preferences ─────────────────────────────────────────────────
 
 function PreferencesSection() {
+  const { t } = useTranslation('settings')
   const { data: preferences } = usePreferences()
   const { mutate: updatePreferences, isPending } = useUpdatePreferences()
   const { theme, setTheme } = useUIStore()
@@ -365,55 +373,58 @@ function PreferencesSection() {
 
   return (
     <div className="max-w-xl">
-      <SectionHeader title="Preferences" description="Customize your viewing experience" />
+      <SectionHeader
+        title={t('sections.preferences.title')}
+        description={t('sections.preferences.description')}
+      />
       <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-        <Field label="Subtitle Language">
+        <Field label={t('fields.subtitleLanguage')}>
           <select
             value={prefs.subtitle_language}
             onChange={(e) => setPrefs({ subtitle_language: e.target.value })}
             className={selectClass}
           >
-            <option value="">Auto</option>
-            <option value="vi">Vietnamese</option>
-            <option value="en">English</option>
+            <option value="">{t('options.language.auto')}</option>
+            <option value="vi">{t('options.language.vi')}</option>
+            <option value="en">{t('options.language.en')}</option>
           </select>
         </Field>
-        <Field label="Audio Language">
+        <Field label={t('fields.audioLanguage')}>
           <select
             value={prefs.audio_language}
             onChange={(e) => setPrefs({ audio_language: e.target.value })}
             className={selectClass}
           >
-            <option value="">Auto</option>
-            <option value="vi">Vietnamese</option>
-            <option value="en">English</option>
+            <option value="">{t('options.language.auto')}</option>
+            <option value="vi">{t('options.language.vi')}</option>
+            <option value="en">{t('options.language.en')}</option>
           </select>
         </Field>
-        <Field label="Max Streaming Quality">
+        <Field label={t('fields.maxQuality')}>
           <select
             value={prefs.max_streaming_quality}
             onChange={(e) => setPrefs({ max_streaming_quality: e.target.value })}
             className={selectClass}
           >
-            <option value="original">Original</option>
-            <option value="4k">4K</option>
-            <option value="1080p">1080p</option>
-            <option value="720p">720p</option>
-            <option value="480p">480p</option>
+            <option value="original">{t('options.quality.original')}</option>
+            <option value="4k">{t('options.quality.4k')}</option>
+            <option value="1080p">{t('options.quality.1080p')}</option>
+            <option value="720p">{t('options.quality.720p')}</option>
+            <option value="480p">{t('options.quality.480p')}</option>
           </select>
         </Field>
-        <Field label="Theme">
+        <Field label={t('fields.theme')}>
           <select
             value={prefs.theme}
             onChange={(e) => setPrefs({ theme: e.target.value as 'light' | 'dark' | 'system' })}
             className={selectClass}
           >
-            <option value="system">System</option>
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
+            <option value="system">{t('options.theme.system')}</option>
+            <option value="dark">{t('options.theme.dark')}</option>
+            <option value="light">{t('options.theme.light')}</option>
           </select>
         </Field>
-        <Field label="Language">
+        <Field label={t('fields.language')}>
           <LanguageSwitcher />
         </Field>
         <SaveButton isPending={isPending} />
@@ -425,6 +436,7 @@ function PreferencesSection() {
 // ── Web Settings: Security ────────────────────────────────────────────────────
 
 function SecuritySection() {
+  const { t } = useTranslation('settings')
   const { mutate: changePassword, isPending } = useChangePassword()
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -460,11 +472,14 @@ function SecuritySection() {
 
   return (
     <div className="max-w-xl">
-      <SectionHeader title="Security" description="Change your password" />
+      <SectionHeader
+        title={t('sections.security.title')}
+        description={t('sections.security.description')}
+      />
       <form onSubmit={handleSubmit} className="mt-6 space-y-5">
         {error && <ErrorMsg>{error}</ErrorMsg>}
         {success && <SuccessMsg>{success}</SuccessMsg>}
-        <Field label="Current Password">
+        <Field label={t('fields.currentPassword')}>
           <input
             type="password"
             value={oldPassword}
@@ -473,7 +488,7 @@ function SecuritySection() {
             required
           />
         </Field>
-        <Field label="New Password">
+        <Field label={t('fields.newPassword')}>
           <input
             type="password"
             value={newPassword}
@@ -483,7 +498,7 @@ function SecuritySection() {
             minLength={8}
           />
         </Field>
-        <Field label="Confirm Password">
+        <Field label={t('fields.confirmPassword')}>
           <input
             type="password"
             value={confirmPassword}
@@ -501,12 +516,16 @@ function SecuritySection() {
 // ── Web Settings: Sessions ────────────────────────────────────────────────────
 
 function SessionsSection() {
+  const { t } = useTranslation('settings')
   const { data: sessions, isLoading } = useSessions()
   const { mutate: revokeSession } = useRevokeSession()
 
   return (
     <div className="max-w-2xl">
-      <SectionHeader title="Sessions" description="Manage your active sessions" />
+      <SectionHeader
+        title={t('sections.sessions.title')}
+        description={t('sections.sessions.description')}
+      />
       {isLoading ? (
         <Spinner />
       ) : (
@@ -550,6 +569,7 @@ function SessionsSection() {
 // ── Admin Preferences: Metadata (TMDb) ───────────────────────────────────────
 
 function MetadataSection() {
+  const { t } = useTranslation('settings')
   const { data: tmdbSettings, isLoading: tmdbLoading } = useTMDbSettings()
   const { mutate: updateTmdb, isPending: tmdbSaving } = useUpdateTMDbSettings()
   const { data: omdbSettings, isLoading: omdbLoading } = useOMDbSettings()
@@ -648,30 +668,55 @@ function MetadataSection() {
 
       <div className="rounded-lg bg-netflix-dark p-5">
         <div className="mb-1 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-white">TMDb (The Movie Database)</h3>
-          <span className="rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
-            {tmdbSettings?.api_key ? 'Custom Key' : 'Built-in Key'}
+          <h3 className="text-sm font-semibold text-white">{t('providers.tmdb.name')}</h3>
+          <span
+            className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+              tmdbSettings?.api_key
+                ? 'bg-blue-500/20 text-blue-400'
+                : tmdbSettings?.has_builtin
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-gray-500/20 text-gray-400'
+            }`}
+          >
+            {tmdbSettings?.api_key
+              ? t('status.customKey')
+              : tmdbSettings?.has_builtin
+                ? t('status.envKey')
+                : t('status.notConfigured')}
           </span>
         </div>
         <p className="mb-5 text-xs text-gray-400">
-          TMDb provides posters, backdrops, plot summaries, cast, and genres for your media. A
-          built-in API key is included — override below only if you want to use your own.
+          {t('providers.tmdb.description')}{' '}
+          {tmdbSettings?.has_builtin
+            ? t('providers.tmdb.hasBuiltin')
+            : t('providers.tmdb.noBuiltin')}{' '}
+          <a
+            href="https://www.themoviedb.org/settings/api"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-netflix-red hover:underline"
+          >
+            {t('actions.getFreeKey')}
+          </a>
         </p>
 
         <form onSubmit={handleTmdbSave} className="space-y-5">
           <div className="space-y-3">
-            <span className="text-xs font-medium text-gray-300">
-              Custom API Key (v4 Read Access Token)
-            </span>
+            <span className="text-xs font-medium text-gray-300">{t('providers.tmdb.v4Token')}</span>
             <p className="text-[11px] text-gray-500">
-              Optional. Leave blank to use the built-in key. Get your own free key at themoviedb.org
-              if needed.
+              {tmdbSettings?.has_builtin
+                ? t('providers.tmdb.optional')
+                : t('providers.tmdb.required')}
             </p>
             <input
               type="text"
               value={tmdbKey}
               onChange={(e) => setTmdbEdited(e.target.value)}
-              placeholder="Leave blank to use built-in key"
+              placeholder={
+                tmdbSettings?.has_builtin
+                  ? t('providers.tmdb.placeholderOptional')
+                  : t('providers.tmdb.placeholderRequired')
+              }
               className={inputClass}
             />
           </div>
@@ -684,11 +729,11 @@ function MetadataSection() {
             >
               {tmdbSaved ? (
                 <>
-                  <LuCheck size={14} /> Saved
+                  <LuCheck size={14} /> {t('actions.saved')}
                 </>
               ) : (
                 <>
-                  <LuSave size={14} /> {tmdbSaving ? 'Saving...' : 'Save'}
+                  <LuSave size={14} /> {tmdbSaving ? t('actions.saving') : t('actions.save')}
                 </>
               )}
             </button>
@@ -698,27 +743,51 @@ function MetadataSection() {
 
       <div className="rounded-lg bg-netflix-dark p-5">
         <div className="mb-1 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-white">OMDb (Open Movie Database)</h3>
-          <span className="rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
-            {omdbSettings?.api_key ? 'Custom Key' : 'Built-in Key'}
+          <h3 className="text-sm font-semibold text-white">{t('providers.omdb.name')}</h3>
+          <span
+            className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+              omdbSettings?.api_key
+                ? 'bg-blue-500/20 text-blue-400'
+                : omdbSettings?.has_builtin
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-gray-500/20 text-gray-400'
+            }`}
+          >
+            {omdbSettings?.api_key
+              ? t('status.customKey')
+              : omdbSettings?.has_builtin
+                ? t('status.envKey')
+                : t('status.notConfigured')}
           </span>
         </div>
         <p className="mb-5 text-xs text-gray-400">
-          OMDb provides IMDb ratings, Rotten Tomatoes scores, and Metacritic scores. A built-in API
-          key is included — override below only if you want to use your own.
+          {t('providers.omdb.description')}{' '}
+          {omdbSettings?.has_builtin
+            ? t('providers.omdb.hasBuiltin')
+            : t('providers.omdb.noBuiltin')}{' '}
+          <a
+            href="https://www.omdbapi.com/apikey.aspx"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-netflix-red hover:underline"
+          >
+            {t('actions.getFreeKey')}
+          </a>
         </p>
 
         <form onSubmit={handleOmdbSave} className="space-y-5">
           <div className="space-y-3">
-            <span className="text-xs font-medium text-gray-300">Custom API Key</span>
+            <span className="text-xs font-medium text-gray-300">{t('fields.customApiKey')}</span>
             <p className="text-[11px] text-gray-500">
-              Optional. Leave blank to use the built-in key. Get your own free key at omdbapi.com.
+              {omdbSettings?.has_builtin
+                ? t('providers.omdb.optional')
+                : t('providers.omdb.required')}
             </p>
             <input
               type="text"
               value={omdbKey}
               onChange={(e) => setOmdbEdited(e.target.value)}
-              placeholder="Leave blank to use built-in key"
+              placeholder={t('providers.omdb.placeholder')}
               className={inputClass}
             />
           </div>
@@ -731,11 +800,11 @@ function MetadataSection() {
             >
               {omdbSaved ? (
                 <>
-                  <LuCheck size={14} /> Saved
+                  <LuCheck size={14} /> {t('actions.saved')}
                 </>
               ) : (
                 <>
-                  <LuSave size={14} /> {omdbSaving ? 'Saving...' : 'Save'}
+                  <LuSave size={14} /> {omdbSaving ? t('actions.saving') : t('actions.save')}
                 </>
               )}
             </button>
@@ -745,28 +814,51 @@ function MetadataSection() {
 
       <div className="rounded-lg bg-netflix-dark p-5">
         <div className="mb-1 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-white">TheTVDB</h3>
-          <span className="rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
-            {tvdbSettings?.api_key ? 'Custom Key' : 'Built-in Key'}
+          <h3 className="text-sm font-semibold text-white">{t('providers.tvdb.name')}</h3>
+          <span
+            className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+              tvdbSettings?.api_key
+                ? 'bg-blue-500/20 text-blue-400'
+                : tvdbSettings?.has_builtin
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-gray-500/20 text-gray-400'
+            }`}
+          >
+            {tvdbSettings?.api_key
+              ? t('status.customKey')
+              : tvdbSettings?.has_builtin
+                ? t('status.envKey')
+                : t('status.notConfigured')}
           </span>
         </div>
         <p className="mb-5 text-xs text-gray-400">
-          TheTVDB provides additional TV series metadata including TVDB IDs and supplementary
-          episode data. A built-in API key is included — override below only if you want to use your
-          own.
+          {t('providers.tvdb.description')}{' '}
+          {tvdbSettings?.has_builtin
+            ? t('providers.tvdb.hasBuiltin')
+            : t('providers.tvdb.noBuiltin')}{' '}
+          <a
+            href="https://thetvdb.com/api-information"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-netflix-red hover:underline"
+          >
+            {t('actions.getFreeKey')}
+          </a>
         </p>
 
         <form onSubmit={handleTvdbSave} className="space-y-5">
           <div className="space-y-3">
-            <span className="text-xs font-medium text-gray-300">Custom API Key</span>
+            <span className="text-xs font-medium text-gray-300">{t('fields.customApiKey')}</span>
             <p className="text-[11px] text-gray-500">
-              Optional. Leave blank to use the built-in key. Get your own free key at thetvdb.com.
+              {tvdbSettings?.has_builtin
+                ? t('providers.tvdb.optional')
+                : t('providers.tvdb.required')}
             </p>
             <input
               type="text"
               value={tvdbKey}
               onChange={(e) => setTvdbEdited(e.target.value)}
-              placeholder="Leave blank to use built-in key"
+              placeholder={t('providers.tvdb.placeholder')}
               className={inputClass}
             />
           </div>
@@ -779,11 +871,11 @@ function MetadataSection() {
             >
               {tvdbSaved ? (
                 <>
-                  <LuCheck size={14} /> Saved
+                  <LuCheck size={14} /> {t('actions.saved')}
                 </>
               ) : (
                 <>
-                  <LuSave size={14} /> {tvdbSaving ? 'Saving...' : 'Save'}
+                  <LuSave size={14} /> {tvdbSaving ? t('actions.saving') : t('actions.save')}
                 </>
               )}
             </button>
@@ -793,27 +885,51 @@ function MetadataSection() {
 
       <div className="rounded-lg bg-netflix-dark p-5">
         <div className="mb-1 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-white">Fanart.tv</h3>
-          <span className="rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
-            {fanartSettings?.api_key ? 'Custom Key' : 'Built-in Key'}
+          <h3 className="text-sm font-semibold text-white">{t('providers.fanart.name')}</h3>
+          <span
+            className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+              fanartSettings?.api_key
+                ? 'bg-blue-500/20 text-blue-400'
+                : fanartSettings?.has_builtin
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-gray-500/20 text-gray-400'
+            }`}
+          >
+            {fanartSettings?.api_key
+              ? t('status.customKey')
+              : fanartSettings?.has_builtin
+                ? t('status.envKey')
+                : t('status.notConfigured')}
           </span>
         </div>
         <p className="mb-5 text-xs text-gray-400">
-          Fanart.tv provides high-quality artwork including clearlogos, thumbnails, and HD art. A
-          built-in API key is included — override below only if you want to use your own.
+          {t('providers.fanart.description')}{' '}
+          {fanartSettings?.has_builtin
+            ? t('providers.fanart.hasBuiltin')
+            : t('providers.fanart.noBuiltin')}{' '}
+          <a
+            href="https://fanart.tv/get-an-api-key/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-netflix-red hover:underline"
+          >
+            {t('actions.getFreeKey')}
+          </a>
         </p>
 
         <form onSubmit={handleFanartSave} className="space-y-5">
           <div className="space-y-3">
-            <span className="text-xs font-medium text-gray-300">Custom API Key</span>
+            <span className="text-xs font-medium text-gray-300">{t('fields.customApiKey')}</span>
             <p className="text-[11px] text-gray-500">
-              Optional. Leave blank to use the built-in key. Get your own free key at fanart.tv.
+              {fanartSettings?.has_builtin
+                ? t('providers.fanart.optional')
+                : t('providers.fanart.required')}
             </p>
             <input
               type="text"
               value={fanartKey}
               onChange={(e) => setFanartEdited(e.target.value)}
-              placeholder="Leave blank to use built-in key"
+              placeholder={t('providers.fanart.placeholder')}
               className={inputClass}
             />
           </div>
@@ -826,11 +942,11 @@ function MetadataSection() {
             >
               {fanartSaved ? (
                 <>
-                  <LuCheck size={14} /> Saved
+                  <LuCheck size={14} /> {t('actions.saved')}
                 </>
               ) : (
                 <>
-                  <LuSave size={14} /> {fanartSaving ? 'Saving...' : 'Save'}
+                  <LuSave size={14} /> {fanartSaving ? t('actions.saving') : t('actions.save')}
                 </>
               )}
             </button>
@@ -840,12 +956,9 @@ function MetadataSection() {
 
       <div className="rounded-lg bg-netflix-dark p-5">
         <div className="mb-1 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-white">Refresh All Metadata</h3>
+          <h3 className="text-sm font-semibold text-white">{t('actions.refreshAllMetadata')}</h3>
         </div>
-        <p className="mb-4 text-xs text-gray-400">
-          Auto-match unmatched media against TMDb, then fetch IMDb, Rotten Tomatoes, and Metacritic
-          ratings from OMDb. This does not require a library rescan.
-        </p>
+        <p className="mb-4 text-xs text-gray-400">{t('messages.howItWorksDescription')}</p>
         <div className="flex items-center gap-3">
           <button
             onClick={() => bulkRefresh()}
@@ -854,36 +967,31 @@ function MetadataSection() {
           >
             {isRefreshing ? (
               <>
-                <LuRefreshCw size={14} className="animate-spin" /> Refreshing...
+                <LuRefreshCw size={14} className="animate-spin" /> {t('actions.refreshing')}
               </>
             ) : (
               <>
-                <LuRefreshCw size={14} /> Refresh All Metadata
+                <LuRefreshCw size={14} /> {t('actions.refreshAllMetadata')}
               </>
             )}
           </button>
           {refreshResult && !isRefreshing && (
-            <span className="text-xs text-green-400">Updated {refreshResult.updated} items</span>
+            <span className="text-xs text-green-400">
+              {t('messages.updated', { count: refreshResult.updated })}
+            </span>
           )}
           {refreshError && !isRefreshing && (
-            <span className="text-xs text-red-400">Error: {refreshError.message}</span>
+            <span className="text-xs text-red-400">
+              {t('messages.error', { message: refreshError.message })}
+            </span>
           )}
         </div>
       </div>
 
       <div className="rounded-lg bg-netflix-dark p-5">
-        <h3 className="mb-1 text-sm font-semibold text-white">How it works</h3>
+        <h3 className="mb-1 text-sm font-semibold text-white">{t('messages.howItWorks')}</h3>
         <ul className="space-y-1 text-xs text-gray-400">
-          <li>• During library scan, Velox matches filenames to TMDb entries</li>
-          <li>• NFO files (if present) take priority over TMDb search</li>
-          <li>• Matched metadata: poster, backdrop, overview, cast, genres</li>
-          <li>• OMDb enriches with IMDb rating, Rotten Tomatoes %, and Metacritic score</li>
-          <li>• TheTVDB provides additional TV series data (TVDB IDs, IMDb cross-reference)</li>
-          <li>• Fanart.tv enriches with clearlogos, thumbnails, and HD artwork</li>
-          <li>
-            • TVmaze adds network info and cross-references external IDs (free, no key needed)
-          </li>
-          <li>• Re-scan a library to fetch metadata for existing items</li>
+          <li>• {t('messages.howItWorksDescription')}</li>
         </ul>
       </div>
     </div>
@@ -893,6 +1001,7 @@ function MetadataSection() {
 // ── Admin Preferences: Subtitles ──────────────────────────────────────────────
 
 function SubtitlesSection() {
+  const { t } = useTranslation('settings')
   const { data: settings, isLoading } = useOpenSubsSettings()
   const { mutate: updateSettings, isPending: isSaving } = useUpdateOpenSubsSettings()
 
@@ -924,21 +1033,22 @@ function SubtitlesSection() {
 
   return (
     <div className="max-w-xl space-y-6">
-      <SectionHeader title="Subtitles" description="Configure external subtitle providers" />
+      <SectionHeader
+        title={t('sections.subtitles.title')}
+        description={t('sections.subtitles.description')}
+      />
 
       {/* OpenSubtitles */}
       <div className="rounded-lg bg-netflix-dark p-5">
         <div className="mb-1 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-white">OpenSubtitles.com</h3>
+          <h3 className="text-sm font-semibold text-white">{t('providers.opensubtitles.name')}</h3>
           {settings?.password_set && settings?.api_key && (
             <span className="rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
-              Connected
+              {t('status.enabled')}
             </span>
           )}
         </div>
-        <p className="mb-5 text-xs text-gray-400">
-          Connect your OpenSubtitles account to search and download subtitles.
-        </p>
+        <p className="mb-5 text-xs text-gray-400">{t('providers.opensubtitles.description')}</p>
 
         <form onSubmit={handleSave} className="space-y-5">
           {/* Step 1: API Key */}
@@ -947,17 +1057,17 @@ function SubtitlesSection() {
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-netflix-gray text-[10px] font-bold text-white">
                 1
               </span>
-              <span className="text-xs font-medium text-gray-300">API Key</span>
+              <span className="text-xs font-medium text-gray-300">
+                {t('providers.opensubtitles.apiKey')}
+              </span>
             </div>
-            <p className="pl-7 text-[11px] text-gray-500">
-              Get a free API key at opensubtitles.com
-            </p>
+            <p className="pl-7 text-[11px] text-gray-500">{t('providers.opensubtitles.getKey')}</p>
             <div className="pl-7">
               <input
                 type="text"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Your OpenSubtitles API key"
+                placeholder={t('providers.opensubtitles.apiKey')}
                 className={inputClass}
               />
             </div>
@@ -971,25 +1081,31 @@ function SubtitlesSection() {
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-netflix-gray text-[10px] font-bold text-white">
                 2
               </span>
-              <span className="text-xs font-medium text-gray-300">Account</span>
+              <span className="text-xs font-medium text-gray-300">
+                {t('providers.opensubtitles.username')}
+              </span>
             </div>
-            <p className="pl-7 text-[11px] text-gray-500">Your OpenSubtitles login credentials</p>
+            <p className="pl-7 text-[11px] text-gray-500">
+              {t('providers.opensubtitles.description')}
+            </p>
             <div className="space-y-3 pl-7">
-              <Field label="Username" compact>
+              <Field label={t('providers.opensubtitles.username')} compact>
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="OpenSubtitles username"
+                  placeholder={t('providers.opensubtitles.username')}
                   className={inputClass}
                 />
               </Field>
               <Field
                 label={
                   <>
-                    Password
+                    {t('providers.opensubtitles.password')}
                     {settings?.password_set && (
-                      <span className="ml-2 text-xs text-green-400">(configured)</span>
+                      <span className="ml-2 text-xs text-green-400">
+                        ({t('providers.opensubtitles.passwordSet')})
+                      </span>
                     )}
                   </>
                 }
@@ -1003,7 +1119,7 @@ function SubtitlesSection() {
                     placeholder={
                       settings?.password_set
                         ? 'Leave blank to keep current'
-                        : 'OpenSubtitles password'
+                        : t('providers.opensubtitles.password')
                     }
                     className={`${inputClass} pr-10`}
                   />
@@ -1027,11 +1143,11 @@ function SubtitlesSection() {
             >
               {saved ? (
                 <>
-                  <LuCheck size={14} /> Saved
+                  <LuCheck size={14} /> {t('actions.saved')}
                 </>
               ) : (
                 <>
-                  <LuSave size={14} /> {isSaving ? 'Saving...' : 'Save'}
+                  <LuSave size={14} /> {isSaving ? t('actions.saving') : t('actions.save')}
                 </>
               )}
             </button>
@@ -1052,6 +1168,7 @@ function SubtitlesSection() {
 }
 
 function SubdlCard() {
+  const { t } = useTranslation('settings')
   const { data: settings, isLoading } = useSubdlSettings()
   const { mutate: updateSettings, isPending: isSaving } = useUpdateSubdlSettings()
   const [editedApiKey, setEditedApiKey] = useState<string | null>(null)
@@ -1076,14 +1193,36 @@ function SubdlCard() {
   return (
     <div className="rounded-lg bg-netflix-dark p-5">
       <div className="mb-1 flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-white">Subdl</h3>
-        <span className="rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
-          {settings?.api_key ? 'Custom Key' : 'Built-in Key'}
+        <h3 className="text-sm font-semibold text-white">{t('providers.subdl.name')}</h3>
+        <span
+          className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+            settings?.api_key
+              ? 'bg-blue-500/20 text-blue-400'
+              : settings?.has_builtin
+                ? 'bg-green-500/20 text-green-400'
+                : 'bg-gray-500/20 text-gray-400'
+          }`}
+        >
+          {settings?.api_key
+            ? t('status.customKey')
+            : settings?.has_builtin
+              ? t('status.envKey')
+              : t('status.notConfigured')}
         </span>
       </div>
       <p className="mb-5 text-xs text-gray-400">
-        Free subtitle provider with large database. Uses a built-in API key by default (override
-        below).
+        {t('providers.subdl.description')}
+        {settings?.has_builtin
+          ? ' ' + t('providers.subdl.hasBuiltin')
+          : ' ' + t('providers.subdl.noBuiltin')}{' '}
+        <a
+          href="https://subdl.com/panel/api"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-netflix-red hover:underline"
+        >
+          {t('actions.getFreeKey')}
+        </a>
       </p>
 
       <form onSubmit={handleSave} className="space-y-4">
@@ -1092,7 +1231,11 @@ function SubdlCard() {
             type="text"
             value={apiKey}
             onChange={(e) => setEditedApiKey(e.target.value)}
-            placeholder="Your Subdl API key"
+            placeholder={
+              settings?.has_builtin
+                ? t('providers.subdl.placeholderOptional')
+                : t('providers.subdl.placeholderRequired')
+            }
             className={inputClass}
           />
         </div>
@@ -1103,11 +1246,11 @@ function SubdlCard() {
         >
           {saved ? (
             <>
-              <LuCheck size={14} /> Saved
+              <LuCheck size={14} /> {t('actions.saved')}
             </>
           ) : (
             <>
-              <LuSave size={14} /> {isSaving ? 'Saving...' : 'Save'}
+              <LuSave size={14} /> {isSaving ? t('actions.saving') : t('actions.save')}
             </>
           )}
         </button>
@@ -1117,6 +1260,7 @@ function SubdlCard() {
 }
 
 function DeepLCard() {
+  const { t } = useTranslation('settings')
   const { data: settings, isLoading } = useDeepLSettings()
   const { mutate: updateSettings, isPending: isSaving } = useUpdateDeepLSettings()
   const [editedApiKey, setEditedApiKey] = useState<string | null>(null)
@@ -1141,20 +1285,17 @@ function DeepLCard() {
   return (
     <div className="rounded-lg bg-netflix-dark p-5">
       <div className="mb-1 flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-white">Subtitle Translation</h3>
+        <h3 className="text-sm font-semibold text-white">{t('providers.deepl.name')}</h3>
         <span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] font-medium text-blue-400">
           {settings?.api_key ? 'DeepL' : 'Google Translate'}
         </span>
       </div>
-      <p className="mb-5 text-xs text-gray-400">
-        Auto-translate subtitles on-demand. Uses Google Translate (free) by default. Add a DeepL API
-        key for higher quality translations (500K chars/month free).
-      </p>
+      <p className="mb-5 text-xs text-gray-400">{t('providers.deepl.description')}</p>
 
       <form onSubmit={handleSave} className="space-y-4">
         <div>
           <span className="mb-1.5 block text-xs font-medium text-gray-300">
-            DeepL API Key (optional)
+            {t('providers.deepl.getKey')}
           </span>
           <input
             type="text"
@@ -1163,9 +1304,7 @@ function DeepLCard() {
             placeholder="Leave empty to use Google Translate"
             className={inputClass}
           />
-          <p className="mt-1.5 text-[11px] text-gray-500">
-            Get a free key at deepl.com/pro-api. Free tier: 500K chars/month.
-          </p>
+          <p className="mt-1.5 text-[11px] text-gray-500">{t('providers.deepl.getKey')}</p>
         </div>
         <button
           type="submit"
@@ -1174,11 +1313,11 @@ function DeepLCard() {
         >
           {saved ? (
             <>
-              <LuCheck size={14} /> Saved
+              <LuCheck size={14} /> {t('actions.saved')}
             </>
           ) : (
             <>
-              <LuSave size={14} /> {isSaving ? 'Saving...' : 'Save'}
+              <LuSave size={14} /> {isSaving ? t('actions.saving') : t('actions.save')}
             </>
           )}
         </button>
@@ -1201,6 +1340,7 @@ const COMMON_LANGUAGES = [
 ]
 
 function AutoSubCard() {
+  const { t } = useTranslation('settings')
   const { data: settings, isLoading } = useAutoSubSettings()
   const { mutate: updateSettings, isPending: isSaving } = useUpdateAutoSubSettings()
   const [edited, setEdited] = useState<string[] | null>(null)
@@ -1238,16 +1378,14 @@ function AutoSubCard() {
   return (
     <div className="rounded-lg bg-netflix-dark p-5">
       <div className="mb-1 flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-white">Auto-Download Subtitles</h3>
+        <h3 className="text-sm font-semibold text-white">{t('subtitles.autoDownload')}</h3>
         {selected.length > 0 && (
           <span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] font-medium text-blue-400">
-            {selected.length} language{selected.length > 1 ? 's' : ''}
+            {selected.length} {t('fields.languages')}
           </span>
         )}
       </div>
-      <p className="mb-4 text-xs text-gray-400">
-        Automatically download subtitles when new media is scanned. Select which languages to fetch.
-      </p>
+      <p className="mb-4 text-xs text-gray-400">{t('subtitles.autoDownloadDescription')}</p>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {COMMON_LANGUAGES.map((lang) => (
@@ -1268,7 +1406,7 @@ function AutoSubCard() {
 
       {selected.length === 0 && (
         <p className="mb-4 text-[11px] text-gray-500">
-          No languages selected. Auto-download is disabled.
+          {t('subtitles.targetLanguagesDescription')}
         </p>
       )}
 
@@ -1280,11 +1418,11 @@ function AutoSubCard() {
       >
         {saved ? (
           <>
-            <LuCheck size={14} /> Saved
+            <LuCheck size={14} /> {t('actions.saved')}
           </>
         ) : (
           <>
-            <LuSave size={14} /> {isSaving ? 'Saving...' : 'Save'}
+            <LuSave size={14} /> {isSaving ? t('actions.saving') : t('actions.save')}
           </>
         )}
       </button>
@@ -1315,6 +1453,7 @@ function timeAgo(dateStr: string): string {
 }
 
 function PlaybackSection() {
+  const { t } = useTranslation('settings')
   const { data: settings, isLoading } = usePlaybackSettings()
   const { mutate: updateSettings, isPending: isSaving } = useUpdatePlaybackSettings()
   const [saved, setSaved] = useState(false)
@@ -1337,28 +1476,26 @@ function PlaybackSection() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <SectionHeader title="Playback" description="Server-wide playback policy" />
+      <SectionHeader
+        title={t('sections.playback.title')}
+        description={t('sections.playback.description')}
+      />
 
       <div className="rounded-lg bg-netflix-dark p-6">
-        <h3 className="mb-1 text-base font-semibold text-white">Playback Mode</h3>
-        <p className="mb-4 text-sm text-gray-400">
-          Control how media is delivered to clients. Direct Play sends the original file without
-          transcoding — best for compatible devices and saves server resources.
-        </p>
+        <h3 className="mb-1 text-base font-semibold text-white">{t('fields.playbackMode')}</h3>
+        <p className="mb-4 text-sm text-gray-400">{t('playback.policyDescription')}</p>
 
         <div className="space-y-3">
           {[
             {
               value: 'auto' as const,
-              label: 'Auto (Recommended)',
-              description:
-                'Automatically decide based on client capabilities. Transcodes when the client cannot play the original format.',
+              label: t('playback.auto'),
+              description: t('playback.auto'),
             },
             {
               value: 'direct_play' as const,
-              label: 'Force Direct Play',
-              description:
-                'Always send the original file. No transcoding. Best when all your devices support your media formats.',
+              label: t('playback.directPlay'),
+              description: t('playback.directPlay'),
             },
           ].map((option) => (
             <button
@@ -1388,7 +1525,7 @@ function PlaybackSection() {
 
         {saved && (
           <div className="mt-3 flex items-center gap-1.5 text-sm text-green-400">
-            <LuCheck size={16} /> Saved
+            <LuCheck size={16} /> {t('actions.saved')}
           </div>
         )}
       </div>
@@ -2337,7 +2474,27 @@ function TasksSection() {
 
 // ── Velox Server: Webhooks ────────────────────────────────────────────────────
 
-const WEBHOOK_EVENTS = ['media_added', 'playback_start', 'scan_complete', 'error']
+const WEBHOOK_EVENTS = [
+  'scan_complete',
+  'transcode_complete',
+  'transcode_failed',
+  'library_watcher',
+]
+
+function parseWebhookEvents(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return parsed as string[]
+  } catch {
+    // Legacy CSV row (pre-migration) — degrade gracefully
+    if (raw && raw !== '[]')
+      return raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+  }
+  return []
+}
 
 function WebhooksSection() {
   const { data: webhooks, isLoading } = useWebhooks()
@@ -2367,7 +2524,7 @@ function WebhooksSection() {
       return
     }
     createWebhook(
-      { url: formUrl.trim(), events: formEvents.join(','), active: true },
+      { url: formUrl.trim(), events: JSON.stringify(formEvents), active: true },
       {
         onSuccess: () => {
           setShowAddModal(false)
@@ -2423,12 +2580,12 @@ function WebhooksSection() {
                   <p className="truncate font-mono text-sm text-white">{wh.url}</p>
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {wh.events.split(',').map((ev) => (
+                  {parseWebhookEvents(wh.events).map((ev) => (
                     <span
                       key={ev}
                       className="rounded bg-netflix-gray px-2 py-0.5 text-[10px] font-medium text-gray-300"
                     >
-                      {ev.trim()}
+                      {ev}
                     </span>
                   ))}
                 </div>
@@ -2614,6 +2771,7 @@ function Modal({
 // ── Cinema Mode Settings ──────────────────────────────────────────────────────
 
 function CinemaSection() {
+  const { t } = useTranslation('settings')
   const { data: settings, isLoading } = useCinemaSettings()
   const { mutate: updateSettings } = useUpdateCinemaSettings()
   const { mutate: uploadIntro, isPending: isUploading } = useUploadCinemaIntro()
@@ -2625,18 +2783,16 @@ function CinemaSection() {
   return (
     <div className="max-w-2xl space-y-6">
       <SectionHeader
-        title="Cinema Mode"
-        description="Play trailers and a custom intro video before the main feature"
+        title={t('sections.cinema.title')}
+        description={t('sections.cinema.description')}
       />
 
       {/* Enable toggle */}
       <div className="rounded-lg bg-netflix-dark p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-semibold text-white">Enable Cinema Mode</h3>
-            <p className="mt-1 text-sm text-gray-400">
-              Show trailers and intro before playback. Users can skip at any time.
-            </p>
+            <h3 className="text-base font-semibold text-white">{t('cinema.enabled')}</h3>
+            <p className="mt-1 text-sm text-gray-400">{t('cinema.enabledDescription')}</p>
           </div>
           <button
             onClick={() => {
@@ -2661,34 +2817,29 @@ function CinemaSection() {
             />
           </button>
         </div>
-        {saved && <p className="mt-2 text-sm text-green-400">Saved!</p>}
+        {saved && <p className="mt-2 text-sm text-green-400">{t('actions.saved')}</p>}
       </div>
 
       {/* Max trailers */}
       <div className="rounded-lg bg-netflix-dark p-6">
-        <h3 className="mb-1 text-base font-semibold text-white">Number of Trailers</h3>
-        <p className="mb-3 text-sm text-gray-400">
-          How many YouTube trailers to show (fetched from TMDb)
-        </p>
+        <h3 className="mb-1 text-base font-semibold text-white">{t('cinema.maxTrailers')}</h3>
+        <p className="mb-3 text-sm text-gray-400">{t('cinema.maxTrailersDescription')}</p>
         <select
           value={settings?.max_trailers ?? '2'}
           onChange={(e) => updateSettings({ max_trailers: e.target.value })}
           className="rounded-lg bg-[#2a2a2a] px-4 py-2 text-white outline-none"
         >
-          <option value="0">None</option>
-          <option value="1">1 trailer</option>
-          <option value="2">2 trailers</option>
-          <option value="3">3 trailers</option>
+          <option value="0">{t('options.quality.original')}</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
         </select>
       </div>
 
       {/* Custom intro video */}
       <div className="rounded-lg bg-netflix-dark p-6">
-        <h3 className="mb-1 text-base font-semibold text-white">Custom Intro Video</h3>
-        <p className="mb-3 text-sm text-gray-400">
-          Upload a short video (e.g. THX-style logo animation) that plays before trailers. Max
-          100MB.
-        </p>
+        <h3 className="mb-1 text-base font-semibold text-white">{t('cinema.customIntro')}</h3>
+        <p className="mb-3 text-sm text-gray-400">{t('cinema.customIntroDescription')}</p>
         <div className="flex items-center gap-4">
           <input
             ref={fileRef}
@@ -2705,10 +2856,14 @@ function CinemaSection() {
             disabled={isUploading}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
           >
-            {isUploading ? 'Uploading...' : settings?.has_intro ? 'Replace Intro' : 'Upload Intro'}
+            {isUploading
+              ? t('actions.uploading')
+              : settings?.has_intro
+                ? t('actions.upload')
+                : t('cinema.uploadIntro')}
           </button>
           {settings?.has_intro && (
-            <span className="text-sm text-green-400">Intro video uploaded</span>
+            <span className="text-sm text-green-400">{t('cinema.hasIntro')}</span>
           )}
         </div>
       </div>

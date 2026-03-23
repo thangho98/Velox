@@ -74,7 +74,13 @@
     "subtitleLanguage": "Ngôn ngữ phụ đề",
     "audioLanguage": "Ngôn ngữ âm thanh",
     "maxQuality": "Chất lượng phát tối đa",
-    "theme": "Giao diện"
+    "theme": "Giao diện",
+    "apiKey": "API Key",
+    "customApiKey": "API Key tùy chỉnh",
+    "playbackMode": "Chế độ phát",
+    "languages": "Ngôn ngữ",
+    "usernameOptional": "Tên đăng nhập (Tùy chọn)",
+    "passwordOptional": "Mật khẩu (Tùy chọn)"
   },
   "options": {
     "theme": {
@@ -93,6 +99,127 @@
       "auto": "Tự động",
       "en": "Tiếng Anh",
       "vi": "Tiếng Việt"
+    },
+    "playbackMode": {
+      "auto": "Tự động (Direct Play khi tương thích, Transcode khi cần)",
+      "directPlay": "Chỉ Direct Play (không transcode)"
     }
+  },
+  "providers": {
+    "tmdb": {
+      "name": "TMDb (The Movie Database)",
+      "description": "TMDb cung cấp poster, backdrop, tóm tắt, diễn viên và thể loại cho media của bạn.",
+      "v4Token": "API Key tùy chỉnh (v4 Read Access Token)",
+      "hasBuiltin": "Máy chủ đã cấu hình sẵn API key — chỉ nhập bên dưới nếu bạn muốn dùng key riêng.",
+      "noBuiltin": "Máy chủ chưa cấu hình API key. Bạn phải nhập API key bên dưới để kích hoạt metadata.",
+      "optional": "Tùy chọn. Để trống để dùng key từ env. Lấy key miễn phí tại themoviedb.org.",
+      "required": "Bắt buộc để lấy metadata. Lấy key miễn phí tại themoviedb.org",
+      "placeholderOptional": "Để trống để dùng key từ env",
+      "placeholderRequired": "Nhập TMDb API key của bạn"
+    },
+    "omdb": {
+      "name": "OMDb (Open Movie Database)",
+      "description": "OMDb cung cấp điểm IMDb, Rotten Tomatoes và Metacritic.",
+      "hasBuiltin": "Máy chủ đã cấu hình sẵn API key — chỉ nhập bên dưới nếu bạn muốn dùng key riêng.",
+      "noBuiltin": "Máy chủ chưa cấu hình API key. Nhập API key bên dưới để kích hoạt điểm đánh giá.",
+      "optional": "Tùy chọn. Để trống để dùng key từ env. Lấy key miễn phí tại omdbapi.com.",
+      "required": "Nhập OMDb API key để kích hoạt điểm IMDb/Rotten Tomatoes. Lấy key miễn phí tại omdbapi.com.",
+      "placeholder": "Để trống để dùng key từ env"
+    },
+    "tvdb": {
+      "name": "TheTVDB",
+      "description": "TheTVDB cung cấp metadata phim truyền hình bổ sung bao gồm TVDB ID và dữ liệu tập.",
+      "hasBuiltin": "Máy chủ đã cấu hình sẵn API key — chỉ nhập bên dưới nếu bạn muốn dùng key riêng.",
+      "noBuiltin": "Máy chủ chưa cấu hình API key. Nhập API key bên dưới để kích hoạt TVDB.",
+      "optional": "Tùy chọn. Để trống để dùng key từ env. Lấy key miễn phí tại thetvdb.com.",
+      "required": "Nhập TVDB API key để kích hoạt metadata. Lấy key tại thetvdb.com.",
+      "placeholder": "Để trống để dùng key từ env"
+    },
+    "fanart": {
+      "name": "Fanart.tv",
+      "description": "Fanart.tv cung cấp artwork chất lượng cao bao gồm logo, thumbnail và ảnh HD.",
+      "hasBuiltin": "Máy chủ đã cấu hình sẵn API key — chỉ nhập bên dưới nếu bạn muốn dùng key riêng.",
+      "noBuiltin": "Máy chủ chưa cấu hình API key. Nhập API key bên dưới để kích hoạt Fanart.tv.",
+      "optional": "Tùy chọn. Để trống để dùng key từ env. Lấy key miễn phí tại fanart.tv.",
+      "required": "Nhập Fanart.tv API key để kích hoạt artwork. Lấy key miễn phí tại fanart.tv.",
+      "placeholder": "Để trống để dùng key từ env"
+    },
+    "opensubtitles": {
+      "name": "OpenSubtitles",
+      "description": "Nhà cung cấp phụ đề cao cấp với cơ sở dữ liệu lớn nhất. Tài khoản VIP được khuyến nghị.",
+      "apiKey": "API Key",
+      "username": "Tên đăng nhập",
+      "password": "Mật khẩu",
+      "passwordSet": "Đã đặt mật khẩu",
+      "getKey": "Lấy tài khoản VIP tại opensubtitles.org"
+    },
+    "subdl": {
+      "name": "Subdl",
+      "description": "Nhà cung cấp phụ đề miễn phí với cơ sở dữ liệu lớn.",
+      "hasBuiltin": "Máy chủ đã cấu hình sẵn API key (có thể ghi đè bên dưới).",
+      "noBuiltin": "Máy chủ chưa cấu hình API key. Nhập API key bên dưới để kích hoạt Subdl.",
+      "placeholderOptional": "API key Subdl (tùy chọn)",
+      "placeholderRequired": "Nhập API key Subdl của bạn"
+    },
+    "deepl": {
+      "name": "Dịch DeepL",
+      "description": "Dịch phụ đề bằng AI. Cần DeepL API key.",
+      "getKey": "Lấy API key tại deepl.com"
+    }
+  },
+  "actions": {
+    "save": "Lưu",
+    "saving": "Đang lưu...",
+    "saved": "Đã lưu",
+    "getFreeKey": "Lấy key miễn phí →",
+    "refreshAllMetadata": "Làm mới toàn bộ Metadata",
+    "refreshing": "Đang làm mới...",
+    "delete": "Xóa",
+    "cancel": "Hủy",
+    "edit": "Sửa",
+    "add": "Thêm",
+    "remove": "Xóa",
+    "enable": "Bật",
+    "disable": "Tắt",
+    "testConnection": "Kiểm tra kết nối",
+    "upload": "Tải lên",
+    "uploading": "Đang tải lên...",
+    "clear": "Xóa"
+  },
+  "status": {
+    "customKey": "Key tùy chỉnh",
+    "envKey": "Key từ env",
+    "notConfigured": "Chưa cấu hình",
+    "enabled": "Đã bật",
+    "disabled": "Đã tắt"
+  },
+  "messages": {
+    "updated": "Đã cập nhật {{count}} mục",
+    "error": "Lỗi: {{message}}",
+    "howItWorks": "Cách hoạt động",
+    "howItWorksDescription": "Khi quét thư viện, Velox khớp tên file với TMDb. File NFO (nếu có) được ưu tiên hơn TMDb. Điểm từ OMDb được lấy sau khi khớp TMDb hoàn tất."
+  },
+  "playback": {
+    "auto": "Tự động (Direct Play khi tương thích, Transcode khi cần)",
+    "directPlay": "Chỉ Direct Play (không transcode)",
+    "policyDescription": "Chọn chính sách phát toàn server. Direct Play phát file gốc không chỉnh sửa. Transcoding chuyển đổi file cho thiết bị không tương thích."
+  },
+  "subtitles": {
+    "autoDownload": "Tự động tải phụ đề",
+    "autoDownloadDescription": "Tự động tải phụ đề cho ngôn ngữ được cấu hình khi quét media mới.",
+    "targetLanguages": "Ngôn ngữ mục tiêu",
+    "targetLanguagesDescription": "Mã ISO 639-1 cách nhau bằng dấu phẩy (vd: en,vi,es,fr). Để trống để tắt tự động tải.",
+    "placeholder": "vd: en,vi,es"
+  },
+  "cinema": {
+    "enabled": "Bật Chế độ Rạp phim",
+    "enabledDescription": "Phát video intro tùy chỉnh và trailer YouTube trước phim chính.",
+    "maxTrailers": "Số trailer tối đa",
+    "maxTrailersDescription": "Số trailer phát trước phim chính (0-5).",
+    "customIntro": "Video intro tùy chỉnh",
+    "customIntroDescription": "Tải lên video intro tùy chỉnh để phát trước trailer.",
+    "uploadIntro": "Tải lên video intro",
+    "hasIntro": "Đã tải lên intro",
+    "noIntro": "Chưa có intro"
   }
 }

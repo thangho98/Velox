@@ -63,6 +63,13 @@ RUN apk add --no-cache \
     curl \
     tini
 
+# Intel VAAPI drivers — x86_64 only (Synology DS920+, Intel NUC, etc.)
+# Not available on ARM (Apple Silicon, Raspberry Pi)
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        apk add --no-cache libva libva-intel-driver mesa-va-gallium; \
+    fi
+
 # Create velox user (UID/GID configurable at runtime)
 RUN addgroup -g 1000 velox && \
     adduser -D -u 1000 -G velox -h /app velox

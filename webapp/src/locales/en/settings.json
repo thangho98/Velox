@@ -74,7 +74,13 @@
     "subtitleLanguage": "Subtitle Language",
     "audioLanguage": "Audio Language",
     "maxQuality": "Max Streaming Quality",
-    "theme": "Theme"
+    "theme": "Theme",
+    "apiKey": "API Key",
+    "customApiKey": "Custom API Key",
+    "playbackMode": "Playback Mode",
+    "languages": "Languages",
+    "usernameOptional": "Username (Optional)",
+    "passwordOptional": "Password (Optional)"
   },
   "options": {
     "theme": {
@@ -93,6 +99,127 @@
       "auto": "Auto",
       "en": "English",
       "vi": "Vietnamese"
+    },
+    "playbackMode": {
+      "auto": "Auto (Direct Play when compatible, Transcode when needed)",
+      "directPlay": "Direct Play only (no transcoding)"
     }
+  },
+  "providers": {
+    "tmdb": {
+      "name": "TMDb (The Movie Database)",
+      "description": "TMDb provides posters, backdrops, plot summaries, cast, and genres for your media.",
+      "v4Token": "Custom API Key (v4 Read Access Token)",
+      "hasBuiltin": "A built-in API key is configured by the server administrator — override below only if you want to use your own.",
+      "noBuiltin": "The server administrator has not configured a built-in key. You must add your own API key below or metadata enrichment will be disabled.",
+      "optional": "Optional. Leave blank to use the env key. Get your own free key at themoviedb.org if needed.",
+      "required": "Required for metadata fetching. Get your free key at themoviedb.org",
+      "placeholderOptional": "Leave blank to use env key",
+      "placeholderRequired": "Enter your TMDb API key"
+    },
+    "omdb": {
+      "name": "OMDb (Open Movie Database)",
+      "description": "OMDb provides IMDb ratings, Rotten Tomatoes scores, and Metacritic scores.",
+      "hasBuiltin": "A built-in API key is configured by the server administrator — override below only if you want to use your own.",
+      "noBuiltin": "The server administrator has not configured a built-in key. Add your own API key below to enable ratings enrichment.",
+      "optional": "Optional. Leave blank to use the env key. Get your own free key at omdbapi.com.",
+      "required": "Enter your OMDb API key to enable IMDb/Rotten Tomatoes ratings. Get a free key at omdbapi.com.",
+      "placeholder": "Leave blank to use env key"
+    },
+    "tvdb": {
+      "name": "TheTVDB",
+      "description": "TheTVDB provides additional TV series metadata including TVDB IDs and supplementary episode data.",
+      "hasBuiltin": "A built-in API key is configured by the server administrator — override below only if you want to use your own.",
+      "noBuiltin": "The server administrator has not configured a built-in key. Add your own API key below to enable TVDB enrichment.",
+      "optional": "Optional. Leave blank to use the env key. Get your own free key at thetvdb.com.",
+      "required": "Enter your TVDB API key to enable TVDB metadata. Get a key at thetvdb.com.",
+      "placeholder": "Leave blank to use env key"
+    },
+    "fanart": {
+      "name": "Fanart.tv",
+      "description": "Fanart.tv provides high-quality artwork including clearlogos, thumbnails, and HD art.",
+      "hasBuiltin": "A built-in API key is configured by the server administrator — override below only if you want to use your own.",
+      "noBuiltin": "The server administrator has not configured a built-in key. Add your own API key below to enable Fanart.tv artwork.",
+      "optional": "Optional. Leave blank to use the env key. Get your own free key at fanart.tv.",
+      "required": "Enter your Fanart.tv API key to enable artwork enrichment. Get a free key at fanart.tv.",
+      "placeholder": "Leave blank to use env key"
+    },
+    "opensubtitles": {
+      "name": "OpenSubtitles",
+      "description": "Premium subtitle provider with the largest database. VIP account recommended for best results.",
+      "apiKey": "API Key",
+      "username": "Username",
+      "password": "Password",
+      "passwordSet": "Password set",
+      "getKey": "Get VIP account at opensubtitles.org"
+    },
+    "subdl": {
+      "name": "Subdl",
+      "description": "Free subtitle provider with large database.",
+      "hasBuiltin": "A built-in API key is configured by the server administrator (override below).",
+      "noBuiltin": "The server administrator has not configured a built-in key. Add your own API key below to enable Subdl subtitles.",
+      "placeholderOptional": "Your Subdl API key (optional)",
+      "placeholderRequired": "Your Subdl API key"
+    },
+    "deepl": {
+      "name": "DeepL Translation",
+      "description": "AI-powered subtitle translation. Requires a DeepL API key.",
+      "getKey": "Get API key at deepl.com"
+    }
+  },
+  "actions": {
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved",
+    "getFreeKey": "Get free key →",
+    "refreshAllMetadata": "Refresh All Metadata",
+    "refreshing": "Refreshing...",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "add": "Add",
+    "remove": "Remove",
+    "enable": "Enable",
+    "disable": "Disable",
+    "testConnection": "Test Connection",
+    "upload": "Upload",
+    "uploading": "Uploading...",
+    "clear": "Clear"
+  },
+  "status": {
+    "customKey": "Custom Key",
+    "envKey": "Env Key",
+    "notConfigured": "Not Configured",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "messages": {
+    "updated": "Updated {{count}} items",
+    "error": "Error: {{message}}",
+    "howItWorks": "How it works",
+    "howItWorksDescription": "During library scan, Velox matches filenames to TMDb entries. NFO files (if present) take priority over TMDb search. Ratings from OMDb are fetched after TMDb matching completes."
+  },
+  "playback": {
+    "auto": "Auto (Direct Play when compatible, Transcode when needed)",
+    "directPlay": "Direct Play only (no transcoding)",
+    "policyDescription": "Choose the server-wide playback behavior. Direct Play streams the original file without modification. Transcoding converts the file for incompatible devices."
+  },
+  "subtitles": {
+    "autoDownload": "Auto-Download Subtitles",
+    "autoDownloadDescription": "Automatically download subtitles for configured languages when scanning new media.",
+    "targetLanguages": "Target Languages",
+    "targetLanguagesDescription": "Comma-separated ISO 639-1 codes (e.g., en,vi,es,fr). Leave empty to disable auto-download.",
+    "placeholder": "e.g., en,vi,es"
+  },
+  "cinema": {
+    "enabled": "Enable Cinema Mode",
+    "enabledDescription": "Play a custom intro video and YouTube trailers before the main feature.",
+    "maxTrailers": "Maximum Trailers",
+    "maxTrailersDescription": "How many trailers to play before the main feature (0-5).",
+    "customIntro": "Custom Intro Video",
+    "customIntroDescription": "Upload a custom intro video to play before trailers.",
+    "uploadIntro": "Upload Intro Video",
+    "hasIntro": "Custom intro uploaded",
+    "noIntro": "No custom intro"
   }
 }

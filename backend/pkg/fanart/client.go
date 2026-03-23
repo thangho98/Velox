@@ -10,10 +10,6 @@ import (
 
 const (
 	baseURL = "https://webservice.fanart.tv/v3"
-
-	// DefaultAPIKey is a built-in fanart.tv API key.
-	// Users can override this with their own key via Settings → Metadata.
-	DefaultAPIKey = "1b24f1b196da46ddcbdab691d67d12d9"
 )
 
 // Client for fanart.tv API v3.

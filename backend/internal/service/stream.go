@@ -13,9 +13,10 @@ import (
 )
 
 type StreamService struct {
-	mediaFileRepo  *repository.MediaFileRepo
-	audioTrackRepo *repository.AudioTrackRepo
-	transcoder     *transcoder.Transcoder
+	mediaFileRepo   *repository.MediaFileRepo
+	audioTrackRepo  *repository.AudioTrackRepo
+	transcoder      *transcoder.Transcoder
+	notificationSvc *NotificationService
 }
 
 func NewStreamService(mediaFileRepo *repository.MediaFileRepo, audioTrackRepo *repository.AudioTrackRepo, transcoder *transcoder.Transcoder) *StreamService {
@@ -26,11 +27,17 @@ func NewStreamService(mediaFileRepo *repository.MediaFileRepo, audioTrackRepo *r
 	}
 }
 
+// SetNotificationService sets the optional notification service for transcode events.
+func (s *StreamService) SetNotificationService(svc *NotificationService) {
+	s.notificationSvc = svc
+}
+
 // PrepareHLS triggers transcoding if needed and returns the master playlist path.
 // If multiple audio tracks exist, generates HLS with #EXT-X-MEDIA support.
 // fileID: if > 0, transcode that specific file; otherwise use the primary file for mediaID.
 // subtitleStreamIndex: if >= 0, burn-in that subtitle stream into the video.
-func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID int64, subtitleStreamIndex int) (string, error) {
+// videoCopy: if true, copy the video stream unchanged (only transcode audio).
+func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID int64, subtitleStreamIndex int, videoCopy bool) (string, error) {
 	var mf *model.MediaFile
 	var err error
 	if fileID > 0 {
@@ -59,16 +66,16 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID in
 	// Pass mf.ID so the cache key is (mediaID, fileID, subtitleStreamIndex) — avoids
 	// version collisions when multiple file versions exist for the same media.
 	if len(audioTracks) > 1 {
-		if err := s.transcoder.GenerateHLSWithAudio(mediaID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex); err != nil {
+		if err := s.transcoder.GenerateHLSWithAudio(mediaID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy); err != nil {
 			return "", err
 		}
 	} else {
-		if err := s.transcoder.GenerateHLS(mediaID, mf.FilePath, mf.ID, subtitleStreamIndex); err != nil {
+		if err := s.transcoder.GenerateHLS(mediaID, mf.FilePath, mf.ID, subtitleStreamIndex, videoCopy); err != nil {
 			return "", err
 		}
 	}
 
-	return s.transcoder.MasterPlaylistPath(mediaID, mf.ID, subtitleStreamIndex), nil
+	return s.transcoder.MasterPlaylistPath(mediaID, mf.ID, subtitleStreamIndex, videoCopy), nil
 }
 
 // SegmentPath returns the path to an HLS segment.
@@ -115,10 +122,16 @@ func (s *StreamService) ABRCached(mediaID, fileID int64) bool {
 
 // StartABRBackground triggers ABR HLS generation for the given media file
 // asynchronously. The caller does not wait for completion.
-func (s *StreamService) StartABRBackground(mediaID, fileID int64, inputPath string, sourceHeight int) {
+// userID and mediaTitle are used to notify the requesting user when done.
+func (s *StreamService) StartABRBackground(userID, mediaID, fileID int64, inputPath, mediaTitle string, sourceHeight int) {
 	go func() {
-		if err := s.transcoder.GenerateABRHLS(mediaID, inputPath, sourceHeight, fileID); err != nil {
+		err := s.transcoder.GenerateABRHLS(mediaID, inputPath, sourceHeight, fileID)
+		if err != nil {
 			log.Printf("stream: background ABR generation for media %d file %d: %v", mediaID, fileID, err)
+		}
+		if s.notificationSvc != nil {
+			ctx := context.Background()
+			_ = s.notificationSvc.NotifyTranscodeComplete(ctx, userID, mediaID, mediaTitle, err == nil, "ABR", 0)
 		}
 	}()
 }

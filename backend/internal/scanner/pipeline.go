@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
@@ -134,25 +135,67 @@ func (p *Pipeline) RunJob(ctx context.Context, job *model.ScanJob, force bool) e
 	var newFiles, errors int
 	var errorLog string
 
-	// Process each file
-	for i, path := range files {
-		isNew, err := p.processFile(scanCtx, path)
-		if err != nil {
+	// Process files concurrently with a bounded worker pool.
+	// Each worker is I/O-bound (fingerprint, ffprobe, HTTP metadata), so
+	// parallelism gives a large speedup even with SQLite's single connection.
+	const workerCount = 4
+
+	type fileResult struct {
+		path  string
+		isNew bool
+		err   error
+	}
+
+	pathCh := make(chan string, workerCount)
+	resultCh := make(chan fileResult, len(files))
+
+	var wg sync.WaitGroup
+	for range workerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for path := range pathCh {
+				isNew, err := p.processFile(scanCtx, path)
+				resultCh <- fileResult{path: path, isNew: isNew, err: err}
+			}
+		}()
+	}
+
+	// Feed paths; respect context cancellation.
+feedLoop:
+	for _, path := range files {
+		select {
+		case pathCh <- path:
+		case <-ctx.Done():
+			break feedLoop
+		}
+	}
+	close(pathCh)
+	wg.Wait()
+	close(resultCh)
+
+	// Collect results and update progress.
+	processed := 0
+	for res := range resultCh {
+		processed++
+		if res.err != nil {
 			errors++
 			if errorLog != "" {
 				errorLog += "\n"
 			}
-			errorLog += fmt.Sprintf("%s: %v", path, err)
-			log.Printf("Scan error for %s: %v", path, err)
-		} else if isNew {
+			errorLog += fmt.Sprintf("%s: %v", res.path, res.err)
+			log.Printf("Scan error for %s: %v", res.path, res.err)
+		} else if res.isNew {
 			newFiles++
 		}
-
-		// Update progress every 10 files
-		if i%10 == 0 {
-			p.scanJobRepo.UpdateProgress(ctx, job.ID, i+1)
+		if processed%10 == 0 {
+			p.scanJobRepo.UpdateProgress(ctx, job.ID, processed)
 		}
 	}
+
+	// Populate job struct with final counts so callers (e.g. LibraryService) can read them
+	job.NewFiles = newFiles
+	job.Errors = errors
 
 	if err := p.scanJobRepo.Complete(ctx, job.ID, job.TotalFiles, newFiles, errors, errorLog); err != nil {
 		return fmt.Errorf("completing scan job: %w", err)
@@ -498,33 +541,34 @@ func (p *Pipeline) refreshTitle(ctx context.Context, mediaID int64, path string)
 	return p.mediaRepo.UpdateTitle(ctx, mediaID, displayTitle)
 }
 
-// scanExternalSubtitles looks for sidecar subtitle files
+// scanExternalSubtitles looks for sidecar subtitle files.
+// Reads the directory once and filters by subtitle extension.
 func (p *Pipeline) scanExternalSubtitles(ctx context.Context, mediaFileID int64, videoPath string) error {
 	dir := filepath.Dir(videoPath)
 	base := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
 
-	subtitleExts := []string{".srt", ".vtt", ".ass", ".ssa", ".sub"}
+	subtitleExts := map[string]bool{".srt": true, ".vtt": true, ".ass": true, ".ssa": true, ".sub": true}
 
-	for _, ext := range subtitleExts {
-		// Direct match: video.srt
-		subPath := filepath.Join(dir, base+ext)
-		if _, err := os.Stat(subPath); err == nil {
-			p.addExternalSubtitle(ctx, mediaFileID, subPath)
-		}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
 
-		// Language match: video.en.srt, video.vi.srt
-		// This is simplified - full implementation would parse language codes
-		entries, err := os.ReadDir(dir)
-		if err != nil {
+	seen := make(map[string]bool)
+	for _, entry := range entries {
+		if entry.IsDir() {
 			continue
 		}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := entry.Name()
-			if strings.HasPrefix(name, base+".") && strings.HasSuffix(strings.ToLower(name), ext) {
-				subPath := filepath.Join(dir, name)
+		name := entry.Name()
+		ext := strings.ToLower(filepath.Ext(name))
+		if !subtitleExts[ext] {
+			continue
+		}
+		// Match: "video.srt" (direct) or "video.en.srt", "video.forced.srt" (tagged)
+		if name == base+ext || strings.HasPrefix(name, base+".") {
+			subPath := filepath.Join(dir, name)
+			if !seen[subPath] {
+				seen[subPath] = true
 				p.addExternalSubtitle(ctx, mediaFileID, subPath)
 			}
 		}

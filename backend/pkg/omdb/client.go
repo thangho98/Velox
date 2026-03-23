@@ -10,10 +10,6 @@ import (
 
 const (
 	baseURL = "https://www.omdbapi.com/"
-
-	// DefaultAPIKey is a built-in OMDb API key for convenience.
-	// Admins can override it in Settings → Metadata.
-	DefaultAPIKey = "9f3b182f"
 )
 
 // Client is an OMDb API client.

@@ -104,7 +104,11 @@ func main() {
 }
 
 func testSubdl(ctx context.Context, query, lang string) ([]subprovider.Result, error) {
-	client := subdl.New(subdl.DefaultAPIKey)
+	apiKey := os.Getenv("VELOX_SUBDL_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("SUBDL_API_KEY not set")
+	}
+	client := subdl.New(apiKey)
 	return client.Search(ctx, subdl.SearchParams{
 		FilmName: query,
 		Language: lang,
@@ -133,7 +137,7 @@ func testBSPlayer(ctx context.Context, imdbID, lang string) ([]subprovider.Resul
 func testSubscene(ctx context.Context, query, lang string, season int) ([]subprovider.Result, error) {
 	scraper := subscene.New()
 	if depErr := subscene.CheckDeps(); depErr != "" {
-		return nil, fmt.Errorf(depErr)
+		return nil, fmt.Errorf("%s", depErr)
 	}
 	log.Println("Subscene uses DrissionPage (Python) — this may take 15-30s...")
 	return scraper.Search(ctx, subscene.SearchParams{

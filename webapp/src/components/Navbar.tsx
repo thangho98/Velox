@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { LuSearch, LuX, LuChevronDown, LuLogOut, LuSettings } from 'react-icons/lu'
 import { Logo } from './Logo'
 import { LanguageSwitcher } from './LanguageSwitcher'
+import { NotificationBell } from './NotificationBell'
 import { useAuthStore } from '@/stores/auth'
 import { useLogout } from '@/hooks/stores/useAuth'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -28,11 +29,21 @@ export function Navbar() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const scrollRafRef = useRef<number | null>(null)
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 0)
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
+    const handleScroll = () => {
+      if (scrollRafRef.current !== null) return
+      scrollRafRef.current = requestAnimationFrame(() => {
+        setScrolled(window.scrollY > 0)
+        scrollRafRef.current = null
+      })
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current)
+    }
   }, [])
 
   useEffect(() => {
@@ -93,38 +104,41 @@ export function Navbar() {
         {/* Right: Search + User */}
         <div className="flex items-center gap-4">
           {isAuthenticated && (
-            <div className="relative">
-              {isSearchOpen ? (
-                <form
-                  onSubmit={handleSearch}
-                  className="flex items-center gap-2 rounded bg-netflix-black/80 border border-gray-500 px-3 py-1.5"
-                >
-                  <LuSearch size={16} className="text-gray-400" />
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    placeholder={t('search.placeholder')}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-48 bg-transparent text-sm text-white placeholder-gray-400 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={toggleSearch}
-                    className="text-gray-400 hover:text-white"
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              <div className="relative">
+                {isSearchOpen ? (
+                  <form
+                    onSubmit={handleSearch}
+                    className="flex items-center gap-2 rounded bg-netflix-black/80 border border-gray-500 px-3 py-1.5"
                   >
-                    <LuX size={16} />
+                    <LuSearch size={16} className="text-gray-400" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      placeholder={t('search.placeholder')}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-48 bg-transparent text-sm text-white placeholder-gray-400 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={toggleSearch}
+                      className="text-gray-400 hover:text-white"
+                    >
+                      <LuX size={16} />
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    onClick={toggleSearch}
+                    className="p-2 text-gray-300 transition-colors hover:text-white"
+                    aria-label="Search"
+                  >
+                    <LuSearch size={20} />
                   </button>
-                </form>
-              ) : (
-                <button
-                  onClick={toggleSearch}
-                  className="p-2 text-gray-300 transition-colors hover:text-white"
-                  aria-label="Search"
-                >
-                  <LuSearch size={20} />
-                </button>
-              )}
+                )}
+              </div>
             </div>
           )}
 

@@ -286,6 +286,9 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		}
 	case playback.MethodTranscodeAudio, playback.MethodFullTranscode:
 		resp.StreamURL = baseURL + "/hls/master.m3u8?fid=" + fid
+		if decision.VideoAction == playback.VideoCopy {
+			resp.StreamURL += "&vcopy=1"
+		}
 		// ABR pipeline encodes audio once (default track only) and has no subtitle filter.
 		// Only offer ABR when neither subtitle burn-in nor a non-default audio track is needed.
 		if subtitleStreamIndex < 0 && effectiveAudioTrackID == 0 {
@@ -295,7 +298,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 			} else {
 				// Not cached yet: kick off background generation; client will use
 				// regular HLS this time and get ABR on the next visit.
-				h.streamSvc.StartABRBackground(mediaID, primaryFile.ID, primaryFile.FilePath, primaryFile.Height)
+				h.streamSvc.StartABRBackground(userID, mediaID, primaryFile.ID, primaryFile.FilePath, media.Media.Title, primaryFile.Height)
 			}
 		}
 		if subtitleStreamIndex >= 0 {

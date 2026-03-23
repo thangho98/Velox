@@ -15,21 +15,46 @@ interface OpenSubsUpdateRequest {
 
 interface TMDbSettings {
   api_key: string
+  has_builtin: boolean
+}
+
+interface TMDbUpdateRequest {
+  api_key: string
 }
 
 interface OMDbSettings {
+  api_key: string
+  has_builtin: boolean
+}
+
+interface OMDbUpdateRequest {
   api_key: string
 }
 
 interface TVDBSettings {
   api_key: string
+  has_builtin: boolean
+}
+
+interface TVDBUpdateRequest {
+  api_key: string
 }
 
 interface FanartSettings {
   api_key: string
+  has_builtin: boolean
+}
+
+interface FanartUpdateRequest {
+  api_key: string
 }
 
 interface SubdlSettings {
+  api_key: string
+  has_builtin: boolean
+}
+
+interface SubdlUpdateRequest {
   api_key: string
 }
 
@@ -89,7 +114,7 @@ export function useTMDbSettings() {
 export function useUpdateTMDbSettings() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (data: TMDbSettings) => api.put<TMDbSettings>('/admin/settings/tmdb', data),
+    mutationFn: (data: TMDbUpdateRequest) => api.put<TMDbSettings>('/admin/settings/tmdb', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.tmdb() })
     },
@@ -107,7 +132,7 @@ export function useOMDbSettings() {
 export function useUpdateOMDbSettings() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (data: OMDbSettings) => api.put<OMDbSettings>('/admin/settings/omdb', data),
+    mutationFn: (data: OMDbUpdateRequest) => api.put<OMDbSettings>('/admin/settings/omdb', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.omdb() })
     },
@@ -125,7 +150,7 @@ export function useTVDBSettings() {
 export function useUpdateTVDBSettings() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (data: TVDBSettings) => api.put<TVDBSettings>('/admin/settings/tvdb', data),
+    mutationFn: (data: TVDBUpdateRequest) => api.put<TVDBSettings>('/admin/settings/tvdb', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.tvdb() })
     },
@@ -143,7 +168,8 @@ export function useFanartSettings() {
 export function useUpdateFanartSettings() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (data: FanartSettings) => api.put<FanartSettings>('/admin/settings/fanart', data),
+    mutationFn: (data: FanartUpdateRequest) =>
+      api.put<FanartSettings>('/admin/settings/fanart', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.fanart() })
     },
@@ -161,7 +187,7 @@ export function useSubdlSettings() {
 export function useUpdateSubdlSettings() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (data: SubdlSettings) => api.put<SubdlSettings>('/admin/settings/subdl', data),
+    mutationFn: (data: SubdlUpdateRequest) => api.put<SubdlSettings>('/admin/settings/subdl', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.subdl() })
     },

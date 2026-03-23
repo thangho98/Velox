@@ -211,10 +211,10 @@ func NewUserPreferencesRepo(db DBTX) *UserPreferencesRepo {
 func (r *UserPreferencesRepo) Get(ctx context.Context, userID int64) (*model.UserPreferences, error) {
 	var p model.UserPreferences
 	err := r.db.QueryRowContext(ctx, `SELECT user_id, subtitle_language, audio_language,
-		max_streaming_quality, theme
+		max_streaming_quality, theme, language
 		FROM user_preferences WHERE user_id = ?`, userID).
 		Scan(&p.UserID, &p.SubtitleLanguage, &p.AudioLanguage,
-			&p.MaxStreamingQuality, &p.Theme)
+			&p.MaxStreamingQuality, &p.Theme, &p.Language)
 	if err == sql.ErrNoRows {
 		// Return defaults
 		return &model.UserPreferences{
@@ -223,6 +223,7 @@ func (r *UserPreferencesRepo) Get(ctx context.Context, userID int64) (*model.Use
 			AudioLanguage:       "",
 			MaxStreamingQuality: "auto",
 			Theme:               "dark",
+			Language:            "en",
 		}, nil
 	}
 	if err != nil {
@@ -234,13 +235,14 @@ func (r *UserPreferencesRepo) Get(ctx context.Context, userID int64) (*model.Use
 // Update updates user preferences (upsert)
 func (r *UserPreferencesRepo) Update(ctx context.Context, p *model.UserPreferences) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO user_preferences (user_id, subtitle_language, audio_language, max_streaming_quality, theme)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO user_preferences (user_id, subtitle_language, audio_language, max_streaming_quality, theme, language)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id) DO UPDATE SET
 			subtitle_language = excluded.subtitle_language,
 			audio_language = excluded.audio_language,
 			max_streaming_quality = excluded.max_streaming_quality,
-			theme = excluded.theme`,
-		p.UserID, p.SubtitleLanguage, p.AudioLanguage, p.MaxStreamingQuality, p.Theme)
+			theme = excluded.theme,
+			language = excluded.language`,
+		p.UserID, p.SubtitleLanguage, p.AudioLanguage, p.MaxStreamingQuality, p.Theme, p.Language)
 	return err
 }

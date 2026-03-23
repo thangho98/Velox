@@ -1,9 +1,17 @@
 {
   "private": true,
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "dev": "env-cmd concurrently \"npm run dev:backend\" \"npm run dev:webapp\"",
+    "dev:backend": "cd backend && air",
+    "dev:webapp": "cd webapp && npm run dev",
+    "build":"concurrently \"npm run build:backend\" \"npm run build:webapp\"",
+    "build:backend": "cd backend && go build -o ./cmd/server",
+    "build:webapp": "cd webapp && npm run build"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
+    "env-cmd": "^11.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.0"
   },

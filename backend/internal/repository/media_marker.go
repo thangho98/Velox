@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -24,7 +25,7 @@ func (r *MediaMarkerRepo) WithTx(tx *sql.Tx) *MediaMarkerRepo {
 
 // Create inserts a new media marker
 func (r *MediaMarkerRepo) Create(ctx context.Context, m *model.MediaMarker) error {
-	query := `INSERT INTO media_markers
+	query := `INSERT OR IGNORE INTO media_markers
 		(media_file_id, marker_type, start_sec, end_sec, source, confidence, label)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, created_at, updated_at`
@@ -33,7 +34,12 @@ func (r *MediaMarkerRepo) Create(ctx context.Context, m *model.MediaMarker) erro
 		m.MediaFileID, m.MarkerType, m.StartSec, m.EndSec,
 		m.Source, m.Confidence, m.Label)
 
-	return row.Scan(&m.ID, &m.CreatedAt, &m.UpdatedAt)
+	err := row.Scan(&m.ID, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil && errors.Is(err, sql.ErrNoRows) {
+		// Marker already exists (IGNORE), not an error
+		return nil
+	}
+	return err
 }
 
 // GetByID retrieves a marker by ID

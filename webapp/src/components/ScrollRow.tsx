@@ -9,6 +9,7 @@ export function ScrollRow({ children }: ScrollRowProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
+  const rafRef = useRef<number | null>(null)
 
   const updateScrollState = useCallback(() => {
     const el = scrollRef.current
@@ -17,9 +18,21 @@ export function ScrollRow({ children }: ScrollRowProps) {
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
   }, [])
 
+  // Throttle scroll events to one update per animation frame
+  const handleScroll = useCallback(() => {
+    if (rafRef.current !== null) return
+    rafRef.current = requestAnimationFrame(() => {
+      updateScrollState()
+      rafRef.current = null
+    })
+  }, [updateScrollState])
+
   useEffect(() => {
     const id = requestAnimationFrame(updateScrollState)
-    return () => cancelAnimationFrame(id)
+    return () => {
+      cancelAnimationFrame(id)
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    }
   }, [children, updateScrollState])
 
   const scroll = useCallback((direction: 'left' | 'right') => {
@@ -53,7 +66,7 @@ export function ScrollRow({ children }: ScrollRowProps) {
 
       <div
         ref={scrollRef}
-        onScroll={updateScrollState}
+        onScroll={handleScroll}
         className="hide-scrollbar flex gap-3 overflow-x-auto pb-2"
       >
         {children}
