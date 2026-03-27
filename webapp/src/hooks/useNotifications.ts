@@ -54,10 +54,20 @@ interface NotificationListResponse {
 }
 
 interface WebSocketMessage {
-  type: 'notification' | 'ping' | 'pong'
+  type: 'notification' | 'ping' | 'pong' | 'marker_progress'
   payload?: {
     notification?: Notification
-  }
+  } & MarkerProgressPayload
+}
+
+export interface MarkerProgressPayload {
+  status?: 'running' | 'complete' | 'error'
+  total?: number
+  current?: number
+  processed?: number
+  skipped?: number
+  failed?: number
+  file_name?: string
 }
 
 const notificationsKey = ['notifications'] as const
@@ -219,6 +229,58 @@ export function useDeleteNotifications() {
       queryClient.invalidateQueries({ queryKey: notificationsKey })
     },
   })
+}
+
+// Helper to get token from Zustand persist store
+function getPersistedToken(): string | null {
+  try {
+    const raw = localStorage.getItem('velox-auth')
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed?.state?.accessToken ?? null
+  } catch {
+    return null
+  }
+}
+
+// Hook for subscribing to marker detection progress via WebSocket
+export function useMarkerProgress() {
+  const [progress, setProgress] = useState<MarkerProgressPayload | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    const token = getPersistedToken()
+    if (!token || isTokenExpired(token)) return
+
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${proto}//${window.location.host}/api/ws?token=${token}`
+
+    const ws = new WebSocket(wsUrl)
+    wsRef.current = ws
+
+    ws.onmessage = (event) => {
+      try {
+        const message: WebSocketMessage = JSON.parse(event.data)
+        if (message.type === 'marker_progress') {
+          const p = message.payload as MarkerProgressPayload
+          setProgress(p)
+          if (p.status === 'complete' || p.status === 'error') {
+            queryClient.invalidateQueries({ queryKey: ['admin', 'marker-stats'] })
+          }
+        }
+      } catch {
+        // Ignore invalid JSON
+      }
+    }
+
+    return () => {
+      ws.close()
+      wsRef.current = null
+    }
+  }, [queryClient])
+
+  return progress
 }
 
 // Combined hook for notification bell component

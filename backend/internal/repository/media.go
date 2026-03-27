@@ -617,7 +617,8 @@ func (r *MediaFileRepo) MarkMissing(ctx context.Context, id int64) error {
 // Results are returned in batches suitable for verification. Use limit/offset for pagination.
 func (r *MediaFileRepo) ListByLibraryID(ctx context.Context, libraryID int64, limit, offset int) ([]model.MediaFile, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT mf.id, mf.media_id, mf.file_path, mf.file_size, mf.duration,
-		mf.width, mf.height, mf.video_codec, mf.audio_codec, mf.container, mf.bitrate,
+		mf.width, mf.height, mf.video_codec, mf.video_profile, mf.video_level, mf.video_fps,
+		mf.audio_codec, mf.container, mf.bitrate,
 		mf.fingerprint, mf.is_primary, mf.added_at, mf.last_verified_at
 		FROM media_files mf
 		JOIN media m ON m.id = mf.media_id

@@ -23,6 +23,8 @@ const (
 
 var subdomains = []int{1, 2, 3, 4, 5, 6, 7, 8, 101, 102, 103, 104, 105, 106, 107, 108, 109}
 
+var rateLimit = subprovider.NewThrottle(time.Second)
+
 // Client is a BSPlayer subtitle API client (SOAP/XML). No API key required.
 type Client struct {
 	http      *http.Client
@@ -52,6 +54,7 @@ func (c *Client) apiURL() string {
 
 // Search performs login, subtitle search, and logout in one call.
 func (c *Client) Search(ctx context.Context, params SearchParams) ([]subprovider.Result, error) {
+	rateLimit.Wait()
 	token, err := c.login(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("bsplayer login: %w", err)

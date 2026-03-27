@@ -40,12 +40,18 @@ func hwAccelDeviceAvailable(accel string) bool {
 		return runtime.GOOS == "darwin"
 	case "vaapi":
 		// Require at least one DRM render node
+		devFound := false
 		for _, dev := range []string{"/dev/dri/renderD128", "/dev/dri/renderD129", "/dev/dri/renderD130"} {
 			if _, err := os.Stat(dev); err == nil {
-				return true
+				devFound = true
+				break
 			}
 		}
-		return false
+		if !devFound {
+			return false
+		}
+		// Verify the driver can actually encode H.264 by running a tiny test encode.
+		return vaAPIEncodeProbe()
 	case "nvenc":
 		_, err := os.Stat("/dev/nvidia0")
 		return err == nil
@@ -56,4 +62,21 @@ func hwAccelDeviceAvailable(accel string) bool {
 	default:
 		return true
 	}
+}
+
+// vaAPIEncodeProbe runs a tiny FFmpeg encode to verify that H.264 VAAPI
+// encoding actually works on this hardware/driver combination.
+// Returns false if the driver reports "No usable encoding profile found"
+// or any other encoder initialisation error.
+func vaAPIEncodeProbe() bool {
+	cmd := exec.Command("ffmpeg",
+		"-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "color=black:s=64x64:d=0.1",
+		"-vf", "format=nv12,hwupload",
+		"-vaapi_device", "/dev/dri/renderD128",
+		"-c:v", "h264_vaapi",
+		"-frames:v", "1",
+		"-f", "null", "-",
+	)
+	return cmd.Run() == nil
 }

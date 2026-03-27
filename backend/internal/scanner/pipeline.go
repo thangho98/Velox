@@ -274,6 +274,17 @@ func (p *Pipeline) processFile(scanCtx *ScanContext, path string) (bool, error) 
 		}
 		// Backfill chapter markers for existing files that don't have any yet
 		p.backfillChapterMarkers(scanCtx.ctx, existingFile.ID, path)
+		// Re-scan external subtitles + auto-download on force rescan
+		if scanCtx.Force {
+			if err := p.scanExternalSubtitles(scanCtx.ctx, existingFile.ID, path); err != nil {
+				log.Printf("Failed to scan external subtitles: %v", err)
+			}
+			if p.subtitleDL != nil {
+				if err := p.subtitleDL.AutoDownload(scanCtx.ctx, existingFile.MediaID, existingFile.ID); err != nil {
+					log.Printf("auto-download subtitles for media %d: %v", existingFile.MediaID, err)
+				}
+			}
+		}
 		return false, nil // Already known file
 	}
 
@@ -293,6 +304,12 @@ func (p *Pipeline) processFile(scanCtx *ScanContext, path string) (bool, error) 
 			if scanCtx.Force {
 				if err := p.refreshTitle(scanCtx.ctx, existingByPath.MediaID, path); err != nil {
 					return false, fmt.Errorf("refreshing title: %w", err)
+				}
+				// Auto-download subtitles for languages missing text-based subs
+				if p.subtitleDL != nil {
+					if err := p.subtitleDL.AutoDownload(scanCtx.ctx, existingByPath.MediaID, existingByPath.ID); err != nil {
+						log.Printf("auto-download subtitles for media %d: %v", existingByPath.MediaID, err)
+					}
 				}
 			}
 			// Backfill chapter markers for existing files that don't have any yet

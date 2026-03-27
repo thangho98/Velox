@@ -269,7 +269,7 @@ func runServer() {
 	userDataSvc := service.NewUserDataService(userDataRepo)
 	subtitleSvc := service.NewSubtitleService(subtitleRepo, mediaFileRepo)
 	audioTrackSvc := service.NewAudioTrackService(audioTrackRepo)
-	markerSvc := service.NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo)
+	markerSvc := service.NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo, wsHub)
 
 	// Plan F: Admin & Operations services
 	activitySvc := service.NewActivityService(activityRepo)
@@ -283,6 +283,15 @@ func runServer() {
 	if metadataSvc != nil {
 		metadataSvc.SetNotificationService(notificationSvc)
 	}
+
+	// Plan P: Pre-transcode service
+	pretranscodeRepo := repository.NewPretranscodeRepo(db)
+	pretranscodeSvc := service.NewPretranscodeService(
+		pretranscodeRepo, mediaFileRepo, appSettingsRepo, libraryRepo,
+		cfg.DataDir, hwAccel,
+	)
+	pretranscodeSvc.SetNotificationService(notificationSvc)
+	streamSvc.SetPretranscodeService(pretranscodeSvc)
 
 	// Handlers
 	libraryHandler := handler.NewLibraryHandler(librarySvc)
@@ -324,11 +333,15 @@ func runServer() {
 	seriesHandler := handler.NewSeriesHandler(seriesRepo, seasonRepo, episodeRepo)
 	imgStorage := storage.NewImageStorage(cfg.DataDir)
 	metadataHandler := handler.NewMetadataHandler(mediaSvc, metadataSvc, imgStorage)
+	authHandler.SetActivityService(activitySvc)
+	libraryHandler.SetActivityService(activitySvc)
+	playbackHandler.SetActivityService(activitySvc)
 	activityHandler := handler.NewActivityHandler(activitySvc)
 	adminHandler := handler.NewAdminHandler(adminSvc)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc)
 	markerAdminHandler := handler.NewMarkerAdminHandler(markerSvc)
 	notificationHandler := handler.NewNotificationHandler(notificationSvc)
+	pretranscodeHandler := handler.NewPretranscodeHandler(pretranscodeSvc, appSettingsRepo)
 	wsHandler := handler.NewWebSocketHandler(wsHub, jwtManager, slog.Default()) // NEW: marker admin handler for backfill
 
 	// Router
@@ -439,9 +452,22 @@ func runServer() {
 	mux.Handle("DELETE /api/admin/webhooks/{id}", middleware.RequireAdmin(http.HandlerFunc(webhookHandler.Delete)))
 
 	// Marker admin routes (Phase 04 - Fingerprint Backfill)
+	mux.Handle("GET /api/admin/markers/stats", middleware.RequireAdmin(http.HandlerFunc(markerAdminHandler.Stats)))
 	mux.Handle("GET /api/admin/markers/detectors", middleware.RequireAdmin(http.HandlerFunc(markerAdminHandler.ListDetectors)))
 	mux.Handle("POST /api/admin/markers/detect", middleware.RequireAdmin(http.HandlerFunc(markerAdminHandler.DetectWithDetector)))
 	mux.Handle("POST /api/admin/markers/backfill", middleware.RequireAdmin(http.HandlerFunc(markerAdminHandler.BackfillMarkers)))
+
+	// Pre-transcode (Plan P)
+	mux.Handle("GET /api/admin/pretranscode/status", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.GetStatus)))
+	mux.Handle("POST /api/admin/pretranscode/start", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.Start)))
+	mux.Handle("POST /api/admin/pretranscode/stop", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.Stop)))
+	mux.Handle("POST /api/admin/pretranscode/resume", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.Resume)))
+	mux.Handle("GET /api/admin/pretranscode/estimate", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.Estimate)))
+	mux.Handle("POST /api/admin/pretranscode/cleanup-files", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.Cleanup)))
+	mux.Handle("GET /api/admin/pretranscode/profiles", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.ListProfiles)))
+	mux.Handle("PUT /api/admin/pretranscode/profiles/{id}", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.ToggleProfile)))
+	mux.Handle("GET /api/admin/settings/pretranscode", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.GetSettings)))
+	mux.Handle("PUT /api/admin/settings/pretranscode", middleware.RequireAdmin(http.HandlerFunc(pretranscodeHandler.UpdateSettings)))
 
 	// Library admin routes
 	mux.Handle("POST /api/libraries", middleware.RequireAdmin(http.HandlerFunc(libraryHandler.Create)))
@@ -1205,8 +1231,8 @@ func runServer() {
 		_, err := verifier.VerifyAll(ctx)
 		return err
 	})
-	scheduler.Register("transcode-cleanup", 24*time.Hour, func(ctx context.Context) error {
-		return transcoderSvc.CleanupOlderThan(7 * 24 * time.Hour)
+	scheduler.Register("transcode-cleanup", 1*time.Hour, func(ctx context.Context) error {
+		return transcoderSvc.CleanupOlderThan(2 * time.Hour)
 	})
 	scheduler.Register("library-scan", 24*time.Hour, func(ctx context.Context) error {
 		libs, err := libraryRepo.List(ctx)
@@ -1239,6 +1265,13 @@ func runServer() {
 	})
 	scheduler.Start()
 	defer scheduler.Stop()
+
+	// Start pre-transcode scheduler if enabled
+	ptEnabled, _ := appSettingsRepo.Get(context.Background(), model.SettingPretranscodeEnabled)
+	if ptEnabled == "true" {
+		pretranscodeSvc.Start()
+		defer pretranscodeSvc.Stop()
+	}
 
 	server := &http.Server{
 		Addr:         cfg.Addr(),

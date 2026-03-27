@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
-import { useSearchParams } from 'react-router'
+import { useState, useRef, useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   LuUser,
   LuSettings,
@@ -27,6 +28,9 @@ import {
   LuPlay,
   LuPause,
   LuGlobe,
+  LuHardDrive,
+  LuSquare,
+  LuBell,
 } from 'react-icons/lu'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
@@ -69,7 +73,18 @@ import {
   useCinemaSettings,
   useUpdateCinemaSettings,
   useUploadCinemaIntro,
+  usePretranscodeSettings,
+  useUpdatePretranscodeSettings,
+  usePretranscodeStatus,
+  usePretranscodeProfiles,
+  useTogglePretranscodeProfile,
+  usePretranscodeEstimate,
+  useStartPretranscode,
+  useStopPretranscode,
+  useResumePretranscode,
+  useCleanupPretranscode,
 } from '@/hooks/stores/useSettings'
+import { LuSkipForward } from 'react-icons/lu'
 import {
   useServerInfo,
   useLibraryStats,
@@ -80,9 +95,21 @@ import {
   useDeleteWebhook,
   useScheduledTasks,
   useRunTask,
+  useMarkerStats,
+  useBackfillMarkers,
 } from '@/hooks/stores/useAdmin'
 import { DirectoryPicker } from '@/components/DirectoryPicker'
+import { Toggle } from '@/components/ui/Toggle'
+import { Select } from '@/components/ui/Select'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import {
+  useNotifications,
+  useMarkNotificationsAsRead,
+  useMarkAllNotificationsAsRead,
+  useDeleteNotifications,
+  useMarkerProgress,
+  type Notification,
+} from '@/hooks/useNotifications'
 import { useTranslation } from '@/hooks/useTranslation'
 import type { User, Webhook } from '@/types/api'
 
@@ -122,6 +149,12 @@ const ALL_SECTIONS: Section[] = [
     icon: <LuMonitor size={18} />,
     group: 'Web Settings',
   },
+  {
+    id: 'notifications',
+    labelKey: 'sections.notifications.title',
+    icon: <LuBell size={18} />,
+    group: 'Web Settings',
+  },
   // Admin Preferences (admin only)
   {
     id: 'metadata',
@@ -148,6 +181,20 @@ const ALL_SECTIONS: Section[] = [
     id: 'cinema',
     labelKey: 'sections.cinema.title',
     icon: <LuFilm size={18} />,
+    group: 'Admin Preferences',
+    adminOnly: true,
+  },
+  {
+    id: 'pretranscode',
+    labelKey: 'Pre-transcode',
+    icon: <LuHardDrive size={18} />,
+    group: 'Admin Preferences',
+    adminOnly: true,
+  },
+  {
+    id: 'markers',
+    labelKey: 'sections.markers.title',
+    icon: <LuSkipForward size={18} />,
     group: 'Admin Preferences',
     adminOnly: true,
   },
@@ -249,6 +296,7 @@ export function SettingsPage() {
         {activeSection === 'preferences' && <PreferencesSection />}
         {activeSection === 'security' && <SecuritySection />}
         {activeSection === 'sessions' && <SessionsSection />}
+        {activeSection === 'notifications' && <NotificationsSection />}
         {activeSection === 'metadata' && <MetadataSection />}
         {activeSection === 'subtitles' && <SubtitlesSection />}
         {activeSection === 'general' && <GeneralSection />}
@@ -259,6 +307,8 @@ export function SettingsPage() {
         {activeSection === 'webhooks' && <WebhooksSection />}
         {activeSection === 'playback' && <PlaybackSection />}
         {activeSection === 'cinema' && <CinemaSection />}
+        {activeSection === 'pretranscode' && <PretranscodeSection />}
+        {activeSection === 'markers' && <MarkersSection />}
       </main>
     </div>
   )
@@ -379,50 +429,50 @@ function PreferencesSection() {
       />
       <form onSubmit={handleSubmit} className="mt-6 space-y-5">
         <Field label={t('fields.subtitleLanguage')}>
-          <select
+          <Select
             value={prefs.subtitle_language}
             onChange={(e) => setPrefs({ subtitle_language: e.target.value })}
-            className={selectClass}
+            className="w-full"
           >
             <option value="">{t('options.language.auto')}</option>
             <option value="vi">{t('options.language.vi')}</option>
             <option value="en">{t('options.language.en')}</option>
-          </select>
+          </Select>
         </Field>
         <Field label={t('fields.audioLanguage')}>
-          <select
+          <Select
             value={prefs.audio_language}
             onChange={(e) => setPrefs({ audio_language: e.target.value })}
-            className={selectClass}
+            className="w-full"
           >
             <option value="">{t('options.language.auto')}</option>
             <option value="vi">{t('options.language.vi')}</option>
             <option value="en">{t('options.language.en')}</option>
-          </select>
+          </Select>
         </Field>
         <Field label={t('fields.maxQuality')}>
-          <select
+          <Select
             value={prefs.max_streaming_quality}
             onChange={(e) => setPrefs({ max_streaming_quality: e.target.value })}
-            className={selectClass}
+            className="w-full"
           >
             <option value="original">{t('options.quality.original')}</option>
             <option value="4k">{t('options.quality.4k')}</option>
             <option value="1080p">{t('options.quality.1080p')}</option>
             <option value="720p">{t('options.quality.720p')}</option>
             <option value="480p">{t('options.quality.480p')}</option>
-          </select>
+          </Select>
         </Field>
         <Field label={t('fields.theme')}>
-          <select
+          <Select
             value={prefs.theme}
             onChange={(e) => setPrefs({ theme: e.target.value as 'light' | 'dark' | 'system' })}
-            className={selectClass}
+            className="w-full"
           >
             <option value="system">{t('options.theme.system')}</option>
             <option value="dark">{t('options.theme.dark')}</option>
             <option value="light">{t('options.theme.light')}</option>
-          </select>
+          </Select>
         </Field>
         <Field label={t('fields.language')}>
           <LanguageSwitcher />
@@ -560,6 +610,137 @@ function SessionsSection() {
           {sessions?.length === 0 && (
             <p className="py-8 text-center text-sm text-gray-400">No active sessions</p>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Web Settings: Notifications ──────────────────────────────────────────────
+
+const NOTIFICATION_ICONS: Record<string, string> = {
+  scan_complete: '🔍',
+  media_added: '🎬',
+  transcode_complete: '✅',
+  transcode_failed: '❌',
+  subtitle_downloaded: '📝',
+  identify_complete: '🆔',
+  library_watcher: '👁️',
+}
+
+function NotificationsSection() {
+  const { t } = useTranslation('settings')
+  const { t: tNav } = useTranslation('navigation')
+  const navigate = useNavigate()
+  const [filter, setFilter] = useState<string>('all')
+  const [limit, setLimit] = useState(50)
+  const unreadOnly = filter === 'unread'
+  const { data, isLoading } = useNotifications(unreadOnly, limit, 0)
+  const { mutate: markAsRead } = useMarkNotificationsAsRead()
+  const { mutate: markAllAsRead } = useMarkAllNotificationsAsRead()
+  const { mutate: deleteNotifications } = useDeleteNotifications()
+
+  const notifications = data?.notifications ?? []
+  const unreadCount = data?.unread_count ?? 0
+
+  const handleClick = (n: Notification) => {
+    if (!n.read) markAsRead([n.id])
+    if (n.data.media_id) navigate(`/movies/${n.data.media_id}`)
+    else if (n.data.series_id) navigate(`/series/${n.data.series_id}`)
+    else if (n.data.library_id) navigate(`/browse?library=${n.data.library_id}`)
+  }
+
+  return (
+    <div>
+      <h2 className="mb-1 text-2xl font-bold">{t('sections.notifications.title')}</h2>
+      <p className="mb-6 text-sm text-gray-400">{t('sections.notifications.description')}</p>
+
+      {/* Toolbar */}
+      <div className="mb-4 flex items-center gap-4">
+        <Select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="rounded bg-netflix-gray px-3 py-2 text-sm text-white"
+        >
+          <option value="all">{t('sections.notifications.filterAll')}</option>
+          <option value="unread">
+            {t('sections.notifications.filterUnread')} ({unreadCount})
+          </option>
+        </Select>
+        <Select
+          value={limit}
+          onChange={(e) => setLimit(Number(e.target.value))}
+          className="rounded bg-netflix-gray px-3 py-2 text-sm text-white"
+        >
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+        </Select>
+        {unreadCount > 0 && (
+          <button
+            onClick={() => markAllAsRead()}
+            className="ml-auto flex items-center gap-1.5 rounded bg-netflix-gray px-3 py-2 text-sm text-white transition-colors hover:bg-netflix-red"
+          >
+            <LuCheck size={14} />
+            {tNav('notifications.markAllRead')}
+          </button>
+        )}
+      </div>
+
+      {/* List */}
+      {isLoading ? (
+        <p className="py-8 text-center text-sm text-gray-400">Loading...</p>
+      ) : notifications.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-lg bg-netflix-gray/30 py-12">
+          <LuBell size={36} className="mb-3 text-gray-500" />
+          <p className="text-sm text-gray-400">{tNav('notifications.empty')}</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-white/5 rounded-lg bg-netflix-gray/30">
+          {notifications.map((n) => (
+            <div
+              key={n.id}
+              className={`group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-white/5 ${
+                !n.read ? 'bg-white/[0.03]' : ''
+              }`}
+            >
+              {/* Icon */}
+              <div className="mt-0.5 flex-shrink-0 text-lg">
+                {NOTIFICATION_ICONS[n.type] || '🔔'}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 cursor-pointer" onClick={() => handleClick(n)}>
+                <p className={`text-sm ${n.read ? 'text-gray-300' : 'font-medium text-white'}`}>
+                  {n.title}
+                </p>
+                <p className="mt-0.5 text-xs text-gray-400">{n.message}</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {new Date(n.created_at).toLocaleString()}
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-1">
+                {!n.read && (
+                  <button
+                    onClick={() => markAsRead([n.id])}
+                    className="rounded p-1.5 text-gray-500 opacity-0 transition-all hover:bg-white/10 hover:text-white group-hover:opacity-100"
+                    title={tNav('notifications.markRead')}
+                  >
+                    <LuCheck size={14} />
+                  </button>
+                )}
+                <button
+                  onClick={() => deleteNotifications([n.id])}
+                  className="rounded p-1.5 text-gray-500 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                  title={tNav('notifications.delete')}
+                >
+                  <LuTrash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -2277,10 +2458,16 @@ const ACTION_BADGES: Record<string, string> = {
 }
 
 function ActivitySection() {
+  const queryClient = useQueryClient()
   const [action, setAction] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [limit, setLimit] = useState('25')
+
+  // Force fresh data every time section becomes visible
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'activity'] })
+  }, [queryClient])
 
   const filters: Record<string, string> = {}
   if (action) filters.action = action
@@ -2298,10 +2485,10 @@ function ActivitySection() {
       <div className="mt-6 flex flex-wrap items-end gap-3">
         <div>
           <label className="mb-1 block text-xs text-gray-400">Action</label>
-          <select
+          <Select
             value={action}
             onChange={(e) => setAction(e.target.value)}
-            className={selectClass + ' !w-auto min-w-[140px]'}
+            className="min-w-[140px]"
           >
             <option value="">All Actions</option>
             <option value="login">Login</option>
@@ -2309,7 +2496,7 @@ function ActivitySection() {
             <option value="play_stop">Play Stop</option>
             <option value="library_scan">Library Scan</option>
             <option value="media_added">Media Added</option>
-          </select>
+          </Select>
         </div>
         <div>
           <label className="mb-1 block text-xs text-gray-400">From</label>
@@ -2331,15 +2518,11 @@ function ActivitySection() {
         </div>
         <div>
           <label className="mb-1 block text-xs text-gray-400">Limit</label>
-          <select
-            value={limit}
-            onChange={(e) => setLimit(e.target.value)}
-            className={selectClass + ' !w-auto min-w-[80px]'}
-          >
+          <Select value={limit} onChange={(e) => setLimit(e.target.value)} className="min-w-[80px]">
             <option value="25">25</option>
             <option value="50">50</option>
             <option value="100">100</option>
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -2397,14 +2580,25 @@ function ActivitySection() {
 // ── Velox Server: Tasks ──────────────────────────────────────────────────────
 
 function TasksSection() {
-  const { data: tasks, isLoading } = useScheduledTasks()
-  const { mutate: runTask, isPending: isRunning } = useRunTask()
   const [runningTask, setRunningTask] = useState<string | null>(null)
+  // Poll every 2s while any task is running to get live status updates
+  const hasRunning = runningTask !== null
+  const { data: tasks, isLoading } = useScheduledTasks(hasRunning)
+  const { mutate: runTask } = useRunTask()
 
   const handleRun = (name: string) => {
     setRunningTask(name)
-    runTask(name, { onSettled: () => setRunningTask(null) })
+    runTask(name)
   }
+
+  // Clear local running state when server confirms task is done
+  const serverTask = tasks?.find((t) => t.name === runningTask)
+  if (runningTask && serverTask && !serverTask.running && serverTask.last_run) {
+    setRunningTask(null)
+  }
+
+  // Sort tasks by name to prevent row jumping on re-render
+  const sortedTasks = tasks?.slice().sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <div className="max-w-3xl">
@@ -2426,41 +2620,44 @@ function TasksSection() {
               </tr>
             </thead>
             <tbody>
-              {tasks?.map((task) => (
-                <tr
-                  key={task.name}
-                  className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
-                >
-                  <td className="px-4 py-3 text-sm font-medium text-white">{task.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{task.interval}</td>
-                  <td className="px-4 py-3 text-xs text-gray-400">
-                    {task.last_run ? timeAgo(task.last_run) : 'Never'}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-400">
-                    {new Date(task.next_run).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3">
-                    {task.running ? (
-                      <span className="flex items-center gap-1.5 text-xs text-yellow-400">
-                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-yellow-400 border-t-transparent" />
-                        Running
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-500">Idle</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleRun(task.name)}
-                      disabled={task.running || (isRunning && runningTask === task.name)}
-                      className="flex items-center gap-1.5 rounded bg-netflix-gray px-3 py-1.5 text-xs text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
-                    >
-                      <LuPlay size={12} />
-                      Run Now
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {sortedTasks?.map((task) => {
+                const isTaskRunning = task.running || runningTask === task.name
+                return (
+                  <tr
+                    key={task.name}
+                    className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
+                  >
+                    <td className="px-4 py-3 text-sm font-medium text-white">{task.name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-300">{task.interval}</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">
+                      {task.last_run ? timeAgo(task.last_run) : 'Never'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400">
+                      {new Date(task.next_run).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      {isTaskRunning ? (
+                        <span className="flex items-center gap-1.5 text-xs text-yellow-400">
+                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-yellow-400 border-t-transparent" />
+                          Running
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">Idle</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleRun(task.name)}
+                        disabled={isTaskRunning}
+                        className="flex items-center gap-1.5 rounded bg-netflix-gray px-3 py-1.5 text-xs text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
+                      >
+                        <LuPlay size={12} />
+                        {isTaskRunning ? 'Running...' : 'Run Now'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
           {(!tasks || tasks.length === 0) && (
@@ -2683,8 +2880,6 @@ function WebhooksSection() {
 const inputClass =
   'w-full rounded bg-netflix-gray px-4 py-2.5 text-sm text-white outline-none ring-1 ring-transparent transition-all placeholder:text-gray-500 focus:ring-netflix-red'
 const inputDisabled = 'w-full rounded bg-netflix-black px-4 py-2.5 text-sm text-gray-500'
-const selectClass =
-  'w-full rounded bg-netflix-gray px-4 py-2.5 text-sm text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red'
 
 function SectionHeader({ title, description }: { title: string; description: string }) {
   return (
@@ -2794,10 +2989,11 @@ function CinemaSection() {
             <h3 className="text-base font-semibold text-white">{t('cinema.enabled')}</h3>
             <p className="mt-1 text-sm text-gray-400">{t('cinema.enabledDescription')}</p>
           </div>
-          <button
-            onClick={() => {
+          <Toggle
+            enabled={settings?.enabled ?? false}
+            onChange={(v) => {
               updateSettings(
-                { enabled: !settings?.enabled },
+                { enabled: v },
                 {
                   onSuccess: () => {
                     setSaved(true)
@@ -2806,16 +3002,7 @@ function CinemaSection() {
                 },
               )
             }}
-            className={`relative h-7 w-12 rounded-full transition-colors ${
-              settings?.enabled ? 'bg-blue-600' : 'bg-gray-600'
-            }`}
-          >
-            <span
-              className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition-transform ${
-                settings?.enabled ? 'translate-x-5' : ''
-              }`}
-            />
-          </button>
+          />
         </div>
         {saved && <p className="mt-2 text-sm text-green-400">{t('actions.saved')}</p>}
       </div>
@@ -2824,7 +3011,7 @@ function CinemaSection() {
       <div className="rounded-lg bg-netflix-dark p-6">
         <h3 className="mb-1 text-base font-semibold text-white">{t('cinema.maxTrailers')}</h3>
         <p className="mb-3 text-sm text-gray-400">{t('cinema.maxTrailersDescription')}</p>
-        <select
+        <Select
           value={settings?.max_trailers ?? '2'}
           onChange={(e) => updateSettings({ max_trailers: e.target.value })}
           className="rounded-lg bg-[#2a2a2a] px-4 py-2 text-white outline-none"
@@ -2833,7 +3020,7 @@ function CinemaSection() {
           <option value="1">1</option>
           <option value="2">2</option>
           <option value="3">3</option>
-        </select>
+        </Select>
       </div>
 
       {/* Custom intro video */}
@@ -2867,6 +3054,520 @@ function CinemaSection() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Pre-transcode Section (Plan P) ──────────────────────────────────────────
+
+function MarkersSection() {
+  const { t } = useTranslation('settings')
+  const { data: stats, isLoading } = useMarkerStats()
+  const { data: libraries } = useLibraries()
+  const backfill = useBackfillMarkers()
+  const progress = useMarkerProgress()
+  const [selectedLibrary, setSelectedLibrary] = useState(0)
+
+  // Auto-select first library
+  if (selectedLibrary === 0 && libraries && libraries.length > 0) {
+    setSelectedLibrary(libraries[0].id)
+  }
+
+  const isRunning = progress?.status === 'running'
+  const progressPercent =
+    progress && progress.total && progress.total > 0
+      ? Math.round(((progress.current ?? 0) / progress.total) * 100)
+      : 0
+
+  const introCoverage =
+    stats && stats.total_files > 0
+      ? Math.round((stats.files_with_intro / stats.total_files) * 100)
+      : 0
+  const creditsCoverage =
+    stats && stats.total_files > 0
+      ? Math.round((stats.files_with_credits / stats.total_files) * 100)
+      : 0
+
+  // Extract just the filename from full path
+  const currentFileName = progress?.file_name?.split('/').pop() ?? ''
+
+  return (
+    <div className="space-y-8">
+      <SectionHeader
+        title={t('sections.markers.title')}
+        description={t('sections.markers.description')}
+      />
+
+      {/* Stats Overview */}
+      <div className="rounded-lg bg-netflix-black p-6 ring-1 ring-white/10">
+        <h3 className="mb-4 text-lg font-semibold text-white">{t('markers.overview')}</h3>
+        {isLoading ? (
+          <div className="text-sm text-gray-400">Loading...</div>
+        ) : stats && stats.total_markers > 0 ? (
+          <>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="rounded-lg bg-netflix-gray p-3">
+                <div className="text-2xl font-bold text-white">{stats.total_markers}</div>
+                <div className="text-xs text-gray-400">{t('markers.totalMarkers')}</div>
+              </div>
+              <div className="rounded-lg bg-netflix-gray p-3">
+                <div className="text-2xl font-bold text-blue-400">{stats.intro_markers}</div>
+                <div className="text-xs text-gray-400">{t('markers.introMarkers')}</div>
+              </div>
+              <div className="rounded-lg bg-netflix-gray p-3">
+                <div className="text-2xl font-bold text-purple-400">{stats.credits_markers}</div>
+                <div className="text-xs text-gray-400">{t('markers.creditsMarkers')}</div>
+              </div>
+              <div className="rounded-lg bg-netflix-gray p-3">
+                <div className="text-2xl font-bold text-gray-300">{stats.total_files}</div>
+                <div className="text-xs text-gray-400">{t('markers.totalFiles')}</div>
+              </div>
+            </div>
+
+            {/* Coverage bars */}
+            <div className="mt-4 space-y-3">
+              <div>
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="text-gray-400">
+                    {t('markers.filesWithIntro')} ({stats.files_with_intro}/{stats.total_files})
+                  </span>
+                  <span className="text-white font-medium">{introCoverage}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-700">
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all duration-500"
+                    style={{ width: `${introCoverage}%` }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="text-gray-400">
+                    {t('markers.filesWithCredits')} ({stats.files_with_credits}/{stats.total_files})
+                  </span>
+                  <span className="text-white font-medium">{creditsCoverage}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-700">
+                  <div
+                    className="h-full rounded-full bg-purple-500 transition-all duration-500"
+                    style={{ width: `${creditsCoverage}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Source breakdown */}
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <h4 className="mb-2 text-sm font-medium text-gray-300">
+                {t('markers.sourceBreakdown')}
+              </h4>
+              <div className="flex gap-6 text-sm">
+                {stats.chapter_source > 0 && (
+                  <span className="text-green-400">
+                    {t('markers.chapter')}: {stats.chapter_source}
+                  </span>
+                )}
+                {stats.fingerprint_source > 0 && (
+                  <span className="text-blue-400">
+                    {t('markers.fingerprint')}: {stats.fingerprint_source}
+                  </span>
+                )}
+                {stats.manual_source > 0 && (
+                  <span className="text-yellow-400">
+                    {t('markers.manual')}: {stats.manual_source}
+                  </span>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-gray-500">{t('markers.noMarkers')}</p>
+        )}
+      </div>
+
+      {/* Run Detection */}
+      <div className="rounded-lg bg-netflix-black p-6 ring-1 ring-white/10">
+        <h3 className="mb-2 text-lg font-semibold text-white">{t('markers.detection')}</h3>
+        <p className="mb-4 text-sm text-gray-400">{t('markers.detectionDesc')}</p>
+
+        <div className="flex flex-wrap items-end gap-4">
+          <Field label={t('markers.selectLibrary')}>
+            <Select
+              className="w-full"
+              value={selectedLibrary}
+              onChange={(e) => setSelectedLibrary(Number(e.target.value))}
+              disabled={isRunning}
+            >
+              {libraries?.map((lib) => (
+                <option key={lib.id} value={lib.id}>
+                  {lib.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <button
+            onClick={() => backfill.mutate({ library_id: selectedLibrary })}
+            disabled={isRunning || backfill.isPending || selectedLibrary === 0}
+            className="rounded-lg bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-netflix-red-hover disabled:opacity-50"
+          >
+            {isRunning ? t('markers.running') : t('markers.runDetection')}
+          </button>
+        </div>
+
+        {/* Real-time progress */}
+        {progress && progress.status === 'running' && (
+          <div className="mt-4 space-y-3">
+            <div>
+              <div className="mb-1 flex items-center justify-between text-sm text-gray-400">
+                <span>
+                  {progress.current}/{progress.total} files
+                </span>
+                <span>{progressPercent}%</span>
+              </div>
+              <div className="h-3 w-full overflow-hidden rounded-full bg-gray-700">
+                <div
+                  className="h-full rounded-full bg-netflix-red transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+            {currentFileName && (
+              <div className="truncate text-sm text-gray-500">Analyzing: {currentFileName}</div>
+            )}
+            <div className="flex gap-6 text-sm">
+              <span className="text-green-400">Processed: {progress.processed}</span>
+              <span className="text-gray-400">Skipped: {progress.skipped}</span>
+              {(progress.failed ?? 0) > 0 && (
+                <span className="text-red-400">Failed: {progress.failed}</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Complete result */}
+        {progress && progress.status === 'complete' && (
+          <div className="mt-4 rounded-lg bg-netflix-gray p-4 text-sm">
+            <div className="text-green-400">
+              {t('markers.resultProcessed', { processed: progress.processed })}
+            </div>
+            {(progress.skipped ?? 0) > 0 && (
+              <div className="text-gray-400">
+                {t('markers.resultSkipped', { skipped: progress.skipped })}
+              </div>
+            )}
+            {(progress.failed ?? 0) > 0 && (
+              <div className="text-red-400">Failed: {progress.failed} files</div>
+            )}
+          </div>
+        )}
+
+        {progress && progress.status === 'error' && (
+          <div className="mt-4 rounded-lg bg-red-900/30 p-4 text-sm text-red-400">
+            Detection failed. Check server logs for details.
+          </div>
+        )}
+      </div>
+
+      {/* How it works */}
+      <div className="rounded-lg bg-netflix-black p-6 ring-1 ring-white/10">
+        <h3 className="mb-3 text-lg font-semibold text-white">{t('markers.howItWorks')}</h3>
+        <ul className="space-y-2 text-sm text-gray-400">
+          <li className="flex gap-2">
+            <span className="mt-0.5 text-green-400">●</span>
+            {t('markers.howChapter')}
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-0.5 text-blue-400">●</span>
+            {t('markers.howFingerprint')}
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-0.5 text-yellow-400">●</span>
+            {t('markers.howManual')}
+          </li>
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function PretranscodeSection() {
+  const { data: settings } = usePretranscodeSettings()
+  const { data: status } = usePretranscodeStatus()
+  const { data: profiles } = usePretranscodeProfiles()
+  const { data: libraries } = useLibraries()
+  const updateSettings = useUpdatePretranscodeSettings()
+  const toggleProfile = useTogglePretranscodeProfile()
+  const startEncode = useStartPretranscode()
+  const stopEncode = useStopPretranscode()
+  const resumeEncode = useResumePretranscode()
+  const cleanupFiles = useCleanupPretranscode()
+  const [selectedLibrary, setSelectedLibrary] = useState(0)
+  const { data: estimate } = usePretranscodeEstimate(selectedLibrary)
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false)
+
+  // Auto-select first library
+  if (selectedLibrary === 0 && libraries && libraries.length > 0) {
+    setSelectedLibrary(libraries[0].id)
+  }
+
+  const isEncoding = status && (status.encoding > 0 || status.queued > 0) && !status.paused
+  const progressPercent =
+    status && status.total > 0 ? Math.round((status.done / status.total) * 100) : 0
+
+  return (
+    <div className="space-y-8">
+      <SectionHeader
+        title="Pre-transcode"
+        description="Encode media in advance for instant playback — no buffering, no waiting."
+      />
+
+      {/* Enable Toggle */}
+      <div className="rounded-lg bg-netflix-black p-6 ring-1 ring-white/10">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Offline Encoding</h3>
+            <p className="text-sm text-gray-400">
+              Pre-encode your library into browser-compatible H.264+AAC MP4 files. Like Netflix —
+              instant playback, zero transcoding delay.
+            </p>
+          </div>
+          <Toggle
+            enabled={settings?.enabled ?? false}
+            onChange={(v) => updateSettings.mutate({ enabled: v })}
+          />
+        </div>
+      </div>
+
+      {settings?.enabled && (
+        <>
+          {/* Quality Profiles */}
+          <div className="rounded-lg bg-netflix-black p-6 ring-1 ring-white/10">
+            <h3 className="mb-4 text-lg font-semibold text-white">Quality Profiles</h3>
+            <div className="space-y-3">
+              {profiles?.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex items-center gap-3 rounded-lg bg-netflix-gray p-3 transition-colors hover:bg-white/10"
+                >
+                  <input
+                    type="checkbox"
+                    checked={p.enabled}
+                    onChange={() => toggleProfile.mutate({ id: p.id, enabled: !p.enabled })}
+                    className="h-4 w-4 accent-netflix-red"
+                  />
+                  <div className="flex-1">
+                    <span className="font-medium text-white">{p.name}</span>
+                    <span className="ml-2 text-sm text-gray-400">
+                      ({p.height}p, {p.video_bitrate / 1000}Mbps video + {p.audio_bitrate}kbps
+                      audio)
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    ~{(((p.video_bitrate + p.audio_bitrate) * 5400) / 8 / 1024 / 1024).toFixed(1)}{' '}
+                    GB/film
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Schedule & Concurrency */}
+          <div className="rounded-lg bg-netflix-black p-6 ring-1 ring-white/10">
+            <h3 className="mb-4 text-lg font-semibold text-white">Schedule</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Encode time">
+                <Select
+                  className="w-full"
+                  value={settings.schedule || 'always'}
+                  onChange={(e) => updateSettings.mutate({ schedule: e.target.value })}
+                >
+                  <option value="always">Always (fastest)</option>
+                  <option value="night">Night only (00:00–06:00)</option>
+                  <option value="idle">When idle (no one watching)</option>
+                </Select>
+              </Field>
+              <Field label="Concurrent jobs">
+                <Select
+                  className="w-full"
+                  value={settings.concurrency || '1'}
+                  onChange={(e) => updateSettings.mutate({ concurrency: e.target.value })}
+                >
+                  <option value="1">1 (NAS-friendly)</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4 (powerful server)</option>
+                </Select>
+              </Field>
+            </div>
+          </div>
+
+          {/* Storage Estimation */}
+          <div className="rounded-lg bg-netflix-black p-6 ring-1 ring-white/10">
+            <h3 className="mb-4 text-lg font-semibold text-white">Storage Estimation</h3>
+            <Field label="Library">
+              <Select
+                className="w-full"
+                value={selectedLibrary}
+                onChange={(e) => setSelectedLibrary(Number(e.target.value))}
+              >
+                {libraries?.map((lib) => (
+                  <option key={lib.id} value={lib.id}>
+                    {lib.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {estimate && (
+              <div className="mt-4 space-y-2">
+                {estimate.profiles?.map((p) => (
+                  <div key={p.profile_id} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-300">
+                      {p.profile_name} ({p.file_count} files)
+                    </span>
+                    <span className="text-white font-medium">{p.estimated_gb.toFixed(1)} GB</span>
+                  </div>
+                ))}
+                <div className="border-t border-white/10 pt-2 flex items-center justify-between text-sm font-semibold">
+                  <span className="text-gray-300">Total</span>
+                  <span className="text-white">{formatBytes(estimate.total_bytes)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">Disk free</span>
+                  <span
+                    className={
+                      estimate.disk_free_bytes > estimate.total_bytes
+                        ? 'text-green-400'
+                        : 'text-red-400'
+                    }
+                  >
+                    {formatBytes(estimate.disk_free_bytes)}
+                    {estimate.disk_free_bytes > estimate.total_bytes
+                      ? ' ✓ Enough'
+                      : ' ✗ Not enough'}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Progress Dashboard */}
+          {status && status.total > 0 && (
+            <div className="rounded-lg bg-netflix-black p-6 ring-1 ring-white/10">
+              <h3 className="mb-4 text-lg font-semibold text-white">Progress</h3>
+
+              {/* Progress bar */}
+              <div className="mb-3">
+                <div className="flex items-center justify-between text-sm text-gray-400 mb-1">
+                  <span>
+                    {status.done}/{status.total} files
+                  </span>
+                  <span>{progressPercent}%</span>
+                </div>
+                <div className="h-3 w-full overflow-hidden rounded-full bg-gray-700">
+                  <div
+                    className="h-full rounded-full bg-netflix-red transition-all duration-500"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Current file */}
+              {status.current_file && (
+                <div className="mb-3 text-sm">
+                  <span className="text-gray-400">Encoding: </span>
+                  <span className="text-white">{status.current_file}</span>
+                  {status.speed && <span className="ml-2 text-gray-500">({status.speed})</span>}
+                </div>
+              )}
+
+              {/* Stats */}
+              <div className="flex gap-6 text-sm">
+                <span className="text-green-400">✓ Done: {status.done}</span>
+                {status.failed > 0 && (
+                  <span className="text-red-400">✗ Failed: {status.failed}</span>
+                )}
+                <span className="text-gray-400">Queued: {status.queued}</span>
+                <span className="text-gray-400">Disk: {formatBytes(status.disk_used)}</span>
+              </div>
+
+              {/* Controls */}
+              <div className="mt-4 flex gap-3">
+                {status.paused ? (
+                  <button
+                    onClick={() => resumeEncode.mutate()}
+                    className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500"
+                  >
+                    <LuPlay size={16} /> Resume
+                  </button>
+                ) : isEncoding ? (
+                  <button
+                    onClick={() => stopEncode.mutate()}
+                    className="flex items-center gap-2 rounded-lg bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-500"
+                  >
+                    <LuPause size={16} /> Pause
+                  </button>
+                ) : null}
+                <button
+                  onClick={() => stopEncode.mutate()}
+                  className="flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500"
+                >
+                  <LuSquare size={16} /> Stop
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex flex-wrap gap-3">
+            {!isEncoding && (
+              <button
+                onClick={() => startEncode.mutate()}
+                disabled={startEncode.isPending}
+                className="rounded-lg bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-netflix-red-hover disabled:opacity-50"
+              >
+                {startEncode.isPending ? 'Starting...' : 'Start Encoding'}
+              </button>
+            )}
+            <button
+              onClick={() => setShowCleanupConfirm(true)}
+              className="rounded-lg bg-gray-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-600"
+            >
+              <LuTrash2 className="mr-1.5 inline" size={14} />
+              Delete All Pre-transcode Files
+            </button>
+          </div>
+
+          {/* Cleanup confirmation */}
+          {showCleanupConfirm && (
+            <Modal
+              title="Delete All Pre-transcode Files"
+              onClose={() => setShowCleanupConfirm(false)}
+            >
+              <p className="mb-4 text-sm text-gray-300">
+                This will permanently delete all pre-encoded files and disable pre-transcode. Your
+                original media files are NOT affected.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowCleanupConfirm(false)}
+                  className="rounded-lg bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    cleanupFiles.mutate()
+                    setShowCleanupConfirm(false)
+                  }}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+                >
+                  Delete All
+                </button>
+              </div>
+            </Modal>
+          )}
+        </>
+      )}
     </div>
   )
 }

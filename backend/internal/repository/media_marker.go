@@ -125,6 +125,48 @@ func (r *MediaMarkerRepo) DeleteBySource(ctx context.Context, fileID int64, sour
 	return err
 }
 
+// MarkerStats holds aggregate counts for the admin dashboard
+type MarkerStats struct {
+	TotalMarkers   int `json:"total_markers"`
+	IntroMarkers   int `json:"intro_markers"`
+	CreditsMarkers int `json:"credits_markers"`
+	ChapterSource  int `json:"chapter_source"`
+	FingerprintSrc int `json:"fingerprint_source"`
+	ManualSource   int `json:"manual_source"`
+	FilesWithIntro int `json:"files_with_intro"`
+	FilesWithCreds int `json:"files_with_credits"`
+}
+
+// GetStats returns aggregate marker statistics
+func (r *MediaMarkerRepo) GetStats(ctx context.Context) (*MarkerStats, error) {
+	var s MarkerStats
+	err := r.db.QueryRowContext(ctx, `SELECT
+		COUNT(*) AS total,
+		SUM(CASE WHEN marker_type = 'intro' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN marker_type = 'credits' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN source = 'chapter' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN source = 'fingerprint' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN source = 'manual' THEN 1 ELSE 0 END),
+		COUNT(DISTINCT CASE WHEN marker_type = 'intro' THEN media_file_id END),
+		COUNT(DISTINCT CASE WHEN marker_type = 'credits' THEN media_file_id END)
+		FROM media_markers`).Scan(
+		&s.TotalMarkers, &s.IntroMarkers, &s.CreditsMarkers,
+		&s.ChapterSource, &s.FingerprintSrc, &s.ManualSource,
+		&s.FilesWithIntro, &s.FilesWithCreds,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying marker stats: %w", err)
+	}
+	return &s, nil
+}
+
+// CountAllMediaFiles returns total number of media files (for coverage %)
+func (r *MediaMarkerRepo) CountAllMediaFiles(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_files`).Scan(&count)
+	return count, err
+}
+
 // scanMarker scans a single marker row
 func scanMarker(scanner interface{ Scan(...any) error }) (*model.MediaMarker, error) {
 	var m model.MediaMarker

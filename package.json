@@ -5,7 +5,7 @@
     "dev": "env-cmd concurrently \"npm run dev:backend\" \"npm run dev:webapp\"",
     "dev:backend": "cd backend && air",
     "dev:webapp": "cd webapp && npm run dev",
-    "build":"concurrently \"npm run build:backend\" \"npm run build:webapp\"",
+    "build": "concurrently \"npm run build:backend\" \"npm run build:webapp\"",
     "build:backend": "cd backend && go build -o ./cmd/server",
     "build:webapp": "cd webapp && npm run build"
   },

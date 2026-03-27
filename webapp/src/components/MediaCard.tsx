@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import { useState, useRef, useEffect } from 'react'
 import { LuFilm, LuPlay, LuStar, LuCheck, LuHeart } from 'react-icons/lu'
 import { useToggleFavorite, useProgress } from '@/hooks/stores/useMedia'
+import { useCinemaSettings } from '@/hooks/stores/useSettings'
 import { tmdbImage } from '@/lib/image'
 import { api } from '@/lib/fetch'
 
@@ -46,9 +47,11 @@ export function MediaCard({
   const [showTrailer, setShowTrailer] = useState(false)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { mutate: toggleFavorite } = useToggleFavorite()
+  const { data: cinemaSettings } = useCinemaSettings()
+  const cinemaEnabled = cinemaSettings?.enabled ?? false
 
   useEffect(() => {
-    if (!isHovered) {
+    if (!isHovered || !cinemaEnabled) {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
       setShowTrailer(false)
       return
@@ -73,7 +76,7 @@ export function MediaCard({
     return () => {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     }
-  }, [isHovered, id, trailerKey])
+  }, [isHovered, id, trailerKey, cinemaEnabled])
 
   // Series cards: id is series.id, NOT media_id — skip progress/favorite
   const isSeries = type === 'series'

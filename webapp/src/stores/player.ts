@@ -21,8 +21,8 @@ interface PlayerState {
   audioLanguage: string | null
   audioTrackId: number | null // backend track ID for the selected audio track
 
-  // Quality preference (Emby-style: resolution + bitrate cap)
-  maxQuality: { height: number; bitrateKbps: number } | 'auto'
+  // Quality preference (resolution-based: Netflix/YouTube style)
+  maxQuality: number | 'auto' // height in pixels, or 'auto'
 
   // Video display
   aspectRatio: 'contain' | 'cover' | 'fill'
@@ -50,7 +50,7 @@ interface PlayerState {
   resetSubtitleOffset: (mediaId: number) => void
 
   setAudioTrack: (lang: string | null, id: number | null) => void
-  setMaxQuality: (quality: { height: number; bitrateKbps: number } | 'auto') => void
+  setMaxQuality: (quality: number | 'auto') => void
   setAspectRatio: (ratio: 'contain' | 'cover' | 'fill') => void
   setRepeatMode: (mode: 'none' | 'one' | 'all') => void
 

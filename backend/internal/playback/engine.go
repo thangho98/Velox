@@ -13,6 +13,7 @@ const (
 	MethodDirectStream   PlaybackMethod = "DirectStream" // Remux only
 	MethodTranscodeAudio PlaybackMethod = "TranscodeAudio"
 	MethodFullTranscode  PlaybackMethod = "FullTranscode"
+	MethodPreTranscode   PlaybackMethod = "PreTranscode" // Serve pre-encoded file
 )
 
 // VideoAction defines what to do with video stream
@@ -52,6 +53,8 @@ type PlaybackDecision struct {
 	Container           string         `json:"container,omitempty"`
 	EstimatedBitrate    int            `json:"estimated_bitrate,omitempty"` // kbps
 	Reason              string         `json:"reason"`                      // Why this decision was made
+	PreTranscodePath    string         `json:"pre_transcode_path,omitempty"`
+	PreTranscodeQuality string         `json:"pre_transcode_quality,omitempty"`
 }
 
 // MediaFileInfo represents media file metadata for decision making
@@ -94,7 +97,7 @@ func Decide(media MediaFileInfo, profile *DeviceProfile, prefs UserPreferences) 
 	// Decide video path (resolution → codec → container → bitrate, in priority order)
 	needsVideoTranscode := false
 
-	maxHeight := parseQuality(prefs.MaxStreamingQuality)
+	maxHeight := ParseQuality(prefs.MaxStreamingQuality)
 	if maxHeight > 0 && media.Height > maxHeight {
 		needsVideoTranscode = true
 		decision.VideoAction = VideoTranscode
@@ -279,7 +282,8 @@ func selectBestAudioCodec(profile *DeviceProfile) string {
 }
 
 // parseQuality converts quality string to max height
-func parseQuality(quality string) int {
+// ParseQuality converts a quality string to a max height in pixels.
+func ParseQuality(quality string) int {
 	switch strings.ToLower(quality) {
 	case "4k", "2160p", "2160":
 		return 2160

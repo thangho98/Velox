@@ -188,6 +188,8 @@ func (s *SubtitleSearchService) Search(ctx context.Context, mediaID int64, lang 
 	subdlClient, err := s.buildSubdlClient(ctx)
 	if err != nil {
 		log.Printf("subdl not configured: %v", err)
+	} else {
+		log.Printf("subdl client ready (key present)")
 	}
 	if subdlClient != nil {
 		sdParams := buildSubdlSearchParams(media, epInfo, lang, "")
@@ -391,6 +393,9 @@ func (s *SubtitleSearchService) buildSubdlClient(ctx context.Context) (*subdl.Cl
 	apiKey, _ := s.settingsRepo.Get(ctx, model.SettingSubdlAPIKey)
 	if apiKey == "" {
 		apiKey = s.builtinSubdlKey
+	}
+	if apiKey == "" {
+		return nil, fmt.Errorf("no SubDL API key configured")
 	}
 	return subdl.New(apiKey), nil
 }

@@ -23,6 +23,8 @@ const (
 	userAgent   = "Velox v0.1.0"
 )
 
+var rateLimit = subprovider.NewThrottle(time.Second)
+
 // Client is a Subdl.com subtitle API client.
 type Client struct {
 	apiKey string
@@ -87,7 +89,10 @@ func (c *Client) Search(ctx context.Context, params SearchParams) ([]subprovider
 		q.Set("episode_number", strconv.Itoa(params.EpisodeNumber))
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", searchURL+"?"+q.Encode(), nil)
+	fullURL := searchURL + "?" + q.Encode()
+	rateLimit.Wait()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +116,11 @@ func (c *Client) Search(ctx context.Context, params SearchParams) ([]subprovider
 	}
 
 	if !apiResp.Status {
-		return nil, fmt.Errorf("subdl search error: %s", apiResp.Error)
+		errMsg := apiResp.Error
+		if errMsg == "" {
+			errMsg = apiResp.Message
+		}
+		return nil, fmt.Errorf("subdl search error: %s", errMsg)
 	}
 
 	results := make([]subprovider.Result, 0, len(apiResp.Subtitles))
@@ -139,6 +148,8 @@ func (c *Client) Download(ctx context.Context, subtitlePath string) ([]byte, str
 	cleaned := strings.TrimPrefix(subtitlePath, "/subtitle/")
 	cleaned = strings.TrimSuffix(cleaned, ".zip")
 	u := downloadURL + "/" + cleaned + ".zip"
+
+	rateLimit.Wait()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
@@ -230,6 +241,7 @@ func looksLikeSubtitleText(body []byte) bool {
 type searchResponse struct {
 	Status    bool            `json:"status"`
 	Error     string          `json:"error,omitempty"`
+	Message   string          `json:"message,omitempty"`
 	Results   []searchResult  `json:"results,omitempty"`
 	Subtitles []subtitleEntry `json:"subtitles,omitempty"`
 }

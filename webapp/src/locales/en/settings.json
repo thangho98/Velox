@@ -49,6 +49,12 @@
       "title": "Users",
       "description": "Manage user accounts"
     },
+    "notifications": {
+      "title": "Notifications",
+      "description": "View and manage your notifications",
+      "filterAll": "All",
+      "filterUnread": "Unread"
+    },
     "activity": {
       "title": "Activity",
       "description": "Recent server activity and user actions"
@@ -60,7 +66,37 @@
     "webhooks": {
       "title": "Webhooks",
       "description": "Configure webhook notifications"
+    },
+    "markers": {
+      "title": "Skip Intro / Credits",
+      "description": "Detect and manage intro/credits skip markers"
     }
+  },
+  "markers": {
+    "overview": "Overview",
+    "totalMarkers": "Total Markers",
+    "introMarkers": "Intro Markers",
+    "creditsMarkers": "Credits Markers",
+    "filesWithIntro": "Files with Intro",
+    "filesWithCredits": "Files with Credits",
+    "totalFiles": "Total Media Files",
+    "coverage": "Coverage",
+    "sourceBreakdown": "Source Breakdown",
+    "chapter": "Chapter",
+    "fingerprint": "Fingerprint",
+    "manual": "Manual",
+    "detection": "Detection",
+    "detectionDesc": "Run audio fingerprint analysis to detect intro/credits segments across your library. Works best for TV series with recurring intros.",
+    "selectLibrary": "Select Library",
+    "runDetection": "Run Detection",
+    "running": "Running...",
+    "resultProcessed": "Processed: {{processed}} files",
+    "resultSkipped": "Skipped: {{skipped}} files (already have markers)",
+    "noMarkers": "No markers detected yet. Run detection on a library to get started.",
+    "howItWorks": "How it works",
+    "howChapter": "Chapter — Extracted from video chapter metadata during scan",
+    "howFingerprint": "Fingerprint — Audio analysis compares episodes to find recurring segments",
+    "howManual": "Manual — Highest priority, set via API"
   },
   "fields": {
     "username": "Username",

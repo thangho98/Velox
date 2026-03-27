@@ -22,6 +22,8 @@ const (
 	userAgent = "Velox v0.1.0"
 )
 
+var rateLimit = subprovider.NewThrottle(time.Second)
+
 // Client is a Podnapisi subtitle API client. No authentication required.
 type Client struct {
 	http *http.Client
@@ -79,6 +81,7 @@ func (c *Client) Search(ctx context.Context, params SearchParams) ([]subprovider
 	}
 
 	u := baseURL + "/subtitles/search/old?sXML=1&" + q.Encode()
+	rateLimit.Wait()
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
@@ -122,6 +125,7 @@ func (c *Client) SearchJSON(ctx context.Context, params SearchParams) ([]subprov
 	}
 
 	u := baseURL + "/subtitles/search/old?sJ=1&" + q.Encode()
+	rateLimit.Wait()
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
@@ -162,6 +166,7 @@ func (c *Client) SearchJSON(ctx context.Context, params SearchParams) ([]subprov
 // Download fetches and extracts a subtitle file by PID. Returns raw bytes and filename.
 func (c *Client) Download(ctx context.Context, pid string) ([]byte, string, error) {
 	u := baseURL + "/subtitles/" + pid + "/download"
+	rateLimit.Wait()
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, "", err

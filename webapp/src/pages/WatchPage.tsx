@@ -70,32 +70,7 @@ const SEEK_STEP = 10
 const VOLUME_STEP = 0.1
 type DetailPanel = 'none' | 'info' | 'season'
 
-const QUALITY_OPTIONS = [
-  { height: 1080, bitrateKbps: 60000, label: '1080p - 60 Mbps' },
-  { height: 1080, bitrateKbps: 50000, label: '1080p - 50 Mbps' },
-  { height: 1080, bitrateKbps: 40000, label: '1080p - 40 Mbps' },
-  { height: 1080, bitrateKbps: 30000, label: '1080p - 30 Mbps' },
-  { height: 1080, bitrateKbps: 25000, label: '1080p - 25 Mbps' },
-  { height: 1080, bitrateKbps: 20000, label: '1080p - 20 Mbps' },
-  { height: 1080, bitrateKbps: 15000, label: '1080p - 15 Mbps' },
-  { height: 1080, bitrateKbps: 12000, label: '1080p - 12 Mbps' },
-  { height: 1080, bitrateKbps: 10000, label: '1080p - 10 Mbps' },
-  { height: 1080, bitrateKbps: 8000, label: '1080p - 8 Mbps' },
-  { height: 1080, bitrateKbps: 6000, label: '1080p - 6 Mbps' },
-  { height: 1080, bitrateKbps: 5000, label: '1080p - 5 Mbps' },
-  { height: 1080, bitrateKbps: 4000, label: '1080p - 4 Mbps' },
-  { height: 720, bitrateKbps: 4000, label: '720p - 4 Mbps' },
-  { height: 720, bitrateKbps: 3000, label: '720p - 3 Mbps' },
-  { height: 720, bitrateKbps: 2000, label: '720p - 2 Mbps' },
-  { height: 720, bitrateKbps: 1500, label: '720p - 1.5 Mbps' },
-  { height: 720, bitrateKbps: 1000, label: '720p - 1 Mbps' },
-  { height: 480, bitrateKbps: 1000, label: '480p - 1 Mbps' },
-  { height: 480, bitrateKbps: 720, label: '480p - 720 Kbps' },
-  { height: 480, bitrateKbps: 420, label: '480p - 420 Kbps' },
-  { height: 360, bitrateKbps: 420, label: '360p' },
-  { height: 240, bitrateKbps: 250, label: '240p' },
-  { height: 144, bitrateKbps: 120, label: '144p' },
-]
+import type { QualityOption } from '@/types/api'
 
 export function WatchPage() {
   const { id } = useParams<{ id: string }>()
@@ -167,7 +142,7 @@ export function WatchPage() {
 
   const clientCaps = getCapabilities()
   const effectiveSubtitleLanguage = subtitleLanguage ?? preferences?.subtitle_language ?? null
-  const qualityMaxHeight = maxQuality === 'auto' ? undefined : maxQuality.height
+  const qualityMaxHeight = maxQuality === 'auto' ? undefined : maxQuality
 
   const playbackRequest = {
     video_codecs: clientCaps.videoCodecs,
@@ -882,12 +857,11 @@ export function WatchPage() {
     }
   }, [])
 
+  const qualityOptions: QualityOption[] = playbackInfo?.available_qualities ?? []
   const currentQualityLabel =
     maxQuality === 'auto'
       ? t('controls.auto')
-      : (QUALITY_OPTIONS.find(
-          (q) => q.height === maxQuality.height && q.bitrateKbps === maxQuality.bitrateKbps,
-        )?.label ?? `${maxQuality.height}p`)
+      : (qualityOptions.find((q) => q.height === maxQuality)?.label ?? `${maxQuality}p`)
 
   const getActiveSubtitleTrack = (): PlaybackSubtitleTrack | null => {
     if (!effectiveSubtitleLanguage) return null
@@ -944,7 +918,8 @@ export function WatchPage() {
       {/* Video */}
       <video
         ref={videoRef}
-        className={`h-full w-full object-${aspectRatio}`}
+        className="h-full w-full"
+        style={{ objectFit: aspectRatio as 'contain' | 'cover' | 'fill' }}
         playsInline
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
@@ -1348,7 +1323,7 @@ export function WatchPage() {
                     {showSettings && (
                       <div className="absolute bottom-full right-0 mb-2 w-56 rounded-xl bg-[#1e1e1e] shadow-2xl ring-1 ring-white/10 overflow-hidden">
                         {settingsView === 'quality' ? (
-                          /* Quality submenu */
+                          /* Quality submenu — resolution-based (Netflix style) */
                           <div className="flex flex-col">
                             <button
                               onClick={() => setSettingsView('main')}
@@ -1358,19 +1333,13 @@ export function WatchPage() {
                               {t('controls.quality')}
                             </button>
                             <div className="max-h-[50vh] overflow-y-auto py-1">
-                              {QUALITY_OPTIONS.map((q) => {
-                                const isSelected =
-                                  maxQuality !== 'auto' &&
-                                  maxQuality.height === q.height &&
-                                  maxQuality.bitrateKbps === q.bitrateKbps
+                              {qualityOptions.map((q) => {
+                                const isSelected = maxQuality !== 'auto' && maxQuality === q.height
                                 return (
                                   <button
-                                    key={`${q.height}-${q.bitrateKbps}`}
+                                    key={`${q.source}-${q.height}`}
                                     onClick={() => {
-                                      setMaxQuality({
-                                        height: q.height,
-                                        bitrateKbps: q.bitrateKbps,
-                                      })
+                                      setMaxQuality(q.height)
                                       setSettingsView('main')
                                     }}
                                     className={`flex w-full items-center justify-between px-4 py-2 text-xs ${
@@ -1379,17 +1348,23 @@ export function WatchPage() {
                                         : 'text-white/70 hover:bg-white/5 hover:text-white'
                                     }`}
                                   >
-                                    {q.label}
+                                    <span className="flex items-center gap-1.5">
+                                      {q.label}
+                                      {q.instant && q.source !== 'original' && (
+                                        <LuZap size={11} className="text-yellow-400" />
+                                      )}
+                                    </span>
                                     {isSelected && <LuCheck size={14} className="text-white" />}
                                   </button>
                                 )
                               })}
+                              {/* Auto option — always at bottom */}
                               <button
                                 onClick={() => {
                                   setMaxQuality('auto')
                                   setSettingsView('main')
                                 }}
-                                className={`flex w-full items-center justify-between px-4 py-2 text-xs ${
+                                className={`flex w-full items-center justify-between border-t border-white/10 px-4 py-2 text-xs ${
                                   maxQuality === 'auto'
                                     ? 'bg-white/10 text-white'
                                     : 'text-white/70 hover:bg-white/5 hover:text-white'

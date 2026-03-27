@@ -57,3 +57,14 @@ const (
 	// Values: "auto" (default, decide based on client), "direct_play" (force direct play, never transcode)
 	SettingPlaybackMode = "playback_mode"
 )
+
+// Known setting keys for pre-transcode (offline encoding).
+const (
+	// SettingPretranscodeEnabled enables/disables the pre-transcode feature.
+	SettingPretranscodeEnabled = "pretranscode_enabled"
+	// SettingPretranscodeSchedule controls when encoding runs.
+	// Values: "always", "night" (00:00-06:00), "idle" (no active streams)
+	SettingPretranscodeSchedule = "pretranscode_schedule"
+	// SettingPretranscodeConcurrency controls max concurrent encode jobs (1-4).
+	SettingPretranscodeConcurrency = "pretranscode_concurrency"
+)

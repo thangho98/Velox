@@ -104,7 +104,9 @@ async function fetchWithAuth<T>(endpoint: string, options: RequestInit = {}): Pr
   })
 
   // Handle 401 Unauthorized - try to refresh token
-  if (response.status === 401 && token) {
+  // Skip auto-refresh for auth endpoints that return 401 for business logic (e.g. wrong password)
+  const isAuthEndpoint = endpoint.startsWith('/auth/change-password')
+  if (response.status === 401 && token && !isAuthEndpoint) {
     if (!isRefreshing) {
       isRefreshing = true
       const newToken = await refreshAccessToken()

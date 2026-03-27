@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -27,6 +29,7 @@ type PlaybackHandler struct {
 	markerSvc       *service.MarkerService // NEW: marker service for skip segments
 	prefRepo        *repository.UserPreferencesRepo
 	appSettingsRepo *repository.AppSettingsRepo
+	activitySvc     *service.ActivityService
 }
 
 // NewPlaybackHandler creates a new playback handler
@@ -52,6 +55,10 @@ func NewPlaybackHandler(
 	}
 }
 
+func (h *PlaybackHandler) SetActivityService(svc *service.ActivityService) {
+	h.activitySvc = svc
+}
+
 // PlaybackInfoRequest represents client-sent capabilities
 type PlaybackInfoRequest struct {
 	VideoCodecs        []string `json:"video_codecs,omitempty"`
@@ -65,30 +72,40 @@ type PlaybackInfoRequest struct {
 	SelectedSubtitleID int      `json:"selected_subtitle_id,omitempty"` // exact subtitle track ID
 }
 
+// QualityOption represents an available quality for the frontend quality selector
+type QualityOption struct {
+	Height      int    `json:"height"`                 // e.g. 1080, 720, 480
+	Label       string `json:"label"`                  // e.g. "1080p", "720p"
+	Instant     bool   `json:"instant"`                // true = pretranscode ready (⚡)
+	Source      string `json:"source"`                 // "original", "pretranscode", "transcode"
+	BitrateKbps int    `json:"bitrate_kbps,omitempty"` // estimated bitrate
+}
+
 // PlaybackInfoResponse represents playback decision response
 type PlaybackInfoResponse struct {
-	MediaID          int                 `json:"media_id"`
-	PrimaryFileID    int64               `json:"primary_file_id,omitempty"` // file ID used for this decision
-	Method           string              `json:"method"`                    // DirectPlay, DirectStream, TranscodeAudio, FullTranscode
-	StreamURL        string              `json:"stream_url"`
-	AbrURL           string              `json:"abr_url,omitempty"` // adaptive bitrate HLS (multi-quality); only set when transcoding
-	VideoCodec       string              `json:"video_codec"`
-	VideoProfile     string              `json:"video_profile,omitempty"`
-	VideoLevel       int                 `json:"video_level,omitempty"`
-	VideoFPS         float64             `json:"video_fps,omitempty"`
-	AudioCodec       string              `json:"audio_codec"`
-	Container        string              `json:"container"`
-	FileSize         int64               `json:"file_size,omitempty"`
-	Bitrate          int                 `json:"bitrate,omitempty"`
-	Duration         int                 `json:"duration,omitempty"`
-	Width            int                 `json:"width,omitempty"`
-	Height           int                 `json:"height,omitempty"`
-	AudioTracks      []AudioTrackInfo    `json:"audio_tracks,omitempty"`
-	SubtitleTracks   []SubtitleTrackInfo `json:"subtitle_tracks,omitempty"`
-	DecisionReason   string              `json:"decision_reason"`
-	EstimatedBitrate int                 `json:"estimated_bitrate,omitempty"`
-	Position         float64             `json:"position,omitempty"`      // Resume position
-	SkipSegments     []model.SkipSegment `json:"skip_segments,omitempty"` // NEW: intro/credits skip markers
+	MediaID            int                 `json:"media_id"`
+	PrimaryFileID      int64               `json:"primary_file_id,omitempty"` // file ID used for this decision
+	Method             string              `json:"method"`                    // DirectPlay, DirectStream, TranscodeAudio, FullTranscode
+	StreamURL          string              `json:"stream_url"`
+	AbrURL             string              `json:"abr_url,omitempty"` // adaptive bitrate HLS (multi-quality); only set when transcoding
+	VideoCodec         string              `json:"video_codec"`
+	VideoProfile       string              `json:"video_profile,omitempty"`
+	VideoLevel         int                 `json:"video_level,omitempty"`
+	VideoFPS           float64             `json:"video_fps,omitempty"`
+	AudioCodec         string              `json:"audio_codec"`
+	Container          string              `json:"container"`
+	FileSize           int64               `json:"file_size,omitempty"`
+	Bitrate            int                 `json:"bitrate,omitempty"`
+	Duration           int                 `json:"duration,omitempty"`
+	Width              int                 `json:"width,omitempty"`
+	Height             int                 `json:"height,omitempty"`
+	AudioTracks        []AudioTrackInfo    `json:"audio_tracks,omitempty"`
+	SubtitleTracks     []SubtitleTrackInfo `json:"subtitle_tracks,omitempty"`
+	DecisionReason     string              `json:"decision_reason"`
+	EstimatedBitrate   int                 `json:"estimated_bitrate,omitempty"`
+	Position           float64             `json:"position,omitempty"`            // Resume position
+	SkipSegments       []model.SkipSegment `json:"skip_segments,omitempty"`       // intro/credits skip markers
+	AvailableQualities []QualityOption     `json:"available_qualities,omitempty"` // quality selector options
 }
 
 // AudioTrackInfo represents an audio track
@@ -177,6 +194,9 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		defaultAudioLanguage = dbPrefs.AudioLanguage
 	}
 	// Client-provided values take precedence over DB defaults
+	if clientCaps.MaxHeight > 0 {
+		prefs.MaxStreamingQuality = fmt.Sprintf("%dp", clientCaps.MaxHeight)
+	}
 	if clientCaps.SelectedSubtitle != "" {
 		prefs.SelectedSubtitle = clientCaps.SelectedSubtitle
 	}
@@ -243,6 +263,36 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 
 	decision = applyAdminPlaybackPolicy(ctx, h.appSettingsRepo, decision, profile, mediaInfo)
 
+	// Check for pre-transcoded file (Plan P: instant playback)
+	// Use pretranscode when: (a) normal decision requires transcoding, OR
+	// (b) user explicitly selected a lower resolution via max_height
+	userRequestedLower := clientCaps.MaxHeight > 0 && clientCaps.MaxHeight < primaryFile.Height
+	if decision.Method != playback.MethodDirectPlay || userRequestedLower {
+		maxHeight := clientCaps.MaxHeight
+		if maxHeight <= 0 {
+			maxHeight = playback.ParseQuality(prefs.MaxStreamingQuality)
+		}
+		if ptFile, err := h.streamSvc.FindPretranscode(ctx, primaryFile.ID, maxHeight); err == nil && ptFile != nil {
+			ptProfile, _ := h.streamSvc.FindPretranscodeProfile(ctx, ptFile.ProfileID)
+			decision = playback.PlaybackDecision{
+				Method:           playback.MethodPreTranscode,
+				VideoAction:      playback.VideoCopy,
+				AudioAction:      playback.AudioCopy,
+				SubtitleAction:   playback.SubtitleNone,
+				Container:        "mp4",
+				Reason:           "Pre-transcoded file available",
+				PreTranscodePath: ptFile.FilePath,
+			}
+			if ptProfile != nil {
+				decision.PreTranscodeQuality = ptProfile.Name
+				decision.EstimatedBitrate = ptProfile.VideoBitrate + ptProfile.AudioBitrate
+			}
+		}
+	}
+
+	// Build available quality options for frontend selector
+	availableQualities := h.buildQualityOptions(ctx, primaryFile)
+
 	// Find the subtitle stream index for burn-in (needed to build the HLS URL with ?si=N)
 	subtitleStreamIndex := -1
 	if decision.SubtitleAction == playback.SubtitleBurnIn && selectedSubtitle != nil {
@@ -251,23 +301,24 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 
 	// Build response
 	resp := PlaybackInfoResponse{
-		MediaID:          int(mediaID),
-		PrimaryFileID:    primaryFile.ID,
-		Method:           string(decision.Method),
-		VideoCodec:       primaryFile.VideoCodec,
-		VideoProfile:     primaryFile.VideoProfile,
-		VideoLevel:       primaryFile.VideoLevel,
-		VideoFPS:         primaryFile.VideoFPS,
-		AudioCodec:       primaryFile.AudioCodec,
-		Container:        primaryFile.Container,
-		FileSize:         primaryFile.FileSize,
-		Bitrate:          primaryFile.Bitrate / 1000,
-		Duration:         int(primaryFile.Duration),
-		Width:            primaryFile.Width,
-		Height:           primaryFile.Height,
-		DecisionReason:   decision.Reason,
-		EstimatedBitrate: decision.EstimatedBitrate,
-		Position:         resumePosition,
+		MediaID:            int(mediaID),
+		PrimaryFileID:      primaryFile.ID,
+		Method:             string(decision.Method),
+		VideoCodec:         primaryFile.VideoCodec,
+		VideoProfile:       primaryFile.VideoProfile,
+		VideoLevel:         primaryFile.VideoLevel,
+		VideoFPS:           primaryFile.VideoFPS,
+		AudioCodec:         primaryFile.AudioCodec,
+		Container:          primaryFile.Container,
+		FileSize:           primaryFile.FileSize,
+		Bitrate:            primaryFile.Bitrate / 1000,
+		Duration:           int(primaryFile.Duration),
+		Width:              primaryFile.Width,
+		Height:             primaryFile.Height,
+		DecisionReason:     decision.Reason,
+		EstimatedBitrate:   decision.EstimatedBitrate,
+		Position:           resumePosition,
+		AvailableQualities: availableQualities,
 	}
 
 	// Determine stream URL based on decision.
@@ -276,6 +327,9 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	baseURL := "/api/stream/" + strconv.FormatInt(mediaID, 10)
 	fid := strconv.FormatInt(primaryFile.ID, 10)
 	switch decision.Method {
+	case playback.MethodPreTranscode:
+		// Pre-transcoded MP4 — serve via same direct play endpoint (pre-transcode check runs first)
+		resp.StreamURL = baseURL + "?fid=" + fid
 	case playback.MethodDirectPlay, playback.MethodDirectStream:
 		resp.StreamURL = baseURL + "?fid=" + fid + "&pm=" + playbackModeQuery(decision.Method)
 		if effectiveAudioTrackID > 0 {
@@ -306,6 +360,10 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		}
 		if effectiveAudioTrackID > 0 {
 			resp.StreamURL += "&at=" + strconv.Itoa(effectiveAudioTrackID)
+		}
+		// On-demand pretranscode: remux HLS → MP4 for next time ⚡
+		if clientCaps.MaxHeight > 0 {
+			go h.streamSvc.RemuxToPretranscode(context.Background(), primaryFile.ID, mediaID, clientCaps.MaxHeight)
 		}
 	default:
 		resp.StreamURL = baseURL + "/hls/master.m3u8?fid=" + fid
@@ -360,7 +418,80 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		resp.SkipSegments = skipSegments
 	}
 
+	// Log play start activity
+	if h.activitySvc != nil {
+		h.activitySvc.Log(&userID, "play_start", r.RemoteAddr, &mediaID, "")
+	}
+
 	respondJSON(w, http.StatusOK, resp)
+}
+
+// buildQualityOptions returns the list of selectable qualities for the frontend.
+// Includes: Original, pretranscode profiles (⚡ instant), and standard transcode tiers.
+func (h *PlaybackHandler) buildQualityOptions(ctx context.Context, file model.MediaFile) []QualityOption {
+	sourceHeight := file.Height
+	var options []QualityOption
+
+	// 1. Original quality
+	options = append(options, QualityOption{
+		Height:      sourceHeight,
+		Label:       fmt.Sprintf("Original (%dp)", sourceHeight),
+		Instant:     true,
+		Source:      "original",
+		BitrateKbps: file.Bitrate / 1000,
+	})
+
+	// 2. Collect pretranscode ready profiles
+	ptHeights := map[int]bool{}
+	if ptFiles, err := h.streamSvc.FindAllPretranscodes(ctx, file.ID); err == nil {
+		for _, ptf := range ptFiles {
+			if profile, err := h.streamSvc.FindPretranscodeProfile(ctx, ptf.ProfileID); err == nil && profile != nil {
+				if profile.Height <= sourceHeight {
+					ptHeights[profile.Height] = true
+					// Skip if same as source (already covered by "Original")
+					if profile.Height == sourceHeight {
+						continue
+					}
+					options = append(options, QualityOption{
+						Height:      profile.Height,
+						Label:       profile.Name,
+						Instant:     true,
+						Source:      "pretranscode",
+						BitrateKbps: profile.VideoBitrate + profile.AudioBitrate,
+					})
+				}
+			}
+		}
+	}
+
+	// 3. Standard transcode tiers (only those below source and not covered by pretranscode)
+	transcodeTiers := []struct {
+		height  int
+		bitrate int
+	}{
+		{2160, 40000}, {1440, 16000}, {1080, 8000}, {720, 4000}, {480, 1500}, {360, 800}, {240, 400},
+	}
+	for _, tier := range transcodeTiers {
+		if tier.height >= sourceHeight || ptHeights[tier.height] {
+			continue
+		}
+		options = append(options, QualityOption{
+			Height:      tier.height,
+			Label:       fmt.Sprintf("%dp", tier.height),
+			Instant:     false,
+			Source:      "transcode",
+			BitrateKbps: tier.bitrate,
+		})
+	}
+
+	// Sort: Original first, then by height descending
+	if len(options) > 1 {
+		sort.Slice(options[1:], func(i, j int) bool {
+			return options[1+i].Height > options[1+j].Height
+		})
+	}
+
+	return options
 }
 
 func resolveSelectedAudioTrackID(requestedID int, audioTracks []model.AudioTrack) int {

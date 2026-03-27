@@ -17,6 +17,8 @@ const adminKeys = {
   playbackStats: () => [...adminKeys.all, 'playback-stats'] as const,
   webhooks: () => [...adminKeys.all, 'webhooks'] as const,
   tasks: () => [...adminKeys.all, 'tasks'] as const,
+  markerStats: () => [...adminKeys.all, 'marker-stats'] as const,
+  markerDetectors: () => [...adminKeys.all, 'marker-detectors'] as const,
 }
 
 export function useServerInfo() {
@@ -40,7 +42,8 @@ export function useActivity(filters?: Record<string, string>) {
   return useQuery({
     queryKey: adminKeys.activity(filters),
     queryFn: () => api.get<ActivityLog[]>(`/admin/activity${params}`),
-    staleTime: 10 * 1000,
+    staleTime: 0,
+    gcTime: 0,
     refetchInterval: 10 * 1000,
   })
 }
@@ -92,11 +95,12 @@ export function useDeleteWebhook() {
   })
 }
 
-export function useScheduledTasks() {
+export function useScheduledTasks(polling = false) {
   return useQuery({
     queryKey: adminKeys.tasks(),
     queryFn: () => api.get<ScheduledTask[]>('/admin/tasks'),
-    staleTime: 10 * 1000,
+    staleTime: polling ? 0 : 10 * 1000,
+    refetchInterval: polling ? 2 * 1000 : false,
   })
 }
 
@@ -106,6 +110,53 @@ export function useRunTask() {
     mutationFn: (name: string) => api.post(`/admin/tasks/${name}/run`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.tasks() })
+    },
+  })
+}
+
+// ── Marker Admin ────────────────────────────────────────────────────────────
+
+export interface MarkerStats {
+  total_markers: number
+  intro_markers: number
+  credits_markers: number
+  chapter_source: number
+  fingerprint_source: number
+  manual_source: number
+  files_with_intro: number
+  files_with_credits: number
+  total_files: number
+}
+
+interface BackfillResult {
+  processed: number
+  skipped: number
+  errors?: string[]
+}
+
+export function useMarkerStats() {
+  return useQuery({
+    queryKey: adminKeys.markerStats(),
+    queryFn: () => api.get<MarkerStats>('/admin/markers/stats'),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useMarkerDetectors() {
+  return useQuery({
+    queryKey: adminKeys.markerDetectors(),
+    queryFn: () => api.get<{ detectors: string[] }>('/admin/markers/detectors'),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useBackfillMarkers() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { library_id?: number; season_id?: number; file_ids?: number[] }) =>
+      api.post<BackfillResult>('/admin/markers/backfill', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.markerStats() })
     },
   })
 }

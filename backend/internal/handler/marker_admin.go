@@ -43,6 +43,36 @@ type DetectResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
+// Stats returns aggregate marker statistics for the admin dashboard
+// GET /api/admin/markers/stats
+func (h *MarkerAdminHandler) Stats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	stats, err := h.markerSvc.GetStats(ctx)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	totalFiles, err := h.markerSvc.CountAllMediaFiles(ctx)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"total_markers":      stats.TotalMarkers,
+		"intro_markers":      stats.IntroMarkers,
+		"credits_markers":    stats.CreditsMarkers,
+		"chapter_source":     stats.ChapterSource,
+		"fingerprint_source": stats.FingerprintSrc,
+		"manual_source":      stats.ManualSource,
+		"files_with_intro":   stats.FilesWithIntro,
+		"files_with_credits": stats.FilesWithCreds,
+		"total_files":        totalFiles,
+	})
+}
+
 // BackfillMarkers runs fingerprint detection on files without existing markers
 // POST /api/admin/markers/backfill
 func (h *MarkerAdminHandler) BackfillMarkers(w http.ResponseWriter, r *http.Request) {
@@ -61,8 +91,20 @@ func (h *MarkerAdminHandler) BackfillMarkers(w http.ResponseWriter, r *http.Requ
 		processed, skipped, err = h.markerSvc.BackfillMarkers(ctx, req.FileIDs)
 	} else if req.SeasonID > 0 {
 		processed, skipped, err = h.markerSvc.DetectSeason(ctx, req.SeasonID)
+	} else if req.LibraryID > 0 {
+		// Library backfill runs async with WebSocket progress
+		if h.markerSvc.IsDetecting() {
+			respondError(w, http.StatusConflict, "detection already running")
+			return
+		}
+		if err := h.markerSvc.BackfillLibraryAsync(req.LibraryID); err != nil {
+			respondError(w, http.StatusConflict, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
+		return
 	} else {
-		respondError(w, http.StatusBadRequest, "file_ids or season_id required")
+		respondError(w, http.StatusBadRequest, "file_ids, season_id, or library_id required")
 		return
 	}
 

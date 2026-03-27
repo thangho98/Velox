@@ -4,8 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
@@ -17,6 +21,7 @@ type StreamService struct {
 	audioTrackRepo  *repository.AudioTrackRepo
 	transcoder      *transcoder.Transcoder
 	notificationSvc *NotificationService
+	pretranscodeSvc *PretranscodeService
 }
 
 func NewStreamService(mediaFileRepo *repository.MediaFileRepo, audioTrackRepo *repository.AudioTrackRepo, transcoder *transcoder.Transcoder) *StreamService {
@@ -30,6 +35,52 @@ func NewStreamService(mediaFileRepo *repository.MediaFileRepo, audioTrackRepo *r
 // SetNotificationService sets the optional notification service for transcode events.
 func (s *StreamService) SetNotificationService(svc *NotificationService) {
 	s.notificationSvc = svc
+}
+
+// SetPretranscodeService sets the optional pre-transcode service for pre-encoded file lookup.
+func (s *StreamService) SetPretranscodeService(svc *PretranscodeService) {
+	s.pretranscodeSvc = svc
+}
+
+// FindPretranscode looks up a ready pre-transcode file for a media file.
+// maxHeight: 0 means no limit (pick best available). Returns nil if none found.
+func (s *StreamService) FindPretranscode(ctx context.Context, mediaFileID int64, maxHeight int) (*model.PretranscodeFile, error) {
+	if s.pretranscodeSvc == nil {
+		return nil, nil
+	}
+	return s.pretranscodeSvc.FindBestPretranscode(ctx, mediaFileID, maxHeight)
+}
+
+// FindPretranscodeProfile returns a pre-transcode profile by ID.
+func (s *StreamService) FindPretranscodeProfile(ctx context.Context, profileID int64) (*model.PretranscodeProfile, error) {
+	if s.pretranscodeSvc == nil {
+		return nil, nil
+	}
+	return s.pretranscodeSvc.GetProfile(ctx, profileID)
+}
+
+// RemuxToPretranscode copies existing HLS transcode output into pretranscode MP4.
+// Called after realtime transcode — "transcode once, instant forever".
+func (s *StreamService) RemuxToPretranscode(ctx context.Context, mediaFileID int64, mediaID int64, height int) {
+	if s.pretranscodeSvc == nil {
+		return
+	}
+	// Find the HLS playlist for this quality level
+	hlsDir := s.transcoder.HLSDir(mediaID)
+	// ABR playlists are named: f{fileID}_q{height}.m3u8
+	playlist := filepath.Join(hlsDir, fmt.Sprintf("f%d_q%d.m3u8", mediaFileID, height))
+	if _, err := os.Stat(playlist); err != nil {
+		return // no HLS segments for this quality
+	}
+	s.pretranscodeSvc.RemuxFromHLS(ctx, mediaFileID, height, playlist)
+}
+
+// FindAllPretranscodes returns all ready pre-transcode files for a media file.
+func (s *StreamService) FindAllPretranscodes(ctx context.Context, mediaFileID int64) ([]model.PretranscodeFile, error) {
+	if s.pretranscodeSvc == nil {
+		return nil, nil
+	}
+	return s.pretranscodeSvc.ListReadyFiles(ctx, mediaFileID)
 }
 
 // PrepareHLS triggers transcoding if needed and returns the master playlist path.
@@ -81,6 +132,11 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID in
 // SegmentPath returns the path to an HLS segment.
 func (s *StreamService) SegmentPath(mediaID int64, segment string) string {
 	return s.transcoder.SegmentPath(mediaID, segment)
+}
+
+// WaitForSegment waits for a segment to appear on disk if a transcode is active.
+func (s *StreamService) WaitForSegment(path string, timeout time.Duration) bool {
+	return s.transcoder.WaitForSegment(path, timeout)
 }
 
 // GetPrimaryFile returns the media file for streaming.

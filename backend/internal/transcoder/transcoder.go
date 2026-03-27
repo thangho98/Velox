@@ -99,7 +99,7 @@ func isHLSComplete(path string) bool {
 func (t *Transcoder) waitForFirstSegment(job *transcodeJob, segPath string) error {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-	timeout := time.After(3 * time.Minute)
+	timeout := time.After(10 * time.Minute)
 
 	for {
 		select {
@@ -137,8 +137,12 @@ func (t *Transcoder) startHLSBackground(masterPath, firstSeg, inputPath, dir, pr
 	t.mu.Unlock()
 
 	go func() {
-		release := t.acquireSlot()
-		defer release()
+		// Video copy is lightweight (no encoding) — skip semaphore to avoid
+		// blocking on heavy transcode jobs that hold all slots.
+		if !videoCopy {
+			release := t.acquireSlot()
+			defer release()
+		}
 
 		err := t.runHLSFFmpeg(inputPath, dir, prefix, siIdx, hdr, hwAccel, videoCopy)
 		// Only retry with software encoder when HW encoding was attempted (not for video copy).
@@ -241,7 +245,8 @@ func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr 
 		args = []string{"-hide_banner", "-loglevel", "warning",
 			"-probesize", "50000000", "-analyzeduration", "100000000",
 			"-i", inputPath,
-			"-map", "0:v:0", "-c:v", "copy",
+			"-map", "0:v:0", "-map", "0:a:0?",
+			"-c:v", "copy",
 			"-avoid_negative_ts", "make_zero",
 			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
 			"-f", "hls",
@@ -269,6 +274,7 @@ func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr 
 		)
 	}
 
+	log.Printf("transcoder: ffmpeg %s", strings.Join(args, " "))
 	cmd := exec.Command("ffmpeg", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -496,7 +502,7 @@ func (t *Transcoder) writeMasterPlaylistWithAudio(masterPath string, variants []
 
 // GenerateABRHLS generates multi-quality adaptive bitrate HLS variants.
 // Only generates qualities at or below sourceHeight. Always generates at least
-// one variant. Skips if already cached.
+// one variant. Skips if already cached. Deduplicates concurrent requests.
 func (t *Transcoder) GenerateABRHLS(mediaID int64, inputPath string, sourceHeight int, fileID int64) error {
 	dir := t.HLSDir(mediaID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -504,13 +510,43 @@ func (t *Transcoder) GenerateABRHLS(mediaID int64, inputPath string, sourceHeigh
 	}
 
 	masterPath := t.ABRMasterPath(mediaID, fileID)
-	if _, err := os.Stat(masterPath); err == nil {
-		return nil // cached
+
+	// Dedup: if another goroutine is already generating this ABR set, wait for it.
+	t.mu.Lock()
+	if job, ok := t.active[masterPath]; ok {
+		t.mu.Unlock()
+		<-job.done
+		return job.err
 	}
+	// Cached on disk.
+	if _, err := os.Stat(masterPath); err == nil {
+		t.mu.Unlock()
+		return nil
+	}
+	job := &transcodeJob{done: make(chan struct{})}
+	t.active[masterPath] = job
+	t.mu.Unlock()
 
-	release := t.acquireSlot()
-	defer release()
+	go func() {
+		job.err = t.generateABRVariants(dir, masterPath, inputPath, sourceHeight, fileID)
 
+		t.mu.Lock()
+		delete(t.active, masterPath)
+		t.mu.Unlock()
+		if job.err != nil {
+			log.Printf("transcoder: ABR generation failed for %s: %v", masterPath, job.err)
+		}
+		close(job.done)
+	}()
+
+	<-job.done
+	return job.err
+}
+
+// generateABRVariants encodes all ABR quality levels sequentially.
+// Each variant acquires its own semaphore slot so other transcode jobs
+// (e.g. a different media item) can interleave.
+func (t *Transcoder) generateABRVariants(dir, masterPath, inputPath string, sourceHeight int, fileID int64) error {
 	// Select variants at or below source resolution.
 	var variants []ABRVariant
 	for _, v := range defaultABRVariants {
@@ -520,7 +556,6 @@ func (t *Transcoder) GenerateABRHLS(mediaID int64, inputPath string, sourceHeigh
 	}
 	if len(variants) == 0 {
 		// Source is lower than 480p; encode at source height to avoid upscaling.
-		// Scale bitrate proportionally to resolution area vs 480p baseline.
 		h := sourceHeight
 		if h <= 0 {
 			h = defaultABRVariants[0].Height
@@ -528,7 +563,7 @@ func (t *Transcoder) GenerateABRHLS(mediaID int64, inputPath string, sourceHeigh
 		base := defaultABRVariants[0]
 		scaledBitrate := base.Bitrate * h * h / (base.Height * base.Height)
 		if scaledBitrate < 200 {
-			scaledBitrate = 200 // floor: avoid unusably low bitrate
+			scaledBitrate = 200
 		}
 		variants = []ABRVariant{{
 			Height:    h,
@@ -544,15 +579,13 @@ func (t *Transcoder) GenerateABRHLS(mediaID int64, inputPath string, sourceHeigh
 		segPattern := filepath.Join(dir, fmt.Sprintf("f%d_q%d_seg_%%04d.ts", fileID, v.Height))
 
 		if _, err := os.Stat(playlistPath); err != nil {
-			if err := t.generateABRVariant(inputPath, playlistPath, segPattern, v, t.hwAccel); err != nil {
-				if t.hwAccel != "" {
-					log.Printf("transcoder: HW encode failed for %dp ABR (%v), retrying with software", v.Height, err)
-					if err2 := t.generateABRVariant(inputPath, playlistPath, segPattern, v, ""); err2 != nil {
-						return fmt.Errorf("generate %dp variant: %w", v.Height, err2)
-					}
-				} else {
-					return fmt.Errorf("generate %dp variant: %w", v.Height, err)
-				}
+			release := t.acquireSlot()
+			// ABR uses software encoding — HW encoders on low-VRAM iGPUs
+			// (e.g. 64MB shared) OOM when combining scale + bitrate control.
+			err := t.generateABRVariant(inputPath, playlistPath, segPattern, v, "")
+			release()
+			if err != nil {
+				return fmt.Errorf("generate %dp variant: %w", v.Height, err)
 			}
 		}
 		playlistNames = append(playlistNames, name)
@@ -572,17 +605,20 @@ func (t *Transcoder) generateABRVariant(inputPath, playlistPath, segPattern stri
 	args = append(args, buildFFmpegInputArgs(hwAccel)...)
 	args = append(args, "-i", inputPath)
 	args = append(args,
-		"-vf", fmt.Sprintf("scale=-2:%d", v.Height),
+		"-vf", hwScaleFilter(hwAccel, v.Height),
 		"-c:v", hwVideoCodec(hwAccel),
 	)
-	if hwAccel == "" {
+	switch hwAccel {
+	case "":
 		args = append(args, "-preset", "veryfast", "-profile:v", "high", "-level", "4.1", "-threads", "0")
+		args = append(args, "-pix_fmt", "yuv420p")
+	case "vaapi":
+		args = append(args, "-profile:v", "main")
 	}
 	args = append(args,
 		"-b:v", bitrateStr,
 		"-maxrate", maxrateStr,
 		"-bufsize", bufsizeStr,
-		"-pix_fmt", "yuv420p",
 		"-c:a", "aac", "-b:a", "128k", "-ac", "2",
 		"-f", "hls",
 		"-hls_time", "6",
@@ -623,6 +659,39 @@ func (t *Transcoder) writeABRMasterPlaylist(masterPath string, variants []ABRVar
 // SegmentPath returns the full path to an HLS segment file.
 func (t *Transcoder) SegmentPath(mediaID int64, segment string) string {
 	return filepath.Join(t.HLSDir(mediaID), segment)
+}
+
+// WaitForSegment waits up to timeout for a segment file to appear on disk.
+// Returns true if the segment exists, false if timed out.
+// Used when FFmpeg is still writing segments and the player requests one
+// that hasn't been flushed yet — avoids 404 spam from the client.
+func (t *Transcoder) WaitForSegment(path string, timeout time.Duration) bool {
+	if _, err := os.Stat(path); err == nil {
+		return true
+	}
+
+	// Only wait if there's an active transcode that could produce this segment.
+	t.mu.Lock()
+	hasActive := len(t.active) > 0
+	t.mu.Unlock()
+	if !hasActive {
+		return false
+	}
+
+	ticker := time.NewTicker(300 * time.Millisecond)
+	defer ticker.Stop()
+	deadline := time.After(timeout)
+
+	for {
+		select {
+		case <-ticker.C:
+			if _, err := os.Stat(path); err == nil {
+				return true
+			}
+		case <-deadline:
+			return false
+		}
+	}
 }
 
 // RemuxToWriter remuxes a video file to fragmented MP4 and writes to w.
@@ -691,13 +760,25 @@ func hwInputArgs(hwAccel string) []string {
 	case "videotoolbox":
 		return []string{"-hwaccel", "videotoolbox"}
 	case "vaapi":
-		return []string{"-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128"}
+		return []string{"-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi", "-hwaccel_device", "/dev/dri/renderD128"}
 	case "nvenc":
 		return []string{"-hwaccel", "cuda"}
 	case "qsv":
 		return []string{"-hwaccel", "qsv"}
 	}
 	return nil
+}
+
+// hwScaleFilter returns the appropriate scale filter for the given HW accelerator.
+// For VAAPI, forces NV12 output format so h264_vaapi can encode 10-bit sources
+// (e.g. HEVC P010) that would otherwise fail with "No usable encoding profile".
+func hwScaleFilter(hwAccel string, height int) string {
+	switch hwAccel {
+	case "vaapi":
+		return fmt.Sprintf("scale_vaapi=w=-2:h=%d:format=nv12", height)
+	default:
+		return fmt.Sprintf("scale=-2:%d", height)
+	}
 }
 
 // ffmpegInputProbeArgs increases demux probing so image-based subtitle streams
@@ -742,6 +823,10 @@ func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string)
 		escaped := escapeFFmpegSubtitlePath(inputPath)
 		filters = append(filters, fmt.Sprintf("subtitles=filename='%s':si=%d", escaped, siIdx))
 	}
+	// VAAPI: force NV12 surface format so h264_vaapi can encode 10-bit sources.
+	if hwAccel == "vaapi" && len(filters) == 0 {
+		filters = append(filters, "scale_vaapi=format=nv12")
+	}
 
 	var args []string
 	if len(filters) > 0 {
@@ -749,10 +834,7 @@ func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string)
 	}
 
 	args = append(args, "-c:v", hwVideoCodec(hwAccel))
-	if hwAccel == "" {
-		args = append(args, "-preset", "veryfast", "-crf", "23", "-threads", "0")
-	}
-	args = append(args, "-pix_fmt", "yuv420p")
+	args = append(args, hwEncoderArgs(hwAccel)...)
 	return args
 }
 
@@ -767,10 +849,7 @@ func buildImageSubtitleBurnInArgs(hwAccel string, hdr bool, subtitleStreamIndex 
 		"-map", "0:a:0?",
 		"-c:v", hwVideoCodec(hwAccel),
 	}
-	if hwAccel == "" {
-		args = append(args, "-preset", "veryfast", "-crf", "23", "-threads", "0")
-	}
-	args = append(args, "-pix_fmt", "yuv420p")
+	args = append(args, hwEncoderArgs(hwAccel)...)
 	return args
 }
 
@@ -783,11 +862,22 @@ func buildImageSubtitleBurnInVideoOnlyArgs(hwAccel string, hdr bool, subtitleStr
 		"-map", "[vout]",
 		"-c:v", hwVideoCodec(hwAccel),
 	}
-	if hwAccel == "" {
-		args = append(args, "-preset", "veryfast", "-crf", "23", "-threads", "0")
-	}
-	args = append(args, "-pix_fmt", "yuv420p")
+	args = append(args, hwEncoderArgs(hwAccel)...)
 	return args
+}
+
+// hwEncoderArgs returns encoder-specific args (profile, quality, pixel format)
+// for the given HW accelerator. Centralizes encoder tuning so all encode paths
+// use consistent settings.
+func hwEncoderArgs(hwAccel string) []string {
+	switch hwAccel {
+	case "":
+		return []string{"-preset", "veryfast", "-crf", "23", "-threads", "0", "-pix_fmt", "yuv420p"}
+	case "vaapi":
+		return []string{"-profile:v", "main", "-qp", "23"}
+	default:
+		return nil
+	}
 }
 
 func buildImageSubtitleBurnInFilter(hdr bool, subtitleStreamIndex int) string {

@@ -156,6 +156,18 @@ func All() []Migration {
 			Up:      up025,
 			Down:    down025,
 		},
+		{
+			Version: 26,
+			Name:    "pretranscode",
+			Up:      up026,
+			Down:    down026,
+		},
+		{
+			Version: 27,
+			Name:    "pretranscode_4k",
+			Up:      up027,
+			Down:    down027,
+		},
 	}
 }
 

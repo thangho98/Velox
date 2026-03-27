@@ -49,6 +49,12 @@
       "title": "Người dùng",
       "description": "Quản lý tài khoản người dùng"
     },
+    "notifications": {
+      "title": "Thông báo",
+      "description": "Xem và quản lý thông báo của bạn",
+      "filterAll": "Tất cả",
+      "filterUnread": "Chưa đọc"
+    },
     "activity": {
       "title": "Hoạt động",
       "description": "Hoạt động gần đây trên máy chủ"
@@ -60,7 +66,37 @@
     "webhooks": {
       "title": "Webhooks",
       "description": "Cấu hình thông báo webhook"
+    },
+    "markers": {
+      "title": "Bỏ qua Intro / Credits",
+      "description": "Phát hiện và quản lý đoạn intro/credits để bỏ qua"
     }
+  },
+  "markers": {
+    "overview": "Tổng quan",
+    "totalMarkers": "Tổng markers",
+    "introMarkers": "Markers Intro",
+    "creditsMarkers": "Markers Credits",
+    "filesWithIntro": "File có Intro",
+    "filesWithCredits": "File có Credits",
+    "totalFiles": "Tổng file media",
+    "coverage": "Độ phủ",
+    "sourceBreakdown": "Phân loại nguồn",
+    "chapter": "Chapter",
+    "fingerprint": "Dấu vân tay âm thanh",
+    "manual": "Thủ công",
+    "detection": "Phát hiện",
+    "detectionDesc": "Chạy phân tích audio fingerprint để phát hiện đoạn intro/credits trong thư viện. Hiệu quả nhất với phim bộ có intro lặp lại.",
+    "selectLibrary": "Chọn thư viện",
+    "runDetection": "Chạy phát hiện",
+    "running": "Đang chạy...",
+    "resultProcessed": "Đã xử lý: {{processed}} file",
+    "resultSkipped": "Bỏ qua: {{skipped}} file (đã có markers)",
+    "noMarkers": "Chưa có markers nào. Chạy phát hiện trên thư viện để bắt đầu.",
+    "howItWorks": "Cách hoạt động",
+    "howChapter": "Chapter — Trích xuất từ metadata chapter trong video khi quét",
+    "howFingerprint": "Fingerprint — Phân tích audio so sánh các tập để tìm đoạn lặp lại",
+    "howManual": "Thủ công — Ưu tiên cao nhất, đặt qua API"
   },
   "fields": {
     "username": "Tên đăng nhập",

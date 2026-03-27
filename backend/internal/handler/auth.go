@@ -10,11 +10,16 @@ import (
 )
 
 type AuthHandler struct {
-	authSvc *service.AuthService
+	authSvc     *service.AuthService
+	activitySvc *service.ActivityService
 }
 
 func NewAuthHandler(authSvc *service.AuthService) *AuthHandler {
 	return &AuthHandler{authSvc: authSvc}
+}
+
+func (h *AuthHandler) SetActivityService(svc *service.ActivityService) {
+	h.activitySvc = svc
 }
 
 type loginReq struct {
@@ -62,6 +67,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	// Log successful login
+	if h.activitySvc != nil {
+		h.activitySvc.Log(&user.ID, "login", ipAddress, nil, "")
 	}
 
 	respondJSON(w, http.StatusOK, loginResp{
@@ -142,7 +152,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	if err := h.authSvc.ChangePassword(r.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
-			respondError(w, http.StatusUnauthorized, "current password is incorrect")
+			respondError(w, http.StatusForbidden, "current password is incorrect")
 		case errors.Is(err, service.ErrInvalidPassword):
 			respondError(w, http.StatusBadRequest, "new password must be at least 8 characters")
 		case errors.Is(err, service.ErrNotFound):

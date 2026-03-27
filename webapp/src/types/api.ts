@@ -495,6 +495,15 @@ export interface PlaybackInfo {
   estimated_bitrate: number
   position: number
   skip_segments?: SkipSegment[]
+  available_qualities?: QualityOption[]
+}
+
+export interface QualityOption {
+  height: number
+  label: string
+  instant: boolean // true = pretranscode ready (⚡)
+  source: 'original' | 'pretranscode' | 'transcode'
+  bitrate_kbps?: number
 }
 
 // Continue Watching / Next Up Types

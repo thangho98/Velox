@@ -61,6 +61,9 @@ def get_page():
 
     co.set_argument('--no-sandbox')
     co.set_argument('--disable-dev-shm-usage')
+    co.set_argument('--disable-gpu')
+    co.set_argument('--disable-software-rasterizer')
+    co.set_argument('--use-gl=swiftshader')
 
     return ChromiumPage(co)
 

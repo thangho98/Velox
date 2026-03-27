@@ -63,11 +63,11 @@ RUN apk add --no-cache \
     curl \
     tini
 
-# Intel VAAPI drivers — x86_64 only (Synology DS920+, Intel NUC, etc.)
+# GPU drivers — x86_64 only (Intel VAAPI, AMD VAAPI, NVIDIA via host runtime)
 # Not available on ARM (Apple Silicon, Raspberry Pi)
 ARG TARGETARCH
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
-        apk add --no-cache libva libva-intel-driver mesa-va-gallium; \
+        apk add --no-cache libva libva-intel-driver intel-media-driver mesa-va-gallium mesa-dri-gallium; \
     fi
 
 # Create velox user (UID/GID configurable at runtime)
@@ -111,6 +111,19 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
+    # WebSocket endpoint
+    location /api/ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
     # API + streaming → backend
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
@@ -146,20 +159,6 @@ RUN cat > /app/entrypoint.sh <<'ENTRYPOINT'
 #!/bin/sh
 set -e
 
-# ---- UID/GID remapping (Synology NAS friendly) ----
-# Synology DSM often uses UID=1026, GID=100 (users group)
-# Set PUID/PGID env vars to match your NAS user
-PUID=${PUID:-1000}
-PGID=${PGID:-1000}
-
-if [ "$PUID" != "1000" ] || [ "$PGID" != "1000" ]; then
-    echo "Remapping velox user to UID=$PUID GID=$PGID"
-    deluser velox 2>/dev/null || true
-    delgroup velox 2>/dev/null || true
-    addgroup -g "$PGID" velox
-    adduser -D -u "$PUID" -G velox -h /app velox
-fi
-
 # ---- Create data directories ----
 VELOX_DATA_DIR=${VELOX_DATA_DIR:-/data}
 export VELOX_DATA_DIR
@@ -169,8 +168,9 @@ mkdir -p "$VELOX_DATA_DIR" \
          "$VELOX_DATA_DIR/transcode" \
          "$VELOX_DATA_DIR/trickplay"
 
-chown -R "$PUID:$PGID" "$VELOX_DATA_DIR"
-chown -R "$PUID:$PGID" /app/scripts
+# ---- VAAPI: default to iHD driver (Intel 6th gen+) ----
+# Override via LIBVA_DRIVER_NAME env var in docker-compose if needed
+export LIBVA_DRIVER_NAME=${LIBVA_DRIVER_NAME:-iHD}
 
 # ---- Set Chromium path for DrissionPage ----
 export CHROME_PATH=/usr/bin/chromium-browser
@@ -184,14 +184,14 @@ fi
 # ---- Start nginx (frontend) ----
 nginx
 
-# ---- Run backend as velox user ----
-echo "Starting Velox (UID=$PUID, GID=$PGID, DATA=$VELOX_DATA_DIR)"
-exec su-exec "$PUID:$PGID" /app/velox
+# ---- Run backend ----
+echo "Starting Velox (DATA=$VELOX_DATA_DIR)"
+exec /app/velox
 ENTRYPOINT
 RUN chmod +x /app/entrypoint.sh
 
 # ---- Volumes ----
-VOLUME ["/data", "/media"]
+VOLUME ["/data"]
 
 # ---- Ports ----
 # 80: nginx (frontend + API proxy)

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/fetch'
+import { useCinemaSettings } from '@/hooks/stores/useSettings'
 
 export interface CinemaItem {
   type: 'intro' | 'trailer' | 'main'
@@ -14,10 +15,13 @@ interface CinemaPlaylist {
 }
 
 export function useSeriesTrailers(seriesId: number) {
+  const { data: cinemaSettings } = useCinemaSettings()
+  const cinemaEnabled = cinemaSettings?.enabled ?? false
+
   const { data } = useQuery({
     queryKey: ['cinema', 'series', seriesId],
     queryFn: () => api.get<CinemaPlaylist>(`/series/${seriesId}/cinema`),
-    enabled: seriesId > 0,
+    enabled: seriesId > 0 && cinemaEnabled,
     staleTime: 10 * 60 * 1000,
   })
 
@@ -25,15 +29,18 @@ export function useSeriesTrailers(seriesId: number) {
 
   return {
     trailers,
-    youtubeKey: trailers.length > 0 ? extractYouTubeKey(trailers[0].url) : null,
+    youtubeKey: cinemaEnabled && trailers.length > 0 ? extractYouTubeKey(trailers[0].url) : null,
   }
 }
 
 export function useTrailers(mediaId: number) {
+  const { data: cinemaSettings } = useCinemaSettings()
+  const cinemaEnabled = cinemaSettings?.enabled ?? false
+
   const { data } = useQuery({
     queryKey: ['cinema', mediaId],
     queryFn: () => api.get<CinemaPlaylist>(`/media/${mediaId}/cinema`),
-    enabled: mediaId > 0,
+    enabled: mediaId > 0 && cinemaEnabled,
     staleTime: 10 * 60 * 1000,
   })
 
@@ -41,7 +48,7 @@ export function useTrailers(mediaId: number) {
 
   return {
     trailers,
-    youtubeKey: trailers.length > 0 ? extractYouTubeKey(trailers[0].url) : null,
+    youtubeKey: cinemaEnabled && trailers.length > 0 ? extractYouTubeKey(trailers[0].url) : null,
     title: trailers.length > 0 ? trailers[0].title : null,
   }
 }

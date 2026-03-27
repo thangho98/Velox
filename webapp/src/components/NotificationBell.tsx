@@ -196,7 +196,7 @@ export function NotificationBell() {
               <div className="border-t border-white/10 px-4 py-2">
                 <button
                   onClick={() => {
-                    navigate('/settings?section=activity')
+                    navigate('/settings?section=notifications')
                     setOpen(false)
                   }}
                   className="w-full text-center text-xs text-gray-400 hover:text-white"

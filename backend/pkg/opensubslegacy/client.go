@@ -23,6 +23,8 @@ const (
 	userAgent = "VLSub 0.10.2"
 )
 
+var rateLimit = subprovider.NewThrottle(time.Second)
+
 // Client for the OpenSubtitles legacy REST API.
 type Client struct {
 	http *http.Client
@@ -50,6 +52,8 @@ func (c *Client) Search(ctx context.Context, params SearchParams) ([]subprovider
 	if url == "" {
 		return nil, fmt.Errorf("opensubslegacy: need imdb_id or query")
 	}
+
+	rateLimit.Wait()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -108,6 +112,8 @@ func (c *Client) Search(ctx context.Context, params SearchParams) ([]subprovider
 // The legacy API serves gzip-compressed files.
 func (c *Client) Download(ctx context.Context, externalID string) ([]byte, string, error) {
 	url := fmt.Sprintf("https://dl.opensubtitles.org/en/download/file/%s", externalID)
+
+	rateLimit.Wait()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

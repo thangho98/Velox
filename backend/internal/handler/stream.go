@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thawng/velox/internal/playback"
 	"github.com/thawng/velox/internal/service"
@@ -69,6 +70,20 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 	if at := r.URL.Query().Get("at"); at != "" {
 		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
 		return
+	}
+
+	// Check for pre-transcoded file first (Plan P: instant playback)
+	if ptFile, err := h.svc.FindPretranscode(r.Context(), mf.ID, 0); err == nil && ptFile != nil {
+		f, err := os.Open(ptFile.FilePath)
+		if err == nil {
+			defer f.Close()
+			stat, err := f.Stat()
+			if err == nil {
+				http.ServeContent(w, r, stat.Name(), stat.ModTime(), f)
+				return
+			}
+		}
+		// Pre-transcode file missing/corrupt — fall through to normal playback
 	}
 
 	decision := playback.PlaybackDecision{Method: explicitPlaybackMethod(r.URL.Query().Get("pm"))}
@@ -194,8 +209,12 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 	path := h.svc.SegmentPath(id, segment)
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		respondError(w, http.StatusNotFound, "segment not found")
-		return
+		// If a transcode is in progress, wait up to 10s for the segment to appear
+		// instead of returning 404 immediately (which causes client retry spam).
+		if !h.svc.WaitForSegment(path, 10*time.Second) {
+			respondError(w, http.StatusNotFound, "segment not found")
+			return
+		}
 	}
 
 	if strings.HasSuffix(segment, ".m3u8") {

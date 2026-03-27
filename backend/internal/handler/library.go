@@ -2,18 +2,25 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 
+	"github.com/thawng/velox/internal/auth"
 	"github.com/thawng/velox/internal/service"
 )
 
 type LibraryHandler struct {
-	svc *service.LibraryService
+	svc         *service.LibraryService
+	activitySvc *service.ActivityService
 }
 
 func NewLibraryHandler(svc *service.LibraryService) *LibraryHandler {
 	return &LibraryHandler{svc: svc}
+}
+
+func (h *LibraryHandler) SetActivityService(svc *service.ActivityService) {
+	h.activitySvc = svc
 }
 
 func (h *LibraryHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +96,14 @@ func (h *LibraryHandler) Scan(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	// Log library scan activity
+	if h.activitySvc != nil {
+		userID, _, ok := auth.UserFromContext(r.Context())
+		if ok {
+			h.activitySvc.Log(&userID, "library_scan", r.RemoteAddr, nil, fmt.Sprintf(`{"library_id":%d,"force":%v}`, id, force))
+		}
 	}
 
 	// Pipeline.Run blocks — run in goroutine would lose the job reference.

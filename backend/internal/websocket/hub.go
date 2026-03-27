@@ -163,6 +163,39 @@ func (h *Hub) Broadcast(notification *model.Notification) {
 	h.broadcast <- notification
 }
 
+// BroadcastToAdmins sends a typed message to all connected admin clients.
+// Used for transient progress updates that don't need persistence.
+func (h *Hub) BroadcastToAdmins(msgType string, payload any) {
+	data, err := json.Marshal(&model.WebSocketMessage{
+		Type:    msgType,
+		Payload: mustMarshal(payload),
+	})
+	if err != nil {
+		h.logger.Error("failed to marshal admin broadcast", "type", msgType, "error", err)
+		return
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for _, userClients := range h.clients {
+		for client := range userClients {
+			if !client.isAdmin {
+				continue
+			}
+			select {
+			case client.send <- data:
+			default:
+			}
+		}
+	}
+}
+
+func mustMarshal(v any) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
+}
+
 // GetConnectedCount returns the number of connected clients
 func (h *Hub) GetConnectedCount() int {
 	h.mu.RLock()

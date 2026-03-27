@@ -20,6 +20,8 @@ const (
 	userAgent = "Velox v0.1.0"
 )
 
+var rateLimit = subprovider.NewThrottle(time.Second)
+
 // Client is an OpenSubtitles.com REST v3 client.
 type Client struct {
 	apiKey   string
@@ -110,6 +112,7 @@ func (c *Client) ensureToken(ctx context.Context) error {
 
 // Search queries OpenSubtitles for matching subtitles.
 func (c *Client) Search(ctx context.Context, params SearchParams) ([]subprovider.Result, error) {
+	rateLimit.Wait()
 	if err := c.ensureToken(ctx); err != nil {
 		return nil, fmt.Errorf("opensubtitles auth: %w", err)
 	}
@@ -180,6 +183,7 @@ func (c *Client) Search(ctx context.Context, params SearchParams) ([]subprovider
 
 // Download fetches a subtitle file by file_id. Returns the raw bytes and suggested filename.
 func (c *Client) Download(ctx context.Context, fileID string) ([]byte, string, error) {
+	rateLimit.Wait()
 	if err := c.ensureToken(ctx); err != nil {
 		return nil, "", fmt.Errorf("opensubtitles auth: %w", err)
 	}
