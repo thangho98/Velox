@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -255,15 +255,63 @@ export function SettingsPage() {
   const setSection = (id: string) => setSearchParams({ section: id })
 
   const sections = ALL_SECTIONS.filter((s) => !s.adminOnly || isAdmin)
-  const groups = sections.reduce<Record<string, Section[]>>((acc, s) => {
-    ;(acc[s.group] ??= []).push(s)
-    return acc
-  }, {})
+  const groups = useMemo(
+    () =>
+      sections.reduce<Record<string, Section[]>>((acc, s) => {
+        ;(acc[s.group] ??= []).push(s)
+        return acc
+      }, {}),
+    [sections.length, isAdmin],
+  )
+
+  const activeLabel =
+    sections.find((s) => s.id === activeSection)?.labelKey ?? 'sections.profile.title'
+
+  const content = (
+    <>
+      {activeSection === 'profile' && <ProfileSection />}
+      {activeSection === 'preferences' && <PreferencesSection />}
+      {activeSection === 'security' && <SecuritySection />}
+      {activeSection === 'sessions' && <SessionsSection />}
+      {activeSection === 'notifications' && <NotificationsSection />}
+      {activeSection === 'metadata' && <MetadataSection />}
+      {activeSection === 'subtitles' && <SubtitlesSection />}
+      {activeSection === 'general' && <GeneralSection />}
+      {activeSection === 'libraries' && <LibrariesSection />}
+      {activeSection === 'users' && <UsersSection />}
+      {activeSection === 'activity' && <ActivitySection />}
+      {activeSection === 'tasks' && <TasksSection />}
+      {activeSection === 'webhooks' && <WebhooksSection />}
+      {activeSection === 'playback' && <PlaybackSection />}
+      {activeSection === 'cinema' && <CinemaSection />}
+      {activeSection === 'pretranscode' && <PretranscodeSection />}
+      {activeSection === 'markers' && <MarkersSection />}
+    </>
+  )
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)]">
-      {/* Sidebar */}
-      <aside className="w-56 shrink-0 border-r border-netflix-gray/50 bg-netflix-black/50">
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col md:flex-row">
+      {/* Mobile: dropdown navigation */}
+      <div className="border-b border-netflix-gray/50 bg-netflix-black/50 p-3 md:hidden">
+        <select
+          value={activeSection}
+          onChange={(e) => setSection(e.target.value)}
+          className="w-full appearance-none rounded-lg border border-gray-700 bg-[#1a1a1a] px-4 py-3 text-sm font-medium text-white outline-none focus:border-netflix-red"
+        >
+          {Object.entries(groups).map(([group, items]) => (
+            <optgroup key={group} label={t(`groups.${group.toLowerCase().replace(/ /g, '')}`)}>
+              {items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {t(item.labelKey)}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+
+      {/* Desktop: sidebar */}
+      <aside className="hidden w-56 shrink-0 border-r border-netflix-gray/50 bg-netflix-black/50 md:block">
         <div
           className="sticky top-16 overflow-y-auto py-4"
           style={{ maxHeight: 'calc(100vh - 4rem)' }}
@@ -291,25 +339,7 @@ export function SettingsPage() {
       </aside>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto p-6 lg:p-8">
-        {activeSection === 'profile' && <ProfileSection />}
-        {activeSection === 'preferences' && <PreferencesSection />}
-        {activeSection === 'security' && <SecuritySection />}
-        {activeSection === 'sessions' && <SessionsSection />}
-        {activeSection === 'notifications' && <NotificationsSection />}
-        {activeSection === 'metadata' && <MetadataSection />}
-        {activeSection === 'subtitles' && <SubtitlesSection />}
-        {activeSection === 'general' && <GeneralSection />}
-        {activeSection === 'libraries' && <LibrariesSection />}
-        {activeSection === 'users' && <UsersSection />}
-        {activeSection === 'activity' && <ActivitySection />}
-        {activeSection === 'tasks' && <TasksSection />}
-        {activeSection === 'webhooks' && <WebhooksSection />}
-        {activeSection === 'playback' && <PlaybackSection />}
-        {activeSection === 'cinema' && <CinemaSection />}
-        {activeSection === 'pretranscode' && <PretranscodeSection />}
-        {activeSection === 'markers' && <MarkersSection />}
-      </main>
+      <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">{content}</main>
     </div>
   )
 }
@@ -1769,51 +1799,59 @@ function GeneralSection() {
           <div className="px-5 pt-5 pb-3">
             <h3 className="text-sm font-semibold text-white">Library Statistics</h3>
           </div>
-          <table className="w-full">
-            <thead className="border-b border-netflix-gray bg-netflix-black/50">
-              <tr>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-gray-400">Library</th>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-gray-400">Type</th>
-                <th className="px-5 py-2.5 text-right text-xs font-medium text-gray-400">Items</th>
-                <th className="px-5 py-2.5 text-right text-xs font-medium text-gray-400">Files</th>
-                <th className="px-5 py-2.5 text-right text-xs font-medium text-gray-400">Size</th>
-                <th className="px-5 py-2.5 text-right text-xs font-medium text-gray-400">
-                  Last Scanned
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {libraryStats.map((lib) => (
-                <tr
-                  key={lib.id}
-                  className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
-                >
-                  <td className="px-5 py-3 text-sm font-medium text-white">{lib.name}</td>
-                  <td className="px-5 py-3">
-                    <span
-                      className={`rounded px-2 py-0.5 text-xs font-medium ${
-                        lib.type === 'movies'
-                          ? 'bg-blue-500/20 text-blue-400'
-                          : lib.type === 'tvshows'
-                            ? 'bg-purple-500/20 text-purple-400'
-                            : 'bg-green-500/20 text-green-400'
-                      }`}
-                    >
-                      {lib.type}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-right text-sm text-gray-300">{lib.item_count}</td>
-                  <td className="px-5 py-3 text-right text-sm text-gray-300">{lib.file_count}</td>
-                  <td className="px-5 py-3 text-right text-sm text-gray-300">
-                    {formatBytes(lib.total_size_bytes)}
-                  </td>
-                  <td className="px-5 py-3 text-right text-sm text-gray-400">
-                    {lib.last_scanned ? timeAgo(lib.last_scanned) : 'Never'}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-netflix-gray bg-netflix-black/50">
+                <tr>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium text-gray-400">
+                    Library
+                  </th>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium text-gray-400">Type</th>
+                  <th className="px-5 py-2.5 text-right text-xs font-medium text-gray-400">
+                    Items
+                  </th>
+                  <th className="px-5 py-2.5 text-right text-xs font-medium text-gray-400">
+                    Files
+                  </th>
+                  <th className="px-5 py-2.5 text-right text-xs font-medium text-gray-400">Size</th>
+                  <th className="px-5 py-2.5 text-right text-xs font-medium text-gray-400">
+                    Last Scanned
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {libraryStats.map((lib) => (
+                  <tr
+                    key={lib.id}
+                    className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
+                  >
+                    <td className="px-5 py-3 text-sm font-medium text-white">{lib.name}</td>
+                    <td className="px-5 py-3">
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs font-medium ${
+                          lib.type === 'movies'
+                            ? 'bg-blue-500/20 text-blue-400'
+                            : lib.type === 'tvshows'
+                              ? 'bg-purple-500/20 text-purple-400'
+                              : 'bg-green-500/20 text-green-400'
+                        }`}
+                      >
+                        {lib.type}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-right text-sm text-gray-300">{lib.item_count}</td>
+                    <td className="px-5 py-3 text-right text-sm text-gray-300">{lib.file_count}</td>
+                    <td className="px-5 py-3 text-right text-sm text-gray-300">
+                      {formatBytes(lib.total_size_bytes)}
+                    </td>
+                    <td className="px-5 py-3 text-right text-sm text-gray-400">
+                      {lib.last_scanned ? timeAgo(lib.last_scanned) : 'Never'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -2170,63 +2208,65 @@ function UsersSection() {
         <Spinner />
       ) : (
         <div className="mt-6 overflow-hidden rounded-xl bg-netflix-dark">
-          <table className="w-full">
-            <thead className="border-b border-netflix-gray bg-netflix-black/50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">User</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Role</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Created</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users?.map((u) => (
-                <tr
-                  key={u.id}
-                  className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-netflix-gray text-sm font-medium text-white">
-                        {(u.display_name || u.username).charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-white">
-                          {u.display_name || u.username}
-                        </p>
-                        <p className="text-xs text-gray-500">{u.username}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`rounded px-2 py-0.5 text-xs font-medium ${
-                        u.is_admin
-                          ? 'bg-purple-500/20 text-purple-400'
-                          : 'bg-blue-500/20 text-blue-400'
-                      }`}
-                    >
-                      {u.is_admin ? 'Admin' : 'User'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-400">
-                    {new Date(u.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setEditingUser(u)}
-                        className="rounded bg-netflix-gray px-3 py-1 text-xs text-white hover:bg-gray-600"
-                      >
-                        Edit
-                      </button>
-                      {currentUser && u.id !== currentUser.id && <DeleteUserBtn userId={u.id} />}
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-netflix-gray bg-netflix-black/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">User</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Role</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Created</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {users?.map((u) => (
+                  <tr
+                    key={u.id}
+                    className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-netflix-gray text-sm font-medium text-white">
+                          {(u.display_name || u.username).charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-white">
+                            {u.display_name || u.username}
+                          </p>
+                          <p className="text-xs text-gray-500">{u.username}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs font-medium ${
+                          u.is_admin
+                            ? 'bg-purple-500/20 text-purple-400'
+                            : 'bg-blue-500/20 text-blue-400'
+                        }`}
+                      >
+                        {u.is_admin ? 'Admin' : 'User'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400">
+                      {new Date(u.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setEditingUser(u)}
+                          className="rounded bg-netflix-gray px-3 py-1 text-xs text-white hover:bg-gray-600"
+                        >
+                          Edit
+                        </button>
+                        {currentUser && u.id !== currentUser.id && <DeleteUserBtn userId={u.id} />}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {users?.length === 0 && (
             <p className="py-8 text-center text-sm text-gray-400">No users found</p>
           )}
@@ -2531,43 +2571,45 @@ function ActivitySection() {
         <Spinner />
       ) : (
         <div className="mt-4 overflow-hidden rounded-xl bg-netflix-dark">
-          <table className="w-full">
-            <thead className="border-b border-netflix-gray bg-netflix-black/50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Time</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">User</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Action</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Media</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">IP</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs?.map((log) => (
-                <tr
-                  key={log.id}
-                  className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
-                >
-                  <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-400">
-                    {new Date(log.created_at).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-white">{log.username ?? 'System'}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`rounded px-2 py-0.5 text-xs font-medium ${ACTION_BADGES[log.action] ?? 'bg-gray-500/20 text-gray-400'}`}
-                    >
-                      {log.action}
-                    </span>
-                  </td>
-                  <td className="max-w-[200px] truncate px-4 py-3 text-sm text-gray-300">
-                    {log.media_title ?? '-'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">
-                    {log.ip_address}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-netflix-gray bg-netflix-black/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Time</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">User</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Action</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Media</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">IP</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {logs?.map((log) => (
+                  <tr
+                    key={log.id}
+                    className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-400">
+                      {new Date(log.created_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-white">{log.username ?? 'System'}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs font-medium ${ACTION_BADGES[log.action] ?? 'bg-gray-500/20 text-gray-400'}`}
+                      >
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="max-w-[200px] truncate px-4 py-3 text-sm text-gray-300">
+                      {log.media_title ?? '-'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">
+                      {log.ip_address}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {(!logs || logs.length === 0) && (
             <p className="py-8 text-center text-sm text-gray-400">No activity found</p>
           )}
@@ -2608,58 +2650,66 @@ function TasksSection() {
         <Spinner />
       ) : (
         <div className="mt-6 overflow-hidden rounded-xl bg-netflix-dark">
-          <table className="w-full">
-            <thead className="border-b border-netflix-gray bg-netflix-black/50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Task</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Interval</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Last Run</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Next Run</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedTasks?.map((task) => {
-                const isTaskRunning = task.running || runningTask === task.name
-                return (
-                  <tr
-                    key={task.name}
-                    className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
-                  >
-                    <td className="px-4 py-3 text-sm font-medium text-white">{task.name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-300">{task.interval}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">
-                      {task.last_run ? timeAgo(task.last_run) : 'Never'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">
-                      {new Date(task.next_run).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      {isTaskRunning ? (
-                        <span className="flex items-center gap-1.5 text-xs text-yellow-400">
-                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-yellow-400 border-t-transparent" />
-                          Running
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-500">Idle</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => handleRun(task.name)}
-                        disabled={isTaskRunning}
-                        className="flex items-center gap-1.5 rounded bg-netflix-gray px-3 py-1.5 text-xs text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
-                      >
-                        <LuPlay size={12} />
-                        {isTaskRunning ? 'Running...' : 'Run Now'}
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-netflix-gray bg-netflix-black/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Task</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">
+                    Interval
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">
+                    Last Run
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">
+                    Next Run
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTasks?.map((task) => {
+                  const isTaskRunning = task.running || runningTask === task.name
+                  return (
+                    <tr
+                      key={task.name}
+                      className="border-b border-netflix-gray/50 last:border-b-0 hover:bg-netflix-gray/30"
+                    >
+                      <td className="px-4 py-3 text-sm font-medium text-white">{task.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-300">{task.interval}</td>
+                      <td className="px-4 py-3 text-xs text-gray-400">
+                        {task.last_run ? timeAgo(task.last_run) : 'Never'}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-400">
+                        {new Date(task.next_run).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isTaskRunning ? (
+                          <span className="flex items-center gap-1.5 text-xs text-yellow-400">
+                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-yellow-400 border-t-transparent" />
+                            Running
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-500">Idle</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => handleRun(task.name)}
+                          disabled={isTaskRunning}
+                          className="flex items-center gap-1.5 rounded bg-netflix-gray px-3 py-1.5 text-xs text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
+                        >
+                          <LuPlay size={12} />
+                          {isTaskRunning ? 'Running...' : 'Run Now'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
           {(!tasks || tasks.length === 0) && (
             <p className="py-8 text-center text-sm text-gray-400">No scheduled tasks</p>
           )}
