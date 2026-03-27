@@ -104,8 +104,8 @@ export function NotificationBell() {
         createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[9999] w-[360px] overflow-hidden rounded-lg bg-[#1a1a1a] shadow-2xl ring-1 ring-white/10"
-            style={{ top: pos.top, right: pos.right }}
+            className="fixed z-[9999] overflow-hidden rounded-lg bg-[#1a1a1a] shadow-2xl ring-1 ring-white/10 max-sm:inset-x-2 max-sm:top-14 sm:w-[360px]"
+            style={window.innerWidth >= 640 ? { top: pos.top, right: pos.right } : undefined}
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
