@@ -44,3 +44,4 @@ backend/.cache/
 backend/.gocache/
 
 .Velox
+note.md
