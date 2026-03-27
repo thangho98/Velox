@@ -224,3 +224,23 @@ export function useSetup() {
     },
   })
 }
+
+// Setup wizard status
+export function useWizardStatus() {
+  return useQuery({
+    queryKey: ['setup', 'wizard'],
+    queryFn: () => api.get<{ completed: boolean }>('/setup/wizard'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useCompleteWizard() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.post<{ completed: boolean }>('/setup/wizard/complete', {}),
+    onSuccess: () => {
+      queryClient.setQueryData(['setup', 'wizard'], { completed: true })
+    },
+  })
+}

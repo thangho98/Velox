@@ -1,13 +1,16 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router'
 import { useAuthStore } from '@/stores/auth'
-import { useTokenRefresh } from '@/hooks/stores/useAuth'
+import { useTokenRefresh, useWizardStatus } from '@/hooks/stores/useAuth'
 import { Layout } from '@/components/Layout'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })))
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
 const SetupPage = lazy(() => import('@/pages/SetupPage').then((m) => ({ default: m.SetupPage })))
+const SetupWizardPage = lazy(() =>
+  import('@/pages/SetupWizardPage').then((m) => ({ default: m.SetupWizardPage })),
+)
 const LibraryListPage = lazy(() =>
   import('@/pages/LibraryListPage').then((m) => ({ default: m.LibraryListPage })),
 )
@@ -34,11 +37,18 @@ const BrowsePage = lazy(() => import('@/pages/BrowsePage').then((m) => ({ defaul
 
 // Auth guard component - wraps content with Layout
 function RequireAuth() {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, user } = useAuthStore()
   useTokenRefresh()
+
+  const { data: wizardStatus, isLoading: wizardLoading } = useWizardStatus()
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
+  }
+
+  // Redirect admin to wizard if not completed
+  if (!wizardLoading && user?.is_admin && wizardStatus && !wizardStatus.completed) {
+    return <Navigate to="/setup/wizard" replace />
   }
 
   return (
@@ -89,6 +99,11 @@ export function RouterProvider() {
             {/* Public routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/setup" element={<SetupPage />} />
+
+            {/* Setup wizard (authenticated, no Layout) */}
+            <Route element={<RequireAuthFullScreen />}>
+              <Route path="/setup/wizard" element={<SetupWizardPage />} />
+            </Route>
 
             {/* Protected routes with Layout */}
             <Route element={<RequireAuth />}>

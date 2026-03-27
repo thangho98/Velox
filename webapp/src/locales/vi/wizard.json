@@ -1,0 +1,132 @@
+{
+  "title": "Thiết Lập Ban Đầu",
+  "subtitle": "Hãy cấu hình máy chủ media của bạn",
+  "steps": {
+    "metadata": "Metadata",
+    "subtitles": "Phụ Đề",
+    "playback": "Phát Lại",
+    "pretranscode": "Chuyển Mã",
+    "cinema": "Rạp Chiếu",
+    "summary": "Tóm Tắt"
+  },
+  "buttons": {
+    "next": "Tiếp",
+    "back": "Quay lại",
+    "skip": "Bỏ qua",
+    "finish": "Hoàn Tất",
+    "skipAll": "Bỏ qua tất cả",
+    "saving": "Đang lưu...",
+    "saved": "Đã lưu!"
+  },
+  "metadata": {
+    "title": "Nhà Cung Cấp Metadata",
+    "description": "Velox sử dụng các dịch vụ này để tự động lấy poster, mô tả, đánh giá và hình ảnh phim. Hầu hết đều có key sẵn — bạn chỉ cần thêm key riêng nếu muốn.",
+    "tmdb": {
+      "label": "TMDb",
+      "description": "Nguồn chính cho metadata phim & TV, poster và backdrop"
+    },
+    "omdb": {
+      "label": "OMDb",
+      "description": "Đánh giá IMDb, điểm Rotten Tomatoes và Metacritic"
+    },
+    "tvdb": {
+      "label": "TheTVDB",
+      "description": "Metadata bổ sung cho series TV và thông tin tập phim"
+    },
+    "fanart": {
+      "label": "Fanart.tv",
+      "description": "Logo HD và hình thu nhỏ chất lượng cao"
+    },
+    "apiKey": "API Key",
+    "apiKeyPlaceholder": "Nhập API key (không bắt buộc)",
+    "builtinAvailable": "Có key sẵn",
+    "customKey": "Đã cài key riêng"
+  },
+  "subtitles": {
+    "title": "Nhà Cung Cấp Phụ Đề",
+    "description": "Velox có thể tự động tìm kiếm và tải phụ đề cho phim từ nhiều nguồn.",
+    "opensubtitles": {
+      "label": "OpenSubtitles",
+      "description": "Kho phụ đề lớn nhất. API key + tài khoản không bắt buộc."
+    },
+    "subdl": {
+      "label": "Subdl",
+      "description": "Nguồn phụ đề thay thế với độ phủ tốt"
+    },
+    "deepl": {
+      "label": "Dịch DeepL",
+      "description": "Dịch phụ đề giữa các ngôn ngữ (miễn phí: 500K ký tự/tháng)"
+    },
+    "autoDownload": {
+      "label": "Ngôn ngữ tự động tải",
+      "description": "Tự động tải phụ đề bằng các ngôn ngữ này khi quét thư viện",
+      "placeholder": "vd: en,vi"
+    },
+    "username": "Tên đăng nhập",
+    "password": "Mật khẩu"
+  },
+  "playback": {
+    "title": "Cài Đặt Phát Lại",
+    "description": "Chọn cách Velox xử lý khi thiết bị không hỗ trợ định dạng video gốc.",
+    "mode": {
+      "label": "Chế Độ Phát",
+      "auto": {
+        "label": "Tự Động (Khuyến nghị)",
+        "description": "Tự động chuyển mã khi thiết bị không phát được file gốc. Tương thích tốt nhất."
+      },
+      "directPlay": {
+        "label": "Phát Trực Tiếp",
+        "description": "Luôn phát file gốc. Nhanh nhất, nhưng có thể không chạy trên mọi thiết bị."
+      }
+    }
+  },
+  "pretranscode": {
+    "title": "Chuyển Mã Trước",
+    "description": "Chuyển mã thư viện phim trước để phát tức thì — không giật lag. Tốn dung lượng ổ đĩa nhưng trải nghiệm xem tốt nhất.",
+    "enable": "Bật Chuyển Mã Trước",
+    "profiles": {
+      "label": "Chất Lượng",
+      "description": "Chọn độ phân giải cần chuyển mã trước"
+    },
+    "schedule": {
+      "label": "Lịch Chạy",
+      "always": "Luôn chạy",
+      "night": "Ban đêm (00:00 - 06:00)",
+      "idle": "Khi rảnh (không ai xem)"
+    },
+    "concurrency": {
+      "label": "Số Luồng Song Song",
+      "description": "Số tác vụ chuyển mã chạy đồng thời"
+    }
+  },
+  "cinema": {
+    "title": "Chế Độ Rạp Chiếu",
+    "description": "Phát trailer trước khi xem phim — giống như ở rạp. Trailer được lấy tự động từ TMDb.",
+    "enable": "Bật Chế Độ Rạp Chiếu",
+    "maxTrailers": {
+      "label": "Số Trailer Tối Đa",
+      "description": "Số trailer phát trước phim"
+    }
+  },
+  "summary": {
+    "title": "Hoàn Tất!",
+    "description": "Đây là tóm tắt cấu hình của bạn. Bạn có thể thay đổi bất cứ lúc nào trong Cài Đặt.",
+    "configured": "Đã cấu hình",
+    "skipped": "Đã bỏ qua",
+    "enabled": "Đã bật",
+    "disabled": "Đã tắt",
+    "addLibrary": "Thêm Thư Viện Đầu Tiên",
+    "addLibraryDescription": "Thêm thư viện media để bắt đầu quét phim.",
+    "libraryName": "Tên Thư Viện",
+    "libraryNamePlaceholder": "vd: Phim Lẻ",
+    "libraryPath": "Đường Dẫn Media",
+    "libraryPathPlaceholder": "/media/movies",
+    "libraryType": "Loại",
+    "movie": "Phim Lẻ",
+    "tvshow": "Phim Bộ",
+    "addLibraryButton": "Thêm Thư Viện",
+    "adding": "Đang thêm...",
+    "libraryAdded": "Đã thêm thư viện! Quét sẽ bắt đầu tự động.",
+    "skipLibrary": "Tôi sẽ thêm thư viện sau"
+  }
+}

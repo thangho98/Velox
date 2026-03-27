@@ -297,7 +297,7 @@ func runServer() {
 	libraryHandler := handler.NewLibraryHandler(librarySvc)
 	mediaHandler := handler.NewMediaHandler(mediaSvc)
 	streamHandler := handler.NewStreamHandler(streamSvc)
-	setupHandler := handler.NewSetupHandler(authSvc)
+	setupHandler := handler.NewSetupHandler(authSvc, appSettingsRepo)
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(authSvc)
 	profileHandler := handler.NewProfileHandler(authSvc, prefsRepo, userDataSvc)
@@ -357,6 +357,8 @@ func runServer() {
 	// Setup routes (public, only works before configured)
 	mux.HandleFunc("GET /api/setup/status", setupHandler.Status)
 	mux.HandleFunc("POST /api/setup", setupHandler.Setup)
+	mux.HandleFunc("GET /api/setup/wizard", setupHandler.WizardStatus)
+	mux.HandleFunc("POST /api/setup/wizard/complete", setupHandler.CompleteWizard)
 
 	// Auth routes (public)
 	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
@@ -1114,6 +1116,7 @@ func runServer() {
 		"/api/health",
 		"/api/setup/status",
 		"/api/setup",
+		"/api/setup/wizard",
 		"/api/auth/login",
 		"/api/auth/refresh",
 		"/api/auth/logout",

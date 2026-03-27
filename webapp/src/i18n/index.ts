@@ -10,6 +10,7 @@ import enSettings from '../locales/en/settings.json'
 import enMedia from '../locales/en/media.json'
 import enWatch from '../locales/en/watch.json'
 import enErrors from '../locales/en/errors.json'
+import enWizard from '../locales/en/wizard.json'
 
 // Vietnamese translations
 import viCommon from '../locales/vi/common.json'
@@ -19,6 +20,7 @@ import viSettings from '../locales/vi/settings.json'
 import viMedia from '../locales/vi/media.json'
 import viWatch from '../locales/vi/watch.json'
 import viErrors from '../locales/vi/errors.json'
+import viWizard from '../locales/vi/wizard.json'
 
 const resources = {
   en: {
@@ -29,6 +31,7 @@ const resources = {
     media: enMedia,
     watch: enWatch,
     errors: enErrors,
+    wizard: enWizard,
   },
   vi: {
     common: viCommon,
@@ -38,6 +41,7 @@ const resources = {
     media: viMedia,
     watch: viWatch,
     errors: viErrors,
+    wizard: viWizard,
   },
 }
 

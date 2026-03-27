@@ -1,0 +1,132 @@
+{
+  "title": "Setup Wizard",
+  "subtitle": "Let's configure your media server",
+  "steps": {
+    "metadata": "Metadata",
+    "subtitles": "Subtitles",
+    "playback": "Playback",
+    "pretranscode": "Pre-transcode",
+    "cinema": "Cinema Mode",
+    "summary": "Summary"
+  },
+  "buttons": {
+    "next": "Next",
+    "back": "Back",
+    "skip": "Skip",
+    "finish": "Finish Setup",
+    "skipAll": "Skip All",
+    "saving": "Saving...",
+    "saved": "Saved!"
+  },
+  "metadata": {
+    "title": "Metadata Providers",
+    "description": "Velox uses these services to automatically fetch movie posters, descriptions, ratings, and artwork. Most have built-in keys — you only need to add your own if you want.",
+    "tmdb": {
+      "label": "TMDb",
+      "description": "Primary source for movie & TV metadata, posters, and backdrops"
+    },
+    "omdb": {
+      "label": "OMDb",
+      "description": "IMDb ratings, Rotten Tomatoes scores, and Metacritic scores"
+    },
+    "tvdb": {
+      "label": "TheTVDB",
+      "description": "Additional TV series metadata and episode information"
+    },
+    "fanart": {
+      "label": "Fanart.tv",
+      "description": "HD clearlogos and thumbnail artwork"
+    },
+    "apiKey": "API Key",
+    "apiKeyPlaceholder": "Enter API key (optional)",
+    "builtinAvailable": "Built-in key available",
+    "customKey": "Custom key set"
+  },
+  "subtitles": {
+    "title": "Subtitle Providers",
+    "description": "Velox can automatically search and download subtitles for your media from multiple sources.",
+    "opensubtitles": {
+      "label": "OpenSubtitles",
+      "description": "Largest subtitle database. API key + account optional for higher limits."
+    },
+    "subdl": {
+      "label": "Subdl",
+      "description": "Alternative subtitle provider with good coverage"
+    },
+    "deepl": {
+      "label": "DeepL Translation",
+      "description": "Translate subtitles between languages (free tier: 500K chars/month)"
+    },
+    "autoDownload": {
+      "label": "Auto-download Languages",
+      "description": "Automatically download subtitles in these languages during library scan",
+      "placeholder": "e.g. en,vi"
+    },
+    "username": "Username",
+    "password": "Password"
+  },
+  "playback": {
+    "title": "Playback Settings",
+    "description": "Choose how Velox handles video playback when a device doesn't support the original format.",
+    "mode": {
+      "label": "Playback Mode",
+      "auto": {
+        "label": "Auto (Recommended)",
+        "description": "Automatically transcode when the device can't play the original format. Best compatibility."
+      },
+      "directPlay": {
+        "label": "Direct Play Only",
+        "description": "Always serve the original file. Fastest, but may not work on all devices."
+      }
+    }
+  },
+  "pretranscode": {
+    "title": "Pre-transcode",
+    "description": "Encode your library in advance for instant playback — zero buffering. This uses disk space but provides the best viewing experience.",
+    "enable": "Enable Pre-transcode",
+    "profiles": {
+      "label": "Quality Profiles",
+      "description": "Select which resolutions to pre-encode"
+    },
+    "schedule": {
+      "label": "Schedule",
+      "always": "Always",
+      "night": "Night only (00:00 - 06:00)",
+      "idle": "When idle (no active streams)"
+    },
+    "concurrency": {
+      "label": "Concurrent Jobs",
+      "description": "Number of simultaneous encoding tasks"
+    }
+  },
+  "cinema": {
+    "title": "Cinema Mode",
+    "description": "Play trailers before your movie starts — just like at the theater. Trailers are fetched automatically from TMDb.",
+    "enable": "Enable Cinema Mode",
+    "maxTrailers": {
+      "label": "Max Trailers",
+      "description": "Number of trailers to play before the movie"
+    }
+  },
+  "summary": {
+    "title": "You're All Set!",
+    "description": "Here's a summary of your configuration. You can always change these later in Settings.",
+    "configured": "Configured",
+    "skipped": "Skipped",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "addLibrary": "Add Your First Library",
+    "addLibraryDescription": "Now add a media library to start scanning your movies and TV shows.",
+    "libraryName": "Library Name",
+    "libraryNamePlaceholder": "e.g. Movies",
+    "libraryPath": "Media Path",
+    "libraryPathPlaceholder": "/media/movies",
+    "libraryType": "Type",
+    "movie": "Movies",
+    "tvshow": "TV Shows",
+    "addLibraryButton": "Add Library",
+    "adding": "Adding...",
+    "libraryAdded": "Library added! Scanning will start automatically.",
+    "skipLibrary": "I'll add libraries later"
+  }
+}

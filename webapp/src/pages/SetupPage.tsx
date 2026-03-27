@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router'
-import { useSetupStatus, useSetup } from '@/hooks/stores/useAuth'
+import { useSetupStatus, useSetup, useLogin } from '@/hooks/stores/useAuth'
 import { useTranslation } from '@/hooks/useTranslation'
 import { Logo } from '@/components/Logo'
 
@@ -11,13 +11,15 @@ export function SetupPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
+  const [loggingIn, setLoggingIn] = useState(false)
   const { t } = useTranslation('auth')
 
   const { data: setupStatus, isLoading: checkingSetup } = useSetupStatus()
   const { mutate: setup, isPending } = useSetup()
+  const { mutate: login } = useLogin()
 
-  // Redirect to home if already configured
-  if (!checkingSetup && setupStatus?.configured) {
+  // Redirect to home if already configured (but not if we're auto-logging in)
+  if (!checkingSetup && setupStatus?.configured && !loggingIn) {
     return <Navigate to="/" replace />
   }
 
@@ -44,7 +46,16 @@ export function SetupPage() {
       { username, password, display_name: displayName || username },
       {
         onSuccess: () => {
-          navigate('/login')
+          // Prevent redirect-if-configured while auto-login is in progress
+          setLoggingIn(true)
+          // Auto-login then redirect to wizard
+          login(
+            { username, password },
+            {
+              onSuccess: () => navigate('/setup/wizard', { replace: true }),
+              onError: () => navigate('/login'),
+            },
+          )
         },
         onError: (err: Error) => {
           setError(err.message || t('setup.errors.failed'))

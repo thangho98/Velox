@@ -51,6 +51,12 @@ const (
 	SettingDeepLAPIKey = "deepl_api_key"
 )
 
+// Known setting keys for setup wizard.
+const (
+	// SettingSetupWizardCompleted tracks whether the admin has completed the onboarding wizard.
+	SettingSetupWizardCompleted = "setup_wizard_completed"
+)
+
 // Known setting keys for playback policy.
 const (
 	// SettingPlaybackMode controls server-wide playback behavior.

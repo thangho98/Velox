@@ -5,15 +5,18 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/thawng/velox/internal/model"
+	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/service"
 )
 
 type SetupHandler struct {
-	authSvc *service.AuthService
+	authSvc         *service.AuthService
+	appSettingsRepo *repository.AppSettingsRepo
 }
 
-func NewSetupHandler(authSvc *service.AuthService) *SetupHandler {
-	return &SetupHandler{authSvc: authSvc}
+func NewSetupHandler(authSvc *service.AuthService, appSettingsRepo *repository.AppSettingsRepo) *SetupHandler {
+	return &SetupHandler{authSvc: authSvc, appSettingsRepo: appSettingsRepo}
 }
 
 // Status returns whether the system is configured
@@ -74,4 +77,25 @@ func (h *SetupHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	// Don't return password hash
 	user.PasswordHash = ""
 	respondJSON(w, http.StatusCreated, user)
+}
+
+// WizardStatus returns whether the setup wizard has been completed.
+// GET /api/setup/wizard
+func (h *SetupHandler) WizardStatus(w http.ResponseWriter, r *http.Request) {
+	val, err := h.appSettingsRepo.Get(r.Context(), model.SettingSetupWizardCompleted)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load wizard status")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]bool{"completed": val == "true"})
+}
+
+// CompleteWizard marks the setup wizard as completed.
+// POST /api/setup/wizard/complete
+func (h *SetupHandler) CompleteWizard(w http.ResponseWriter, r *http.Request) {
+	if err := h.appSettingsRepo.Set(r.Context(), model.SettingSetupWizardCompleted, "true"); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save wizard status")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]bool{"completed": true})
 }
