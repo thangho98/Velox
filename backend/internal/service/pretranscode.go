@@ -26,8 +26,8 @@ type PretranscodeService struct {
 	libraryRepo     *repository.LibraryRepo
 	notificationSvc *NotificationService
 
-	dataDir string
-	hwAccel string
+	outputBaseDir string
+	hwAccel       string
 
 	mu       sync.Mutex
 	paused   atomic.Bool
@@ -46,14 +46,14 @@ func NewPretranscodeService(
 	mediaFileRepo *repository.MediaFileRepo,
 	settingsRepo *repository.AppSettingsRepo,
 	libraryRepo *repository.LibraryRepo,
-	dataDir, hwAccel string,
+	pretranscodePath, hwAccel string,
 ) *PretranscodeService {
 	s := &PretranscodeService{
 		repo:          repo,
 		mediaFileRepo: mediaFileRepo,
 		settingsRepo:  settingsRepo,
 		libraryRepo:   libraryRepo,
-		dataDir:       dataDir,
+		outputBaseDir: pretranscodePath,
 		hwAccel:       hwAccel,
 	}
 	s.currentFile.Store("")
@@ -68,7 +68,7 @@ func (s *PretranscodeService) SetNotificationService(svc *NotificationService) {
 
 // OutputDir returns the base directory for pre-transcode files.
 func (s *PretranscodeService) OutputDir() string {
-	return filepath.Join(s.dataDir, "pretranscode")
+	return s.outputBaseDir
 }
 
 // Start begins the background scheduler loop.
@@ -221,7 +221,7 @@ func (s *PretranscodeService) processJob(ctx context.Context, job *model.Pretran
 
 	// Check disk space before encoding (rough estimate: need at least bitrate * duration bytes)
 	estimatedSize := int64(float64(profile.VideoBitrate+profile.AudioBitrate) * mf.Duration / 8 * 1000)
-	freeSpace := diskFreeSpace(s.dataDir)
+	freeSpace := diskFreeSpace(s.outputBaseDir)
 	if freeSpace > 0 && freeSpace < estimatedSize*2 {
 		log.Printf("pretranscode: disk low (free: %d MB, need ~%d MB) — pausing", freeSpace/1024/1024, estimatedSize/1024/1024)
 		s.Pause()
@@ -550,7 +550,7 @@ func (s *PretranscodeService) EstimateStorage(ctx context.Context, libraryID int
 		estimate.FileCount = count
 	}
 
-	estimate.DiskFreeBytes = diskFreeSpace(s.dataDir)
+	estimate.DiskFreeBytes = diskFreeSpace(s.outputBaseDir)
 	return estimate, nil
 }
 

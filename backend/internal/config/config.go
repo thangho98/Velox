@@ -17,6 +17,7 @@ type Config struct {
 	TranscodePath     string
 	SubtitleCachePath string
 	TrickplayPath     string
+	PretranscodePath  string
 	CORSOrigin        string
 
 	// Hardware transcoding (Plan E Phase 01)
@@ -69,6 +70,7 @@ func Load() *Config {
 		TranscodePath:     filepath.Join(dataDir, "transcode"),
 		SubtitleCachePath: filepath.Join(dataDir, "subtitles"),
 		TrickplayPath:     filepath.Join(dataDir, "trickplay"),
+		PretranscodePath:  envOrDefault("VELOX_PRETRANSCODE_DIR", filepath.Join(dataDir, "pretranscode")),
 		CORSOrigin:        envOrDefault("VELOX_CORS_ORIGIN", "http://localhost:5173"),
 
 		HWAccel:           envOrDefault("VELOX_HW_ACCEL", "auto"),

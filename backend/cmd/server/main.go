@@ -288,7 +288,7 @@ func runServer() {
 	pretranscodeRepo := repository.NewPretranscodeRepo(db)
 	pretranscodeSvc := service.NewPretranscodeService(
 		pretranscodeRepo, mediaFileRepo, appSettingsRepo, libraryRepo,
-		cfg.DataDir, hwAccel,
+		cfg.PretranscodePath, hwAccel,
 	)
 	pretranscodeSvc.SetNotificationService(notificationSvc)
 	streamSvc.SetPretranscodeService(pretranscodeSvc)

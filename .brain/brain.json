@@ -117,7 +117,7 @@
   },
   "pretranscode": {
     "overview": "Netflix-style offline encoding. Background scheduler encodes media into H.264+AAC MP4 at configurable quality (480p/720p/1080p/1440p/4K). Playback engine serves pre-encoded files instantly (http.ServeContent, <100ms) with fallback to realtime transcode.",
-    "storage": "Output: {VELOX_DATA_DIR}/pretranscode/{media_file_id}/{profile_name}.mp4",
+    "storage": "Output: {VELOX_PRETRANSCODE_DIR}/{media_file_id}/{profile_name}.mp4. Configurable via VELOX_PRETRANSCODE_DIR env var (default: $VELOX_DATA_DIR/pretranscode). Allows separate volume mount for large pretranscode output.",
     "scheduler": "Background goroutine. Schedule modes: always, night (00:00-06:00), idle. Configurable concurrency (1-4). Auto-pause on disk low.",
     "skip_logic": "No upscale (source < profile height). Skip if source already H.264+AAC at ≤ profile resolution.",
     "audio": "Transcode to AAC stereo by default. Copy if source already AAC.",
@@ -222,10 +222,11 @@
     "dockerfile": "Dockerfile (root)",
     "compose": "docker-compose.yml (root)",
     "ports": { "80": "nginx", "8080": "Go backend" },
-    "volumes": { "/data": "VELOX_DATA_DIR", "/media": "Media library" },
+    "volumes": { "/data": "VELOX_DATA_DIR", "/media": "Media library", "/pretranscode": "VELOX_PRETRANSCODE_DIR (optional, separate volume)" },
     "env_vars": {
       "PUID": "Host user ID", "PGID": "Host group ID",
       "VELOX_DATA_DIR": "/data", "VELOX_HW_ACCEL": "auto|vaapi|nvenc|qsv|videotoolbox|none",
+      "VELOX_PRETRANSCODE_DIR": "Separate pretranscode output dir (default: $VELOX_DATA_DIR/pretranscode). Allows mounting to a different volume.",
       "VELOX_MAX_TRANSCODES": "2", "VELOX_FILE_WATCHER": "true",
       "VELOX_TMDB_API_KEY": "TMDb v4 Read Access Token (optional)",
       "VELOX_OMDB_API_KEY": "OMDb API key (optional)",

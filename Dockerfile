@@ -163,10 +163,14 @@ set -e
 VELOX_DATA_DIR=${VELOX_DATA_DIR:-/data}
 export VELOX_DATA_DIR
 
+VELOX_PRETRANSCODE_DIR=${VELOX_PRETRANSCODE_DIR:-$VELOX_DATA_DIR/pretranscode}
+export VELOX_PRETRANSCODE_DIR
+
 mkdir -p "$VELOX_DATA_DIR" \
          "$VELOX_DATA_DIR/subtitles" \
          "$VELOX_DATA_DIR/transcode" \
-         "$VELOX_DATA_DIR/trickplay"
+         "$VELOX_DATA_DIR/trickplay" \
+         "$VELOX_PRETRANSCODE_DIR"
 
 # ---- VAAPI: default to iHD driver (Intel 6th gen+) ----
 # Override via LIBVA_DRIVER_NAME env var in docker-compose if needed
