@@ -50,7 +50,7 @@ func main() {
 			runMigrate()
 			return
 		case "version":
-			fmt.Println("velox v0.1.0")
+			fmt.Println("velox v0.1.1")
 			return
 		}
 	}
