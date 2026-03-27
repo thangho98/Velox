@@ -162,6 +162,48 @@ func (r *PretranscodeRepo) ListReadyFilesByMedia(ctx context.Context, mediaFileI
 	return files, rows.Err()
 }
 
+// ReadyFileWithProfile pairs a pre-transcode file with its profile metadata.
+type ReadyFileWithProfile struct {
+	File    model.PretranscodeFile
+	Profile model.PretranscodeProfile
+}
+
+// ListReadyFilesWithProfiles returns ready files joined with their profiles in a single query.
+// Avoids N+1 queries when building quality options.
+func (r *PretranscodeRepo) ListReadyFilesWithProfiles(ctx context.Context, mediaFileID int64) ([]ReadyFileWithProfile, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT pf.id, pf.media_file_id, pf.profile_id, pf.file_path, pf.file_size, pf.duration_secs,
+		       pf.status, pf.error_message, pf.started_at, pf.completed_at, pf.created_at,
+		       pp.id, pp.name, pp.height, pp.video_bitrate, pp.audio_bitrate, pp.video_codec, pp.audio_codec, pp.enabled, pp.created_at
+		FROM pretranscode_files pf
+		JOIN pretranscode_profiles pp ON pp.id = pf.profile_id
+		WHERE pf.media_file_id = ? AND pf.status = 'ready'
+		ORDER BY pp.height DESC`, mediaFileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []ReadyFileWithProfile
+	for rows.Next() {
+		var f model.PretranscodeFile
+		var p model.PretranscodeProfile
+		var errMsg, startedAt, completedAt sql.NullString
+		if err := rows.Scan(
+			&f.ID, &f.MediaFileID, &f.ProfileID, &f.FilePath, &f.FileSize, &f.DurationSecs,
+			&f.Status, &errMsg, &startedAt, &completedAt, &f.CreatedAt,
+			&p.ID, &p.Name, &p.Height, &p.VideoBitrate, &p.AudioBitrate, &p.VideoCodec, &p.AudioCodec, &p.Enabled, &p.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		f.ErrorMessage = errMsg.String
+		f.StartedAt = startedAt.String
+		f.CompletedAt = completedAt.String
+		results = append(results, ReadyFileWithProfile{File: f, Profile: p})
+	}
+	return results, rows.Err()
+}
+
 // UpsertFile inserts or updates a pre-transcode file record.
 func (r *PretranscodeRepo) UpsertFile(ctx context.Context, f *model.PretranscodeFile) (int64, error) {
 	res, err := r.db.ExecContext(ctx, `

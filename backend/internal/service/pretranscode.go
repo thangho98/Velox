@@ -616,6 +616,11 @@ func (s *PretranscodeService) ListReadyFiles(ctx context.Context, mediaFileID in
 	return s.repo.ListReadyFilesByMedia(ctx, mediaFileID)
 }
 
+// ListReadyFilesWithProfiles returns ready files joined with their profile metadata in one query.
+func (s *PretranscodeService) ListReadyFilesWithProfiles(ctx context.Context, mediaFileID int64) ([]repository.ReadyFileWithProfile, error) {
+	return s.repo.ListReadyFilesWithProfiles(ctx, mediaFileID)
+}
+
 // RemuxFromHLS copies existing HLS transcode segments into a pretranscode MP4.
 // Called after realtime transcode — "transcode once, instant forever".
 // No-op if pretranscode disabled, no matching profile, or file already exists.

@@ -99,7 +99,7 @@ func isHLSComplete(path string) bool {
 func (t *Transcoder) waitForFirstSegment(job *transcodeJob, segPath string) error {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-	timeout := time.After(10 * time.Minute)
+	timeout := time.After(3 * time.Minute)
 
 	for {
 		select {
@@ -151,15 +151,17 @@ func (t *Transcoder) startHLSBackground(masterPath, firstSeg, inputPath, dir, pr
 			err = t.runHLSFFmpeg(inputPath, dir, prefix, siIdx, hdr, "", videoCopy)
 		}
 
-		t.mu.Lock()
-		job.err = err
-		delete(t.active, masterPath)
-		t.mu.Unlock()
-
 		if err != nil {
 			log.Printf("transcoder: background transcode failed for %s: %v", masterPath, err)
 		}
+
+		// Signal completion BEFORE removing from active map so WaitForSegment
+		// can observe the done channel and fail fast instead of timing out.
+		t.mu.Lock()
+		job.err = err
 		close(job.done)
+		delete(t.active, masterPath)
+		t.mu.Unlock()
 	}()
 
 	return t.waitForFirstSegment(job, firstSeg)
@@ -252,6 +254,7 @@ func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr 
 			"-f", "hls",
 			"-hls_time", "6",
 			"-hls_list_size", "0",
+			"-hls_playlist_type", "event",
 			"-hls_segment_filename", segPattern,
 			masterPath,
 		}
@@ -269,6 +272,7 @@ func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr 
 			"-f", "hls",
 			"-hls_time", "6",
 			"-hls_list_size", "0",
+			"-hls_playlist_type", "event",
 			"-hls_segment_filename", segPattern,
 			masterPath,
 		)
@@ -293,7 +297,8 @@ type AudioVariant struct {
 }
 
 // GenerateHLSWithAudio generates HLS with multiple audio tracks using #EXT-X-MEDIA.
-// Creates separate audio playlists and a master playlist that references them.
+// Uses a single FFmpeg process for video + all audio outputs (one input read, one
+// semaphore slot, video segments start immediately without waiting for audio).
 // Falls back to simple HLS when <= 1 audio track.
 // videoCopy=true: copies the video stream unchanged, transcodes audio only.
 func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audioTracks []model.AudioTrack, fileID int64, subtitleStreamIndex int, videoCopy bool) error {
@@ -338,7 +343,6 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 				name = fmt.Sprintf("Audio %d", track.StreamIndex)
 			}
 		}
-		// Strip double quotes — they would break the M3U8 quoted-string format.
 		name = strings.ReplaceAll(name, `"`, `'`)
 		variants = append(variants, AudioVariant{
 			Language:    track.Language,
@@ -348,122 +352,102 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 		})
 	}
 
-	// Run all encoding in a background goroutine so the HTTP handler can return
-	// as soon as the first video segment is ready.
+	// Audio playlists are namespaced with the same prefix as video to avoid
+	// cache collisions between different file/subtitle/videoCopy variants.
+	audioPlaylistPaths := make(map[int]string)
+	for _, v := range variants {
+		audioPlaylistPaths[v.StreamIndex] = filepath.Join(dir, fmt.Sprintf("%saudio_%d.m3u8", prefix, v.StreamIndex))
+	}
+
+	// Write master.m3u8 BEFORE encoding starts — it only contains URIs that
+	// reference the audio and video playlists. Clients fetch those sub-playlists
+	// on demand; WaitForSegment handles the case where they aren't ready yet.
+	if err := t.writeMasterPlaylistWithAudio(masterPath, variants, audioPlaylistPaths, prefix); err != nil {
+		t.mu.Lock()
+		job.err = err
+		close(job.done)
+		delete(t.active, masterPath)
+		t.mu.Unlock()
+		return err
+	}
+
+	// Single FFmpeg process: video + all audio outputs in one pass.
+	// One input read, one semaphore slot, video segments appear immediately.
 	go func() {
 		release := t.acquireSlot()
 		defer release()
 
-		job.err = func() error {
-			// --- Audio tracks (audio-only encode, much faster than video) ---
-			audioPlaylistPaths := make(map[int]string)
-			for _, v := range variants {
-				audioPlaylist := filepath.Join(dir, fmt.Sprintf("audio_%d.m3u8", v.StreamIndex))
-				audioPlaylistPaths[v.StreamIndex] = audioPlaylist
+		job.err = t.runMultiOutputHLS(inputPath, dir, prefix, variants, subtitleStreamIndex, hdr, t.hwAccel, videoCopy)
+		if job.err != nil && t.hwAccel != "" && !videoCopy {
+			log.Printf("transcoder: HW encode failed for multi-audio (%v), retrying with software", job.err)
+			job.err = t.runMultiOutputHLS(inputPath, dir, prefix, variants, subtitleStreamIndex, hdr, "", videoCopy)
+		}
 
-				cmd := exec.Command("ffmpeg",
-					"-hide_banner", "-loglevel", "warning",
-					"-probesize", "50000000",
-					"-analyzeduration", "100000000",
-					"-i", inputPath,
-					"-map", fmt.Sprintf("0:%d", v.StreamIndex),
-					"-c:a", "aac", "-b:a", "128k", "-ac", "2",
-					"-f", "hls",
-					"-hls_time", "6",
-					"-hls_list_size", "0",
-					"-hls_segment_filename", filepath.Join(dir, fmt.Sprintf("audio_%d_%%04d.ts", v.StreamIndex)),
-					audioPlaylist,
-				)
-				var stderr bytes.Buffer
-				cmd.Stderr = &stderr
-				if err := cmd.Run(); err != nil {
-					return fmt.Errorf("transcode audio stream %d: %w — %s", v.StreamIndex, err, stderr.String())
-				}
-			}
-
-			// Write master.m3u8 before video starts so it is available as soon
-			// as the first video segment appears (caller polls for that segment).
-			if err := t.writeMasterPlaylistWithAudio(masterPath, variants, audioPlaylistPaths, prefix); err != nil {
-				return err
-			}
-
-			// --- Video track (the slow part — runs fully in background) ---
-			vp := filepath.Join(dir, prefix+"video.m3u8")
-			segFile := filepath.Join(dir, prefix+"video_%04d.ts")
-			var videoArgs []string
-			if videoCopy {
-				videoArgs = []string{
-					"-hide_banner", "-loglevel", "warning",
-					"-probesize", "50000000", "-analyzeduration", "100000000",
-					"-i", inputPath,
-					"-map", "0:v:0", "-c:v", "copy",
-					"-avoid_negative_ts", "make_zero",
-					"-an", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
-					"-hls_segment_filename", segFile,
-					vp,
-				}
-			} else {
-				videoArgs = []string{"-hide_banner", "-loglevel", "warning"}
-				videoArgs = append(videoArgs, buildFFmpegInputArgs(t.hwAccel)...)
-				videoArgs = append(videoArgs, "-i", inputPath)
-				if subtitleStreamIndex >= 0 {
-					videoArgs = append(videoArgs, buildImageSubtitleBurnInVideoOnlyArgs(t.hwAccel, hdr, subtitleStreamIndex)...)
-				} else {
-					videoArgs = append(videoArgs, "-map", "0:v:0")
-					videoArgs = append(videoArgs, buildVideoEncodeArgs(t.hwAccel, hdr, subtitleStreamIndex, inputPath)...)
-				}
-				videoArgs = append(videoArgs,
-					"-an", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
-					"-hls_segment_filename", segFile,
-					vp,
-				)
-			}
-			cmd := exec.Command("ffmpeg", videoArgs...)
-			var stderr bytes.Buffer
-			cmd.Stderr = &stderr
-			if err := cmd.Run(); err != nil {
-				if t.hwAccel != "" && !videoCopy {
-					log.Printf("transcoder: HW encode failed for video track (%v), retrying with software", err)
-					swArgs := []string{
-						"-hide_banner", "-loglevel", "warning",
-						"-probesize", "50000000",
-						"-analyzeduration", "100000000",
-						"-i", inputPath,
-					}
-					if subtitleStreamIndex >= 0 {
-						swArgs = append(swArgs, buildImageSubtitleBurnInVideoOnlyArgs("", hdr, subtitleStreamIndex)...)
-					} else {
-						swArgs = append(swArgs, "-map", "0:v:0")
-						swArgs = append(swArgs, buildVideoEncodeArgs("", hdr, subtitleStreamIndex, inputPath)...)
-					}
-					swArgs = append(swArgs,
-						"-an", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
-						"-hls_segment_filename", segFile,
-						vp,
-					)
-					cmdSW := exec.Command("ffmpeg", swArgs...)
-					var stderr2 bytes.Buffer
-					cmdSW.Stderr = &stderr2
-					if err2 := cmdSW.Run(); err2 != nil {
-						return fmt.Errorf("transcode video: %w — %s", err2, stderr2.String())
-					}
-				} else {
-					return fmt.Errorf("transcode video: %w — %s", err, stderr.String())
-				}
-			}
-			return nil
-		}()
-
-		t.mu.Lock()
-		delete(t.active, masterPath)
-		t.mu.Unlock()
 		if job.err != nil {
 			log.Printf("transcoder: background multi-audio transcode failed for %s: %v", masterPath, job.err)
 		}
+
+		t.mu.Lock()
 		close(job.done)
+		delete(t.active, masterPath)
+		t.mu.Unlock()
 	}()
 
 	return t.waitForFirstSegment(job, firstVideoSeg)
+}
+
+// runMultiOutputHLS runs a single FFmpeg process that produces video HLS + N audio
+// HLS outputs simultaneously. This avoids reading the input file N+1 times and
+// ensures video encoding starts immediately (no audio-blocking-video bottleneck).
+func (t *Transcoder) runMultiOutputHLS(inputPath, dir, prefix string, variants []AudioVariant, siIdx int, hdr bool, hwAccel string, videoCopy bool) error {
+	args := []string{"-hide_banner", "-loglevel", "warning"}
+	if videoCopy {
+		args = append(args, ffmpegInputProbeArgs()...)
+	} else {
+		args = append(args, buildFFmpegInputArgs(hwAccel)...)
+	}
+	args = append(args, "-i", inputPath)
+
+	// Global option for video copy mode.
+	if videoCopy {
+		args = append(args, "-avoid_negative_ts", "make_zero")
+	}
+
+	// ── Video output ────────────────────────────────────────────────────────
+	if videoCopy {
+		args = append(args, "-map", "0:v:0", "-c:v", "copy")
+	} else if siIdx >= 0 {
+		args = append(args, buildImageSubtitleBurnInVideoOnlyArgs(hwAccel, hdr, siIdx)...)
+	} else {
+		args = append(args, "-map", "0:v:0")
+		args = append(args, buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)...)
+	}
+	args = append(args,
+		"-an",
+		"-f", "hls", "-hls_time", "6", "-hls_list_size", "0", "-hls_playlist_type", "event",
+		"-hls_segment_filename", filepath.Join(dir, prefix+"video_%04d.ts"),
+		filepath.Join(dir, prefix+"video.m3u8"),
+	)
+
+	// ── Audio outputs (one per track, CPU-only AAC) ─────────────────────────
+	for _, v := range variants {
+		args = append(args,
+			"-map", fmt.Sprintf("0:%d", v.StreamIndex),
+			"-c:a", "aac", "-b:a", "128k", "-ac", "2",
+			"-f", "hls", "-hls_time", "6", "-hls_list_size", "0", "-hls_playlist_type", "event",
+			"-hls_segment_filename", filepath.Join(dir, fmt.Sprintf("%saudio_%d_%%04d.ts", prefix, v.StreamIndex)),
+			filepath.Join(dir, fmt.Sprintf("%saudio_%d.m3u8", prefix, v.StreamIndex)),
+		)
+	}
+
+	log.Printf("transcoder: ffmpeg %s", strings.Join(args, " "))
+	cmd := exec.Command("ffmpeg", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("transcode multi-output HLS: %w — %s", err, stderr.String())
+	}
+	return nil
 }
 
 // writeMasterPlaylistWithAudio creates the master playlist with #EXT-X-MEDIA tags.
@@ -530,13 +514,14 @@ func (t *Transcoder) GenerateABRHLS(mediaID int64, inputPath string, sourceHeigh
 	go func() {
 		job.err = t.generateABRVariants(dir, masterPath, inputPath, sourceHeight, fileID)
 
-		t.mu.Lock()
-		delete(t.active, masterPath)
-		t.mu.Unlock()
 		if job.err != nil {
 			log.Printf("transcoder: ABR generation failed for %s: %v", masterPath, job.err)
 		}
+
+		t.mu.Lock()
 		close(job.done)
+		delete(t.active, masterPath)
+		t.mu.Unlock()
 	}()
 
 	<-job.done
@@ -662,19 +647,15 @@ func (t *Transcoder) SegmentPath(mediaID int64, segment string) string {
 }
 
 // WaitForSegment waits up to timeout for a segment file to appear on disk.
-// Returns true if the segment exists, false if timed out.
-// Used when FFmpeg is still writing segments and the player requests one
-// that hasn't been flushed yet — avoids 404 spam from the client.
+// Returns true if the path exists, false if timed out or all relevant jobs
+// in the same media directory have finished without producing it.
 func (t *Transcoder) WaitForSegment(path string, timeout time.Duration) bool {
 	if _, err := os.Stat(path); err == nil {
 		return true
 	}
 
-	// Only wait if there's an active transcode that could produce this segment.
-	t.mu.Lock()
-	hasActive := len(t.active) > 0
-	t.mu.Unlock()
-	if !hasActive {
+	segDir := filepath.Dir(path)
+	if !t.hasActiveJobInDir(segDir) {
 		return false
 	}
 
@@ -688,10 +669,25 @@ func (t *Transcoder) WaitForSegment(path string, timeout time.Duration) bool {
 			if _, err := os.Stat(path); err == nil {
 				return true
 			}
+			if !t.hasActiveJobInDir(segDir) {
+				_, err := os.Stat(path)
+				return err == nil
+			}
 		case <-deadline:
 			return false
 		}
 	}
+}
+
+func (t *Transcoder) hasActiveJobInDir(dir string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for masterPath := range t.active {
+		if filepath.Dir(masterPath) == dir {
+			return true
+		}
+	}
+	return false
 }
 
 // RemuxToWriter remuxes a video file to fragmented MP4 and writes to w.

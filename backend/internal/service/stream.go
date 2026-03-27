@@ -83,6 +83,14 @@ func (s *StreamService) FindAllPretranscodes(ctx context.Context, mediaFileID in
 	return s.pretranscodeSvc.ListReadyFiles(ctx, mediaFileID)
 }
 
+// FindAllPretranscodesWithProfiles returns ready files joined with profiles (1 query, no N+1).
+func (s *StreamService) FindAllPretranscodesWithProfiles(ctx context.Context, mediaFileID int64) ([]repository.ReadyFileWithProfile, error) {
+	if s.pretranscodeSvc == nil {
+		return nil, nil
+	}
+	return s.pretranscodeSvc.ListReadyFilesWithProfiles(ctx, mediaFileID)
+}
+
 // PrepareHLS triggers transcoding if needed and returns the master playlist path.
 // If multiple audio tracks exist, generates HLS with #EXT-X-MEDIA support.
 // fileID: if > 0, transcode that specific file; otherwise use the primary file for mediaID.

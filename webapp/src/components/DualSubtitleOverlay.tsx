@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface VTTCue {
   start: number // seconds
@@ -128,7 +128,61 @@ const DEFAULT_STYLE: SubtitleStyle = {
   background: 'none',
 }
 
+/** Calculate the bottom letterbox height when video is letterboxed (portrait viewing). */
+function useLetterboxBottom(videoRef: React.RefObject<HTMLVideoElement | null>): number {
+  const [offset, setOffset] = useState(0)
+  const rafRef = useRef(0)
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const calculate = () => {
+      const { videoWidth, videoHeight } = video
+      if (!videoWidth || !videoHeight) {
+        setOffset(0)
+        return
+      }
+      const container = video.parentElement
+      if (!container) return
+
+      const cw = container.clientWidth
+      const ch = container.clientHeight
+      const videoAspect = videoWidth / videoHeight
+      const containerAspect = cw / ch
+
+      if (containerAspect < videoAspect) {
+        // Letterboxing: black bars top/bottom
+        const renderedHeight = cw / videoAspect
+        setOffset(Math.round((ch - renderedHeight) / 2))
+      } else {
+        setOffset(0)
+      }
+    }
+
+    const onUpdate = () => {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(calculate)
+    }
+
+    video.addEventListener('loadedmetadata', onUpdate)
+    window.addEventListener('resize', onUpdate)
+    screen.orientation?.addEventListener('change', onUpdate)
+    onUpdate()
+
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      video.removeEventListener('loadedmetadata', onUpdate)
+      window.removeEventListener('resize', onUpdate)
+      screen.orientation?.removeEventListener('change', onUpdate)
+    }
+  }, [videoRef])
+
+  return offset
+}
+
 export function DualSubtitleOverlay({
+  videoRef,
   primaryUrl,
   secondaryUrl,
   currentTime,
@@ -139,6 +193,7 @@ export function DualSubtitleOverlay({
   const primaryCues = useVTTCues(primaryUrl)
   const secondaryCues = useVTTCues(secondaryUrl)
   const adjustedTime = currentTime - offsetSeconds
+  const letterboxBottom = useLetterboxBottom(videoRef)
 
   const primaryText = activeCue(primaryCues, adjustedTime)
   const secondaryText = activeCue(secondaryCues, adjustedTime)
@@ -148,19 +203,22 @@ export function DualSubtitleOverlay({
   const primarySizeClass = SIZE_MAP[style.size]
   const secondarySizeClass = SECONDARY_SIZE_MAP[style.size]
   const needsBoxPadding = style.background !== 'none'
+
+  // Base offset from video bottom edge (clears player controls)
+  const BASE_BOTTOM = 112 // 7rem = bottom-28
+  // For secondary-only (burned-in primary): higher positioning
   const secondaryLineCount = secondaryText ? secondaryText.split('\n').length : 0
-  const secondaryLineOffsetClass =
-    secondaryLineCount >= 3
-      ? 'bottom-[19rem] md:bottom-[19rem]'
-      : secondaryLineCount === 2
-        ? 'bottom-[17rem] md:bottom-[17rem]'
-        : 'bottom-[15rem] md:bottom-[15rem]'
-  const overlayPositionClass =
-    primaryRenderedInVideo && !primaryText ? secondaryLineOffsetClass : 'bottom-28'
+  const secondaryOnlyBase = secondaryLineCount >= 3 ? 304 : secondaryLineCount === 2 ? 272 : 240
+
+  const bottomPx =
+    primaryRenderedInVideo && !primaryText
+      ? letterboxBottom + secondaryOnlyBase
+      : letterboxBottom + BASE_BOTTOM
 
   return (
     <div
-      className={`pointer-events-none absolute inset-x-0 ${overlayPositionClass} flex flex-col items-center gap-1.5 px-8`}
+      className="pointer-events-none absolute inset-x-0 flex flex-col items-center gap-1.5 px-8"
+      style={{ bottom: `${bottomPx}px` }}
     >
       {/* Secondary subtitle — smaller, yellow, above primary */}
       {secondaryText && (

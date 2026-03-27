@@ -902,7 +902,7 @@ export function WatchPage() {
   return (
     <div
       ref={containerRef}
-      className={`relative h-screen w-full bg-[#141414] select-none overflow-hidden ${
+      className={`fixed inset-0 bg-[#141414] select-none overflow-hidden ${
         !showControls && isPlaying ? 'cursor-none' : ''
       }`}
       onMouseMove={() => {

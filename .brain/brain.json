@@ -190,7 +190,7 @@
     ],
     "scan_pipeline": "Pipeline (scanner/pipeline.go). Stages: discover → fingerprint → probe → parse → persist. Respects metadata_locked flag.",
     "file_watcher": "watcher/watcher.go — fsnotify recursive, 5s debounce, rename tracking.",
-    "playback_strategy": "Direct Play (best) → PreTranscode ⚡ (if user requests lower res or codec incompatible) → Direct Stream → Transcode Audio → Full Transcode. Quality selector: resolution-based Netflix-style (Original → 1080p⚡ → 720p → 480p → Auto). available_qualities in playback info response.",
+    "playback_strategy": "Direct Play (best) → PreTranscode ⚡ (if user requests lower res or codec incompatible) → Direct Stream → Transcode Audio → Full Transcode. Quality selector: resolution-based Netflix-style (Original → 1080p⚡ → 720p → 480p → Auto). available_qualities in playback info response. GetPlaybackInfo parallelizes DB queries (prefs+progress+subtitles+audio in goroutines, quality+markers in goroutines). buildQualityOptions uses single JOIN query (ListReadyFilesWithProfiles) instead of N+1.",
     "auth": "JWT (15min access + 7-day refresh + session_id), bcrypt cost 12. API key (2h, 32-char hex) for external players. Change-password returns 403 (not 401) for wrong old password to avoid triggering token refresh loop. Frontend fetch interceptor skips auto-refresh for /auth/change-password.",
     "activity_logging": "ActivityService (async, buffered 50 entries / 5s flush). Injected into AuthHandler (login), LibraryHandler (library_scan), PlaybackHandler (play_start) via SetActivityService setter. Activity page uses invalidateQueries on mount for fresh data.",
     "subtitle_search": "Multi-provider: OpenSubtitles (v2 if configured, legacy fallback) → Subdl → Podnapisi → BSPlayer.",
@@ -198,7 +198,8 @@
     "auto_sub_on_rescan": "Force rescan triggers auto-download subtitles for media missing text-based subs (SRT/ASS/VTT). PGS/VobSub don't count — always download SRT.",
     "gpu_docker": "Intel: libva + intel-media-driver + libva-intel-driver (VAAPI). AMD: mesa-dri-gallium (VAAPI). NVIDIA: host nvidia-container-toolkit (NVENC). LIBVA_DRIVER_NAME=iHD default in entrypoint. HW detect at startup: auto → probe ffmpeg -hwaccels + device check.",
     "websocket_nginx": "Separate location /api/ws with Upgrade + Connection headers. Main /api/ location uses Connection '' for streaming. statusWriter implements http.Hijacker for WebSocket upgrade through middleware.",
-    "transcode_cleanup": "Scheduler task: every 1h, delete HLS cache > 2h old. Prevents disk fill from realtime transcode sessions."
+    "transcode_cleanup": "Scheduler task: every 1h, delete HLS cache > 2h old. Prevents disk fill from realtime transcode sessions.",
+    "hls_transcoding": "Single FFmpeg process for multi-audio HLS (video + all audio outputs in one pass via multi-output syntax). Master playlist written before encoding starts. Audio playlists namespaced with variant prefix ({prefix}audio_{streamIdx}.m3u8) to prevent cache collision. HLS EVENT mode on all realtime transcode paths. WaitForSegment waits for ALL active jobs in directory before 404 (prevents wrong-variant match). Job lifecycle: close(done) before delete(active). First-segment timeout: 3 minutes. HW accel fallback to software on failure."
   },
   "ui_components": {
     "action_menu": "ActionMenu.tsx — reusable dropdown (portal-based, z-9999). Used in EpisodeCard + MediaDetailPage.",
@@ -213,6 +214,8 @@
     "select_component": "ui/Select.tsx — reusable select with custom SVG chevron (appearance-none). Sizes: sm/md. Used in all SettingsPage selects. Replaces native browser select arrow.",
     "markers_section": "MarkersSection in SettingsPage — /settings?section=markers. Stats overview (total/intro/credits, coverage bars, source breakdown), Run Detection with library selector, WebSocket realtime progress (useMarkerProgress hook), How it works info.",
     "quality_selector": "Netflix-style resolution menu in WatchPage player. Options from playback info available_qualities (dynamic). Pretranscode files show ⚡ icon. Auto option at bottom with border separator.",
+    "subtitle_letterbox": "DualSubtitleOverlay.tsx — useLetterboxBottom hook calculates bottom letterbox height for portrait viewing. Subtitle bottom = letterboxBottom + BASE_BOTTOM (112px). Recalculates on resize/orientation change/loadedmetadata. Prevents subtitles from appearing in black bars on portrait tablets.",
+    "watch_page_layout": "WatchPage container uses fixed inset-0 (not h-screen) to prevent scroll on portrait tablets with 16:10 aspect ratio."
     "scheduler_tasks_ui": "TasksSection sorts by name (prevent row jumping). Polling every 2s when task running. Local running state + server state combined. Button shows 'Running...' during execution."
   },
   "deployment": {
