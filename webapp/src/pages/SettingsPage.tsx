@@ -264,9 +264,6 @@ export function SettingsPage() {
     [sections.length, isAdmin],
   )
 
-  const activeLabel =
-    sections.find((s) => s.id === activeSection)?.labelKey ?? 'sections.profile.title'
-
   const content = (
     <>
       {activeSection === 'profile' && <ProfileSection />}

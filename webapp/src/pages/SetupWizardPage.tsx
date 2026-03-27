@@ -571,7 +571,7 @@ function SummaryStep() {
   const handleAddLibrary = () => {
     if (!libraryForm.name || !libraryForm.path) return
     createLibrary(
-      { name: libraryForm.name, path: libraryForm.path, type: libraryForm.type },
+      { name: libraryForm.name, paths: [libraryForm.path], type: libraryForm.type },
       {
         onSuccess: () => setLibraryAdded(true),
       },
@@ -723,7 +723,7 @@ function SummaryStep() {
 }
 
 // --- Main Wizard Page ---
-const STEP_COMPONENTS: Record<Step, () => JSX.Element> = {
+const STEP_COMPONENTS: Record<Step, () => React.ReactNode> = {
   metadata: MetadataStep,
   subtitles: SubtitlesStep,
   playback: PlaybackStep,
