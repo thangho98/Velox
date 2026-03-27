@@ -1860,9 +1860,9 @@ function GeneralSection() {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between border-b border-netflix-gray/30 py-3 last:border-b-0">
-      <span className="text-sm text-gray-400">{label}</span>
-      <span className="text-sm font-medium text-white">{value}</span>
+    <div className="flex items-center justify-between gap-4 border-b border-netflix-gray/30 py-3 last:border-b-0">
+      <span className="shrink-0 text-sm text-gray-400">{label}</span>
+      <span className="truncate text-sm font-medium text-white">{value}</span>
     </div>
   )
 }
