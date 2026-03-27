@@ -1,0 +1,47 @@
+services:
+  velox:
+    build: .
+    image: velox:latest
+    container_name: velox-test
+    restart: unless-stopped
+
+    ports:
+      - "8098:80"
+
+    volumes:
+      - /home/thawngho/velox-data:/data
+      - nas-movie:/media/movie
+
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - VELOX_DATA_DIR=/data
+      - VELOX_HW_ACCEL=auto
+      - VELOX_MAX_TRANSCODES=2
+      - VELOX_FILE_WATCHER=true
+      - VELOX_TRICKPLAY_ENABLED=false
+      - TZ=Asia/Ho_Chi_Minh
+      - SUBSCENE_ENABLED=false
+
+    # NVIDIA GPU passthrough (RTX 4070 SUPER)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    tmpfs:
+      - /tmp:size=256m
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  nas-movie:
+    external: true
