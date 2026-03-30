@@ -61,7 +61,7 @@ func TestDecide(t *testing.T) {
 			wantMethod: MethodDirectStream,
 		},
 		{
-			name: "4 H.264+DTS MKV no-MKV profile → FullTranscode (DirectStream+audio incompatible collapses)",
+			name: "4 H.264+DTS MKV no-MKV profile → FullTranscode (reliable HLS seeking)",
 			media: MediaFileInfo{
 				VideoCodec: "h264", AudioCodec: "dts", Container: "mkv",
 				Width: 1920, Height: 1080, Bitrate: 8000,
@@ -71,14 +71,14 @@ func TestDecide(t *testing.T) {
 			wantMethod: MethodFullTranscode,
 		},
 		{
-			name: "5 H.264+DTS MP4 Chrome → TranscodeAudio (video OK, audio incompatible)",
+			name: "5 H.264+DTS MP4 Chrome → FullTranscode (reliable HLS seeking)",
 			media: MediaFileInfo{
 				VideoCodec: "h264", AudioCodec: "dts", Container: "mp4",
 				Width: 1920, Height: 1080, Bitrate: 8000,
 			},
 			profile:    &ChromeDesktop,
 			prefs:      defaultPrefs,
-			wantMethod: MethodTranscodeAudio,
+			wantMethod: MethodFullTranscode,
 		},
 		{
 			name: "6 H.264+AAC MP4 4K with MaxHeight=1080 → FullTranscode (resolution limit)",

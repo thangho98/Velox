@@ -96,7 +96,8 @@ func (s *StreamService) FindAllPretranscodesWithProfiles(ctx context.Context, me
 // fileID: if > 0, transcode that specific file; otherwise use the primary file for mediaID.
 // subtitleStreamIndex: if >= 0, burn-in that subtitle stream into the video.
 // videoCopy: if true, copy the video stream unchanged (only transcode audio).
-func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID int64, subtitleStreamIndex int, videoCopy bool) (string, error) {
+// startOffset: if > 0, begin the HLS session at that global timeline position.
+func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64) (string, error) {
 	var mf *model.MediaFile
 	var err error
 	if fileID > 0 {
@@ -125,16 +126,16 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID in
 	// Pass mf.ID so the cache key is (mediaID, fileID, subtitleStreamIndex) — avoids
 	// version collisions when multiple file versions exist for the same media.
 	if len(audioTracks) > 1 {
-		if err := s.transcoder.GenerateHLSWithAudio(mediaID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy); err != nil {
+		if err := s.transcoder.GenerateHLSWithAudio(mediaID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy, startOffset); err != nil {
 			return "", err
 		}
 	} else {
-		if err := s.transcoder.GenerateHLS(mediaID, mf.FilePath, mf.ID, subtitleStreamIndex, videoCopy); err != nil {
+		if err := s.transcoder.GenerateHLS(mediaID, mf.FilePath, mf.ID, subtitleStreamIndex, videoCopy, startOffset); err != nil {
 			return "", err
 		}
 	}
 
-	return s.transcoder.MasterPlaylistPath(mediaID, mf.ID, subtitleStreamIndex, videoCopy), nil
+	return s.transcoder.MasterPlaylistPath(mediaID, mf.ID, subtitleStreamIndex, videoCopy, startOffset), nil
 }
 
 // SegmentPath returns the path to an HLS segment.

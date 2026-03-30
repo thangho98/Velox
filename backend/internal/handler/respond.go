@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 )
 
@@ -49,4 +50,9 @@ func parseJSON(r *http.Request, v any) error {
 
 func parseInt64Query(s string) (int64, error) {
 	return strconv.ParseInt(s, 10, 64)
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

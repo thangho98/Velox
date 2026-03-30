@@ -1,7 +1,7 @@
 {
   "meta": {
     "schema_version": "1.1.0",
-    "updated_at": "2026-03-27",
+    "updated_at": "2026-03-30",
     "plan_status": {
       "A": "✅ Done — Core Domain & Ingestion (all 5 phases 100%)",
       "B": "✅ Done — Auth & Sessions",
@@ -29,7 +29,7 @@
     "backend": {
       "language": "Go 1.26",
       "framework": "stdlib net/http (Go 1.22+ routing)",
-      "database": "SQLite (WAL mode, foreign_keys=on, MaxOpenConns=1)",
+      "database": "SQLite (WAL mode, foreign_keys=on, busy_timeout=5000, MaxOpenConns=1 per handle, 2 handles: main + background scheduler)",
       "driver": "mattn/go-sqlite3 v1.14.34",
       "transcoding": "FFmpeg 8.0 / FFprobe",
       "file_watcher": "fsnotify v1.9.0",
@@ -118,11 +118,12 @@
   "pretranscode": {
     "overview": "Netflix-style offline encoding. Background scheduler encodes media into H.264+AAC MP4 at configurable quality (480p/720p/1080p/1440p/4K). Playback engine serves pre-encoded files instantly (http.ServeContent, <100ms) with fallback to realtime transcode.",
     "storage": "Output: {VELOX_PRETRANSCODE_DIR}/{media_file_id}/{profile_name}.mp4. Configurable via VELOX_PRETRANSCODE_DIR env var (default: $VELOX_DATA_DIR/pretranscode). Allows separate volume mount for large pretranscode output.",
-    "scheduler": "Background goroutine. Schedule modes: always, night (00:00-06:00), idle. Configurable concurrency (1-4). Auto-pause on disk low.",
-    "skip_logic": "No upscale (source < profile height). Skip if source already H.264+AAC at ≤ profile resolution.",
-    "audio": "Transcode to AAC stereo by default. Copy if source already AAC.",
+    "scheduler": "Background goroutine. Schedule modes: always, night (00:00-06:00), idle. Configurable concurrency (1-4). Auto-pause on disk low. Yields to realtime transcode (ActiveCount check).",
+    "audio_remux_profile": "Profile video_codec='copy' (migration 028). Auto-enqueues on startup for all non-AAC files. Runs regardless of pretranscode_enabled. Smart codec handling: H.264 sources → audio-only remux (fast, ~1x). HEVC/VP9/AV1 sources → universal transcode to H.264+AAC at source resolution (VAAPI HW accel, slower but browser-universal).",
+    "skip_logic": "No upscale (source < profile height). Skip if source already H.264+AAC at ≤ profile resolution. Audio-remux skips if audio already AAC.",
     "hw_accel": "Try HW first (vaapi/nvenc/qsv/videotoolbox), auto-fallback to software libx264.",
-    "playback_integration": "MethodPreTranscode in playback engine. Stream handler checks pre-transcode before normal decision. Playback info returns available_qualities with ⚡ instant indicator.",
+    "playback_integration": "MethodPreTranscode in playback engine. Validates pretranscode file exists on disk AND video codec is browser-compatible before using (NormalizeCodec + SupportsVideoCodec check). Stream handler falls back to HLS redirect when pretranscode file missing. Playback info returns available_qualities with ⚡ instant indicator.",
+    "transcode_slot_management": "Semaphore-based (VELOX_MAX_TRANSCODES). Realtime HLS: tryAcquireSlot(30s) — fail fast instead of 3min timeout. ABR background: tryAcquireSlotIfSpare() — only if ≥2 slots free, never starves realtime. Video copy HLS: skips semaphore (lightweight). ABR generation not started from playback info handler to avoid slot contention.",
     "on_demand_remux": "When user triggers realtime transcode at a resolution with a pretranscode profile, auto-remux HLS segments → MP4 (ffmpeg -c copy, near instant). Only when pretranscode_enabled=true. 'Transcode once, instant forever.'",
     "stop_behavior": "Stop kills FFmpeg process immediately (ctx cancel), waits for scheduler loop exit, resets interrupted jobs to queued for retry, restarts scheduler in paused state.",
     "recovery": "On startup, reset interrupted encoding jobs back to queued.",
@@ -215,7 +216,7 @@
     "markers_section": "MarkersSection in SettingsPage — /settings?section=markers. Stats overview (total/intro/credits, coverage bars, source breakdown), Run Detection with library selector, WebSocket realtime progress (useMarkerProgress hook), How it works info.",
     "quality_selector": "Netflix-style resolution menu in WatchPage player. Options from playback info available_qualities (dynamic). Pretranscode files show ⚡ icon. Auto option at bottom with border separator.",
     "subtitle_letterbox": "DualSubtitleOverlay.tsx — useLetterboxBottom hook calculates bottom letterbox height for portrait viewing. Subtitle bottom = letterboxBottom + BASE_BOTTOM (112px). Recalculates on resize/orientation change/loadedmetadata. Prevents subtitles from appearing in black bars on portrait tablets.",
-    "watch_page_layout": "WatchPage container uses fixed inset-0 (not h-screen) to prevent scroll on portrait tablets with 16:10 aspect ratio."
+    "watch_page_layout": "WatchPage container uses fixed inset-0 (not h-screen) to prevent scroll on portrait tablets with 16:10 aspect ratio.",
     "scheduler_tasks_ui": "TasksSection sorts by name (prevent row jumping). Polling every 2s when task running. Local running state + server state combined. Button shows 'Running...' during execution."
   },
   "deployment": {

@@ -75,16 +75,17 @@ function activeCue(cues: VTTCue[], time: number): string | null {
 }
 
 // Font size mapping — Netflix uses ~32px for large on a 1080p screen
+// Mobile-first: smaller sizes on <1024px, full sizes on lg+
 const SIZE_MAP = {
-  small: 'text-2xl', // 24px
-  medium: 'text-[32px]', // 32px
-  large: 'text-[40px]', // 40px — Netflix-sized
+  small: 'text-base lg:text-2xl', // 16px mobile/tablet, 24px desktop
+  medium: 'text-lg lg:text-[32px]', // 18px mobile/tablet, 32px desktop
+  large: 'text-xl lg:text-[40px]', // 20px mobile/tablet, 40px desktop — Netflix-sized
 } as const
 
 const SECONDARY_SIZE_MAP = {
-  small: 'text-base', // 16px
-  medium: 'text-xl', // 20px
-  large: 'text-2xl', // 24px
+  small: 'text-xs lg:text-base', // 12px mobile/tablet, 16px desktop
+  medium: 'text-sm lg:text-xl', // 14px mobile/tablet, 20px desktop
+  large: 'text-base lg:text-2xl', // 16px mobile/tablet, 24px desktop
 } as const
 
 // Text stroke for no-background mode (Netflix/Emby style)
@@ -204,20 +205,33 @@ export function DualSubtitleOverlay({
   const secondarySizeClass = SECONDARY_SIZE_MAP[style.size]
   const needsBoxPadding = style.background !== 'none'
 
-  // Base offset from video bottom edge (clears player controls)
-  const BASE_BOTTOM = 112 // 7rem = bottom-28
+  // Base offset from screen bottom (clears player controls)
+  // Mobile controls are ~150px tall (tighter spacing), desktop ~112px
+  const isCompact = typeof window !== 'undefined' && window.innerWidth < 1024
+  const CONTROLS_HEIGHT = isCompact ? 160 : 112
   // For secondary-only (burned-in primary): higher positioning
   const secondaryLineCount = secondaryText ? secondaryText.split('\n').length : 0
   const secondaryOnlyBase = secondaryLineCount >= 3 ? 304 : secondaryLineCount === 2 ? 272 : 240
 
-  const bottomPx =
-    primaryRenderedInVideo && !primaryText
-      ? letterboxBottom + secondaryOnlyBase
-      : letterboxBottom + BASE_BOTTOM
+  // When portrait letterbox exists, render subtitles IN the bottom black bar
+  // (centered between controls and video frame) instead of on top of the video.
+  let bottomPx: number
+  if (letterboxBottom > CONTROLS_HEIGHT) {
+    // Portrait letterbox: position in the black bar, above controls
+    const targetBottom =
+      primaryRenderedInVideo && !primaryText ? secondaryOnlyBase : CONTROLS_HEIGHT
+    bottomPx = Math.round(Math.max(targetBottom, letterboxBottom * 0.4))
+  } else {
+    // Landscape or small letterbox: position just above controls on the video
+    bottomPx =
+      primaryRenderedInVideo && !primaryText
+        ? letterboxBottom + secondaryOnlyBase
+        : letterboxBottom + CONTROLS_HEIGHT
+  }
 
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 flex flex-col items-center gap-1.5 px-8"
+      className="pointer-events-none absolute inset-x-0 flex flex-col items-center gap-1 lg:gap-1.5 px-4 lg:px-8"
       style={{ bottom: `${bottomPx}px` }}
     >
       {/* Secondary subtitle — smaller, yellow, above primary */}

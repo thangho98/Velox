@@ -15,12 +15,12 @@ func Open(path string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=on")
+	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000")
 	if err != nil {
 		return nil, err
 	}
 
-	db.SetMaxOpenConns(1) // SQLite doesn't handle concurrent writes well
+	db.SetMaxOpenConns(1) // SQLite: serialize all access through one connection
 
 	if err := db.Ping(); err != nil {
 		return nil, err

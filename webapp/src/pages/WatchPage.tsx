@@ -66,7 +66,7 @@ import {
 } from '@/components/watch/watchHelpers'
 import type { PlaybackSubtitleTrack } from '@/types/api'
 
-const SEEK_STEP = 10
+const SEEK_STEP = 5
 const VOLUME_STEP = 0.1
 type DetailPanel = 'none' | 'info' | 'season'
 
@@ -79,11 +79,15 @@ export function WatchPage() {
   const queryClient = useQueryClient()
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
+  const hlsPlaylistLiveRef = useRef(false)
+  const hlsSeekableEndRef = useRef(0)
+  const streamSourceOffsetRef = useRef(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
   const seasonCarouselRef = useRef<HTMLDivElement>(null)
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastProgressUpdate = useRef(0)
+  const dragSeekTimeRef = useRef<number | null>(null)
   const seekFeedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qualityIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lowBandwidthToastShown = useRef(false)
@@ -157,6 +161,8 @@ export function WatchPage() {
   const { data: subtitles = [] } = useSubtitles(mediaId, playbackRequest)
   const { data: audioTracks = [] } = useAudioTracks(mediaId, playbackRequest)
   const { data: playbackInfo } = usePlaybackInfo(mediaId, playbackRequest)
+  const isHlsPlayback =
+    playbackInfo?.method === 'FullTranscode' || playbackInfo?.method === 'TranscodeAudio'
 
   const isEpisode = media?.media.media_type === 'episode'
   const seriesId = media?.series_id ?? 0
@@ -292,7 +298,7 @@ export function WatchPage() {
   // knownDuration: ffprobe-reported total duration — used as floor so the player
   // never shows a partial duration while HLS transcoding is still in progress.
   const knownDurationRef = useRef(0)
-  const [buffered, setBuffered] = useState(0)
+  const [bufferedRange, setBufferedRange] = useState({ start: 0, end: 0 })
   const [showControls, setShowControls] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -324,6 +330,19 @@ export function WatchPage() {
     }
   }, [playbackInfo?.duration])
 
+  useEffect(() => {
+    setHlsStartOffset(null)
+    setBufferedRange({ start: 0, end: 0 })
+    streamSourceOffsetRef.current = 0
+  }, [mediaId])
+
+  useEffect(() => {
+    if (!isHlsPlayback) {
+      setHlsStartOffset(null)
+      streamSourceOffsetRef.current = 0
+    }
+  }, [isHlsPlayback])
+
   // Seek feedback
   const [seekFeedback, setSeekFeedback] = useState<{ dir: 'back' | 'fwd'; n: number } | null>(null)
 
@@ -332,6 +351,8 @@ export function WatchPage() {
   const [hoverTime, setHoverTime] = useState(0)
   const [hoverX, setHoverX] = useState(0)
   const [isDraggingBar, setIsDraggingBar] = useState(false)
+  const [dragSeekTime, setDragSeekTime] = useState<number | null>(null)
+  const [hlsStartOffset, setHlsStartOffset] = useState<number | null>(null)
 
   // Menus
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false)
@@ -433,16 +454,107 @@ export function WatchPage() {
     seekFeedbackTimeout.current = setTimeout(() => setSeekFeedback(null), 700)
   }, [])
 
+  const getEffectiveDuration = useCallback(
+    (video?: HTMLVideoElement | null) => {
+      const nativeDuration =
+        video && Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0
+      return Math.max(
+        nativeDuration,
+        knownDurationRef.current,
+        duration,
+        playbackInfo?.duration ?? 0,
+      )
+    },
+    [duration, playbackInfo?.duration],
+  )
+
+  const clampSeekTarget = useCallback(
+    (targetTime: number, video?: HTMLVideoElement | null) => {
+      const effectiveDuration = getEffectiveDuration(video)
+      if (effectiveDuration <= 0) return Math.max(0, targetTime)
+      const seekCeiling = effectiveDuration > 0.25 ? effectiveDuration - 0.25 : effectiveDuration
+      return Math.max(0, Math.min(seekCeiling, targetTime))
+    },
+    [getEffectiveDuration],
+  )
+
+  const buildHlsSessionUrl = useCallback((baseUrl: string, startOffset: number) => {
+    const url = new URL(baseUrl, window.location.origin)
+    url.searchParams.set('start', startOffset.toFixed(3))
+    return `${url.pathname}${url.search}${url.hash}`
+  }, [])
+
+  const requestHlsSessionReload = useCallback(
+    (targetTime: number) => {
+      const globalTarget = clampSeekTarget(targetTime, videoRef.current)
+      const nextOffset = globalTarget > 0.25 ? globalTarget : null
+
+      setLastPosition(mediaId, globalTarget)
+      setCurrentTime(globalTarget)
+      setBufferedRange({
+        start: globalTarget,
+        end: globalTarget,
+      })
+      setIsBuffering(true)
+      setHlsStartOffset(nextOffset)
+      showToastInfo(`Đang tua tới ${formatTime(globalTarget)}...`)
+
+      return globalTarget
+    },
+    [clampSeekTarget, mediaId, setLastPosition, showToastInfo],
+  )
+
+  const applySeek = useCallback(
+    (targetTime: number) => {
+      const video = videoRef.current
+      if (!video) return 0
+
+      const clampedTime = clampSeekTarget(targetTime, video)
+      const sessionOffset = streamSourceOffsetRef.current
+      const localTarget = clampedTime - sessionOffset
+      // Session reload (server-side seek) is only safe for TranscodeAudio (video copy)
+      // which is lightweight and doesn't consume transcode slots. FullTranscode would
+      // tie up a VAAPI/CPU slot for a second concurrent job — clamp seek instead.
+      const canReloadSession =
+        isHlsPlayback && playbackInfo?.method === 'TranscodeAudio' && Boolean(streamUrls?.hls)
+      const isBeforeCurrentSession = isHlsPlayback && localTarget < 0
+      const isBeyondReadyEdge =
+        isHlsPlayback &&
+        hlsPlaylistLiveRef.current &&
+        hlsSeekableEndRef.current > 0 &&
+        clampedTime > hlsSeekableEndRef.current + 1
+
+      if (canReloadSession && (isBeforeCurrentSession || isBeyondReadyEdge)) {
+        return requestHlsSessionReload(clampedTime)
+      }
+
+      // For FullTranscode: clamp seek to the ready edge of the current session
+      if (isBeyondReadyEdge && hlsSeekableEndRef.current > 0) {
+        const clampedLocal = hlsSeekableEndRef.current - sessionOffset
+        video.currentTime = Math.max(0, clampedLocal)
+        setCurrentTime(hlsSeekableEndRef.current)
+        return hlsSeekableEndRef.current
+      }
+
+      video.currentTime = Math.max(0, localTarget)
+      setCurrentTime(clampedTime)
+      return clampedTime
+    },
+    [
+      clampSeekTarget,
+      isHlsPlayback,
+      playbackInfo?.method,
+      requestHlsSessionReload,
+      streamUrls?.hls,
+    ],
+  )
+
   const seek = useCallback(
     (seconds: number) => {
-      const video = videoRef.current
-      if (!video) return
-      const newTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds))
-      video.currentTime = newTime
-      setCurrentTime(newTime)
+      applySeek(currentTime + seconds)
       showSeekFeedback(seconds > 0 ? 'fwd' : 'back', Math.abs(seconds))
     },
-    [showSeekFeedback],
+    [applySeek, currentTime, showSeekFeedback],
   )
 
   const changeVolume = useCallback(
@@ -468,17 +580,39 @@ export function WatchPage() {
     const el = document.documentElement as FullscreenEl
     const isFs = !!(document.fullscreenElement || doc.webkitFullscreenElement)
 
-    if (isFs) {
-      if (document.exitFullscreen) document.exitFullscreen().catch(console.error)
-      else doc.webkitExitFullscreen?.()
+    // On iOS, use native video fullscreen (webkitEnterFullscreen) which supports
+    // auto-rotation to landscape. The standard Fullscreen API on iOS doesn't rotate.
+    const video = videoRef.current as
+      | (HTMLVideoElement & {
+          webkitEnterFullscreen?: () => void
+          webkitExitFullscreen?: () => void
+          webkitDisplayingFullscreen?: boolean
+        })
+      | null
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+
+    if (isFs || video?.webkitDisplayingFullscreen) {
+      if (video?.webkitDisplayingFullscreen) {
+        video.webkitExitFullscreen?.()
+      } else if (document.exitFullscreen) {
+        document.exitFullscreen().catch(console.error)
+      } else {
+        doc.webkitExitFullscreen?.()
+      }
     } else {
-      if (el.requestFullscreen) {
+      if (isIOS && video?.webkitEnterFullscreen) {
+        video.webkitEnterFullscreen()
+      } else if (el.requestFullscreen) {
         el.requestFullscreen().catch((err: Error) => {
           showToastInfo(`Fullscreen: ${err.message}`)
           console.error('[fullscreen]', err)
         })
       } else if (el.webkitRequestFullscreen) {
         el.webkitRequestFullscreen()
+      } else if (video?.webkitEnterFullscreen) {
+        video.webkitEnterFullscreen()
       } else {
         showToastInfo('Fullscreen not supported in this browser')
       }
@@ -508,47 +642,51 @@ export function WatchPage() {
     (e: React.MouseEvent) => {
       e.stopPropagation()
       setIsDraggingBar(true)
-      const time = getTimeFromClientX(e.clientX)
-      if (videoRef.current) {
-        videoRef.current.currentTime = time
-        setCurrentTime(time)
-      }
+      const time = clampSeekTarget(getTimeFromClientX(e.clientX), videoRef.current)
+      dragSeekTimeRef.current = time
+      setDragSeekTime(time)
     },
-    [getTimeFromClientX],
+    [clampSeekTarget, getTimeFromClientX],
   )
 
   const handleBarMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!progressBarRef.current) return
       const rect = progressBarRef.current.getBoundingClientRect()
+      const clampedTime = clampSeekTarget(getTimeFromClientX(e.clientX), videoRef.current)
       setHoverX(e.clientX - rect.left)
-      setHoverTime(getTimeFromClientX(e.clientX))
-      if (isDraggingBar && videoRef.current) {
-        const time = getTimeFromClientX(e.clientX)
-        videoRef.current.currentTime = time
-        setCurrentTime(time)
+      setHoverTime(clampedTime)
+      if (isDraggingBar) {
+        dragSeekTimeRef.current = clampedTime
+        setDragSeekTime(clampedTime)
       }
     },
-    [getTimeFromClientX, isDraggingBar],
+    [clampSeekTarget, getTimeFromClientX, isDraggingBar],
   )
 
   useEffect(() => {
     if (!isDraggingBar) return
     const onMove = (e: MouseEvent) => {
-      const time = getTimeFromClientX(e.clientX)
-      if (videoRef.current) {
-        videoRef.current.currentTime = time
-        setCurrentTime(time)
-      }
+      const time = clampSeekTarget(getTimeFromClientX(e.clientX), videoRef.current)
+      dragSeekTimeRef.current = time
+      setDragSeekTime(time)
     }
-    const onUp = () => setIsDraggingBar(false)
+    const onUp = () => {
+      const targetTime = dragSeekTimeRef.current
+      if (targetTime != null) {
+        applySeek(targetTime)
+      }
+      dragSeekTimeRef.current = null
+      setDragSeekTime(null)
+      setIsDraggingBar(false)
+    }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [isDraggingBar, getTimeFromClientX])
+  }, [applySeek, clampSeekTarget, getTimeFromClientX, isDraggingBar])
 
   // ── HLS init ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -558,10 +696,21 @@ export function WatchPage() {
       hlsRef.current.destroy()
       hlsRef.current = null
     }
+    hlsPlaylistLiveRef.current = false
+    const sessionOffset = hlsStartOffset ?? 0
+    streamSourceOffsetRef.current = sessionOffset
+    hlsSeekableEndRef.current = sessionOffset
+    setBufferedRange({
+      start: sessionOffset,
+      end: sessionOffset,
+    })
 
-    const useHls =
-      playbackInfo?.method === 'FullTranscode' || playbackInfo?.method === 'TranscodeAudio'
-    const rawUrl = useHls ? streamUrls.abr || streamUrls.hls : streamUrls.direct
+    const useHls = isHlsPlayback
+    const rawUrl = useHls
+      ? sessionOffset > 0.25 && streamUrls.hls
+        ? buildHlsSessionUrl(streamUrls.hls, sessionOffset)
+        : streamUrls.abr || streamUrls.hls
+      : streamUrls.direct
     if (!rawUrl) return
     setIsBuffering(true)
     const streamUrl = accessToken
@@ -597,14 +746,23 @@ export function WatchPage() {
         const knownDur = playbackInfo?.duration ?? 0
         const v = videoRef.current
         const videoDur = v?.duration && isFinite(v.duration) ? v.duration : 0
-        const initDur = knownDur > videoDur ? knownDur : videoDur
+        const initDur = Math.max(knownDur, sessionOffset + videoDur)
         if (initDur > 0) setDuration(initDur)
         // Resume position (initial load or after subtitle/quality change)
-        const seekTo = usePlayerStore.getState().lastPositions[mediaId] ?? 0
-        if (seekTo > 0 && v) {
-          const dur = v.duration
-          if (!dur || !isFinite(dur) || seekTo < dur * 0.95) {
-            v.currentTime = seekTo
+        const seekToGlobal = usePlayerStore.getState().lastPositions[mediaId] ?? 0
+        if (seekToGlobal > 0 && v) {
+          const maxSeekableGlobal =
+            hlsPlaylistLiveRef.current && hlsSeekableEndRef.current > 0
+              ? hlsSeekableEndRef.current
+              : Math.max(knownDur, sessionOffset + videoDur)
+          const localMaxSeekable = Math.max(0, maxSeekableGlobal - sessionOffset)
+          const localSeekTo = Math.max(0, seekToGlobal - sessionOffset)
+          const safeSeekTo =
+            localMaxSeekable > 0.25
+              ? Math.min(localSeekTo, localMaxSeekable - 0.25)
+              : Math.min(localSeekTo, localMaxSeekable)
+          if (safeSeekTo > 0) {
+            v.currentTime = safeSeekTo
           }
         }
         // Auto-play when ready
@@ -612,11 +770,14 @@ export function WatchPage() {
       })
       hls.on(Hls.Events.LEVEL_LOADED, (_e, data) => {
         const playlistDur = data.details?.totalduration ?? 0
+        const playlistEdge = data.details?.edge ?? playlistDur
+        hlsPlaylistLiveRef.current = data.details?.live ?? false
+        hlsSeekableEndRef.current = sessionOffset + playlistEdge
         // While transcoding in background, the playlist only contains segments
         // encoded so far. Use playback info duration (from ffprobe) if it's larger
         // so the player always shows the correct total duration.
         const knownDur = playbackInfo?.duration ?? 0
-        const trueDur = knownDur > playlistDur ? knownDur : playlistDur
+        const trueDur = Math.max(knownDur, sessionOffset + playlistDur)
         if (trueDur > 0) setDuration(trueDur)
       })
       hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
@@ -656,11 +817,23 @@ export function WatchPage() {
       hls.loadSource(streamUrl)
       hls.attachMedia(video)
     } else {
+      hlsPlaylistLiveRef.current = false
+      hlsSeekableEndRef.current = 0
+      streamSourceOffsetRef.current = 0
+      setBufferedRange({ start: 0, end: 0 })
       video.src = streamUrl
       // Resume position (initial load or after subtitle/quality change)
-      const seekTo = usePlayerStore.getState().lastPositions[mediaId] ?? 0
-      if (seekTo > 0) {
-        video.currentTime = seekTo
+      const seekToGlobal = usePlayerStore.getState().lastPositions[mediaId] ?? 0
+      if (seekToGlobal > 0) {
+        const nativeDuration =
+          Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0
+        const effectiveDuration = Math.max(
+          nativeDuration,
+          knownDurationRef.current,
+          playbackInfo?.duration ?? 0,
+        )
+        const seekCeiling = effectiveDuration > 0.25 ? effectiveDuration - 0.25 : effectiveDuration
+        video.currentTime = Math.max(0, Math.min(seekCeiling, seekToGlobal))
       }
       video.play().catch(() => {})
     }
@@ -669,10 +842,16 @@ export function WatchPage() {
         hlsRef.current.destroy()
         hlsRef.current = null
       }
+      hlsPlaylistLiveRef.current = false
+      hlsSeekableEndRef.current = 0
+      streamSourceOffsetRef.current = 0
     }
     // Note: accessToken intentionally excluded — token refresh must NOT restart video.
     // HLS uses useAuthStore.getState() for fresh tokens per-request.
-  }, [streamUrls, playbackInfo?.method, audioLanguage])
+    // playbackInfo.duration and clampSeekTarget intentionally excluded so
+    // progressive duration updates do not recreate the HLS instance mid-playback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioLanguage, buildHlsSessionUrl, hlsStartOffset, isHlsPlayback, streamUrls])
 
   // Resume position is read from usePlayerStore.getState().lastPositions[mediaId]
   // directly in the HLS init effect — no cross-effect refs needed.
@@ -717,32 +896,45 @@ export function WatchPage() {
     const video = videoRef.current
     if (!video) return
     const onTimeUpdate = () => {
-      setCurrentTime(video.currentTime)
+      const globalTime = streamSourceOffsetRef.current + video.currentTime
+      const effectiveDuration = getEffectiveDuration(video)
+      setCurrentTime(globalTime)
       if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
-        setDuration((prev) => Math.max(prev, video.duration, knownDurationRef.current))
+        setDuration((prev) =>
+          Math.max(prev, streamSourceOffsetRef.current + video.duration, knownDurationRef.current),
+        )
       }
-      setLastPosition(mediaId, video.currentTime)
+      setLastPosition(mediaId, globalTime)
       const now = Date.now()
-      if (now - lastProgressUpdate.current >= 10000 || video.currentTime >= video.duration * 0.95) {
+      if (now - lastProgressUpdate.current >= 10000 || globalTime >= effectiveDuration * 0.95) {
         updateProgress({
           mediaId,
           data: {
-            position: video.currentTime,
-            completed: video.currentTime / video.duration > 0.9,
+            position: globalTime,
+            completed: effectiveDuration > 0 ? globalTime / effectiveDuration > 0.9 : false,
           },
         })
         lastProgressUpdate.current = now
       }
     }
     const onProgress = () => {
-      if (video.buffered.length > 0) setBuffered(video.buffered.end(video.buffered.length - 1))
+      if (video.buffered.length > 0) {
+        const bufferIndex = video.buffered.length - 1
+        const offset = streamSourceOffsetRef.current
+        setBufferedRange({
+          start: offset + video.buffered.start(bufferIndex),
+          end: offset + video.buffered.end(bufferIndex),
+        })
+      }
     }
     const onWaiting = () => setIsBuffering(true)
     const onPlaying = () => setIsBuffering(false)
     const onCanPlay = () => setIsBuffering(false)
     const onDurationChange = () => {
       if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
-        setDuration((prev) => Math.max(prev, video.duration, knownDurationRef.current))
+        setDuration((prev) =>
+          Math.max(prev, streamSourceOffsetRef.current + video.duration, knownDurationRef.current),
+        )
       }
     }
     video.addEventListener('timeupdate', onTimeUpdate)
@@ -763,7 +955,7 @@ export function WatchPage() {
       video.removeEventListener('durationchange', onDurationChange)
       video.removeEventListener('loadeddata', onDurationChange)
     }
-  }, [mediaId, setLastPosition, updateProgress, streamUrls])
+  }, [getEffectiveDuration, mediaId, setLastPosition, updateProgress, streamUrls])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -818,7 +1010,7 @@ export function WatchPage() {
         case '0':
         case 'Home':
           e.preventDefault()
-          if (videoRef.current) videoRef.current.currentTime = 0
+          applySeek(0)
           break
         case 'Escape':
           if (isFullscreen) {
@@ -834,6 +1026,7 @@ export function WatchPage() {
     isFullscreen,
     isLocked,
     togglePlay,
+    applySeek,
     seek,
     changeVolume,
     toggleFullscreen,
@@ -872,9 +1065,10 @@ export function WatchPage() {
     )
   }
 
-  const progressPercent = duration ? (currentTime / duration) * 100 : 0
-  const bufferPercent = duration ? (buffered / duration) * 100 : 0
-  const remainingTime = duration > 0 ? duration - currentTime : 0
+  const displayTime = dragSeekTime ?? currentTime
+  const progressPercent = duration ? (displayTime / duration) * 100 : 0
+  const bufferWidthPercent = duration ? Math.max(0, (bufferedRange.end / duration) * 100) : 0
+  const remainingTime = duration > 0 ? duration - displayTime : 0
 
   // ── Loading/Error ──────────────────────────────────────────────────────────
   if (mediaLoading || streamLoading) {
@@ -1031,9 +1225,7 @@ export function WatchPage() {
         segments={playbackInfo?.skip_segments}
         currentTime={currentTime}
         onSkip={(toTime) => {
-          if (videoRef.current) {
-            videoRef.current.currentTime = toTime
-          }
+          applySeek(toTime)
         }}
         visible
         hideCredits={isEpisode && nextEpisodeMediaId != null}
@@ -1110,7 +1302,7 @@ export function WatchPage() {
         {/* ── Center: pause indicator (brief) ──────────────────────────────── */}
         {!isPlaying && !isBuffering && !isDetailPanelActive && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="-translate-y-20 rounded-full bg-black/30 p-5 backdrop-blur-sm">
+            <div className="rounded-full bg-black/30 p-5 backdrop-blur-sm">
               <LuPlay size={44} className="text-white fill-white ml-1" />
             </div>
           </div>
@@ -1183,7 +1375,7 @@ export function WatchPage() {
                         setShowSpeedMenu(false)
                         setShowSettings(false)
                       }}
-                      className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${
                         getActiveSubtitleTrack()
                           ? 'border-white bg-white/20 text-white'
                           : 'border-white/30 bg-white/5 text-white/70 hover:border-white/60 hover:text-white'
@@ -1231,7 +1423,7 @@ export function WatchPage() {
                           setShowSpeedMenu(false)
                           setShowSettings(false)
                         }}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
+                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
                         title={t('controls.audio')}
                       >
                         <LuMusic size={17} />
@@ -1260,7 +1452,7 @@ export function WatchPage() {
                         setShowAudioMenu(false)
                         setShowSettings(false)
                       }}
-                      className={`flex h-9 min-w-[36px] items-center justify-center rounded-lg border px-2 transition-colors ${
+                      className={`flex h-10 min-w-[40px] items-center justify-center rounded-lg border px-2 transition-colors ${
                         playbackRate !== 1
                           ? 'border-white bg-white/20 text-white'
                           : 'border-white/30 bg-white/5 text-white/70 hover:border-white/60 hover:text-white'
@@ -1311,7 +1503,7 @@ export function WatchPage() {
                         setShowAudioMenu(false)
                         setShowSpeedMenu(false)
                       }}
-                      className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${
                         showSettings
                           ? 'border-white bg-white/20 text-white'
                           : 'border-white/30 bg-white/5 text-white/70 hover:border-white/60 hover:text-white'
@@ -1569,7 +1761,7 @@ export function WatchPage() {
                   {nextEpisodeMediaId && (
                     <button
                       onClick={() => navigate(`/watch/${nextEpisodeMediaId}`)}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
+                      className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
                       title="Next episode"
                     >
                       <LuSkipForward size={17} />
@@ -1582,7 +1774,7 @@ export function WatchPage() {
                       setIsLocked(true)
                       setShowControls(false)
                     }}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
                     title="Lock screen"
                   >
                     <LuLock size={17} />
@@ -1594,7 +1786,7 @@ export function WatchPage() {
                       e.stopPropagation()
                       toggleFullscreen()
                     }}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
                     title={isFullscreen ? t('controls.exitFullscreen') : t('controls.fullscreen')}
                   >
                     {isFullscreen ? <LuMinimize2 size={17} /> : <LuMaximize2 size={17} />}
@@ -1605,7 +1797,7 @@ export function WatchPage() {
               {/* Row 2: Progress bar */}
               <div
                 ref={progressBarRef}
-                className="group relative flex h-5 cursor-pointer items-center"
+                className="group relative flex h-8 sm:h-5 cursor-pointer items-center"
                 onMouseEnter={() => setIsHoveringBar(true)}
                 onMouseLeave={() => setIsHoveringBar(false)}
                 onMouseMove={handleBarMouseMove}
@@ -1630,7 +1822,7 @@ export function WatchPage() {
                 >
                   <div
                     className="absolute inset-y-0 left-0 rounded-full bg-white/20"
-                    style={{ width: `${bufferPercent}%` }}
+                    style={{ width: `${bufferWidthPercent}%` }}
                   />
                   <div
                     className="absolute inset-y-0 left-0 rounded-full bg-white"
@@ -1648,37 +1840,37 @@ export function WatchPage() {
                 {/* Left: time + transport */}
                 <div className="flex items-center gap-4">
                   <span className="text-sm tabular-nums text-white/70">
-                    {formatTime(currentTime)}
+                    {formatTime(displayTime)}
                   </span>
 
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => seek(-SEEK_STEP)}
-                      className="flex items-center gap-0.5 text-white/75 transition-colors hover:text-white"
-                      title="Rewind 10s"
+                      className="flex items-center gap-0.5 p-2 text-white/75 transition-colors hover:text-white"
+                      title="Rewind 5s"
                     >
-                      <LuRotateCcw size={22} />
-                      <span className="text-[11px] font-bold">10</span>
+                      <LuRotateCcw className="size-5 sm:size-[22px]" />
+                      <span className="text-[11px] font-bold">5</span>
                     </button>
 
                     <button
                       onClick={togglePlay}
-                      className="flex h-11 w-11 items-center justify-center text-white transition-transform hover:scale-105"
+                      className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center text-white transition-transform hover:scale-105"
                     >
                       {isPlaying ? (
-                        <LuPause size={30} className="fill-white" />
+                        <LuPause className="fill-white size-6 sm:size-[30px]" />
                       ) : (
-                        <LuPlay size={30} className="fill-white ml-0.5" />
+                        <LuPlay className="fill-white ml-0.5 size-6 sm:size-[30px]" />
                       )}
                     </button>
 
                     <button
                       onClick={() => seek(SEEK_STEP)}
-                      className="flex items-center gap-0.5 text-white/75 transition-colors hover:text-white"
-                      title="Forward 10s"
+                      className="flex items-center gap-0.5 p-2 text-white/75 transition-colors hover:text-white"
+                      title="Forward 5s"
                     >
-                      <span className="text-[11px] font-bold">10</span>
-                      <LuRotateCw size={22} />
+                      <span className="text-[11px] font-bold">5</span>
+                      <LuRotateCw className="size-5 sm:size-[22px]" />
                     </button>
                   </div>
                 </div>

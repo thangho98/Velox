@@ -137,16 +137,24 @@ func Decide(media MediaFileInfo, profile *DeviceProfile, prefs UserPreferences) 
 
 		// Upgrade method only if video isn't already being transcoded
 		if !needsVideoTranscode {
-			if decision.Method == MethodDirectPlay {
-				decision.Method = MethodTranscodeAudio
-				decision.Reason = fmt.Sprintf("Audio codec %s not supported, transcoding audio", audioCodec)
-			}
-			// DirectStream + audio transcode still uses HLS pipeline → FullTranscode
-			if decision.Method == MethodDirectStream {
-				decision.Method = MethodFullTranscode
-				decision.VideoAction = VideoTranscode
-				decision.VideoCodec = selectBestVideoCodec(profile)
-				decision.Reason += fmt.Sprintf(" + audio codec %s not supported", audioCodec)
+			if decision.Method == MethodDirectPlay || decision.Method == MethodDirectStream {
+				if RequiresFullTranscodeForAudioMismatch(profile) {
+					decision.Method = MethodFullTranscode
+					decision.VideoAction = VideoTranscode
+					decision.VideoCodec = selectBestVideoCodec(profile)
+					decision.EstimatedBitrate = estimateBitrate(media.Height)
+					decision.Reason = fmt.Sprintf(
+						"Audio codec %s not supported, using full transcode for reliable HLS seeking",
+						audioCodec,
+					)
+				} else {
+					// Use HLS with video copy + audio transcode.
+					// Video stream is passed through unchanged (-c:v copy) so FFmpeg only
+					// re-encodes the audio track — near-instant, no CPU-heavy video encode.
+					decision.Method = MethodTranscodeAudio
+					decision.VideoAction = VideoCopy
+					decision.Reason = fmt.Sprintf("Audio codec %s not supported, transcoding audio (video copy)", audioCodec)
+				}
 			}
 		}
 	}
@@ -191,6 +199,11 @@ func NormalizeSubtitleCodec(codec string) string {
 }
 
 // normalizeCodec normalizes codec names
+// NormalizeCodec normalizes a codec string to a canonical form (e.g. "hevc" → "h265").
+func NormalizeCodec(codec string) string {
+	return normalizeCodec(codec)
+}
+
 func normalizeCodec(codec string) string {
 	codec = strings.ToLower(codec)
 	switch codec {

@@ -15,6 +15,7 @@ type LibraryService struct {
 	scanJobRepo     *repository.ScanJobRepo
 	pipeline        *scanner.Pipeline
 	notificationSvc *NotificationService
+	pretranscodeSvc *PretranscodeService
 }
 
 func NewLibraryService(repo *repository.LibraryRepo, scanJobRepo *repository.ScanJobRepo, pipeline *scanner.Pipeline) *LibraryService {
@@ -23,6 +24,10 @@ func NewLibraryService(repo *repository.LibraryRepo, scanJobRepo *repository.Sca
 
 func (s *LibraryService) SetNotificationService(svc *NotificationService) {
 	s.notificationSvc = svc
+}
+
+func (s *LibraryService) SetPretranscodeService(svc *PretranscodeService) {
+	s.pretranscodeSvc = svc
 }
 
 func (s *LibraryService) List(ctx context.Context) ([]model.Library, error) {
@@ -60,6 +65,10 @@ func (s *LibraryService) Scan(ctx context.Context, id int64, force bool) (*model
 			if err := s.notificationSvc.NotifyScanComplete(bgCtx, nil, id, libName, job.TotalFiles, job.NewFiles, job.Errors); err != nil {
 				log.Printf("scan notify library %d: %v", id, err)
 			}
+		}
+		// Enqueue audio-remux for any new non-AAC files discovered by scan
+		if s.pretranscodeSvc != nil {
+			s.pretranscodeSvc.EnqueueAudioRemux(bgCtx)
 		}
 	}()
 

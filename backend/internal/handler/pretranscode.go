@@ -11,18 +11,20 @@ import (
 // PretranscodeHandler handles admin pre-transcode endpoints.
 type PretranscodeHandler struct {
 	svc          *service.PretranscodeService
+	statusRepo   *repository.PretranscodeRepo // main DB — for status queries only
 	settingsRepo *repository.AppSettingsRepo
 }
 
 // NewPretranscodeHandler creates a new pre-transcode handler.
-func NewPretranscodeHandler(svc *service.PretranscodeService, settingsRepo *repository.AppSettingsRepo) *PretranscodeHandler {
-	return &PretranscodeHandler{svc: svc, settingsRepo: settingsRepo}
+func NewPretranscodeHandler(svc *service.PretranscodeService, statusRepo *repository.PretranscodeRepo, settingsRepo *repository.AppSettingsRepo) *PretranscodeHandler {
+	return &PretranscodeHandler{svc: svc, statusRepo: statusRepo, settingsRepo: settingsRepo}
 }
 
 // GetStatus returns the current pre-transcode status.
+// Uses main DB (not background DB) to avoid starving the scheduler goroutine.
 // GET /api/admin/pretranscode/status
 func (h *PretranscodeHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
-	status, err := h.svc.GetStatus(r.Context())
+	status, err := h.svc.GetStatusWith(r.Context(), h.statusRepo, h.settingsRepo)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get status")
 		return

@@ -19,11 +19,11 @@ func NewPretranscodeRepo(db DBTX) *PretranscodeRepo {
 
 // --- Profiles ---
 
-// ListProfiles returns all pre-transcode quality profiles.
+// ListProfiles returns all user-visible pre-transcode quality profiles (excludes audio-remux).
 func (r *PretranscodeRepo) ListProfiles(ctx context.Context) ([]model.PretranscodeProfile, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, height, video_bitrate, audio_bitrate, video_codec, audio_codec, enabled, created_at
-		FROM pretranscode_profiles ORDER BY height ASC`)
+		FROM pretranscode_profiles WHERE video_codec != 'copy' ORDER BY height ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +69,11 @@ func (r *PretranscodeRepo) GetProfileByHeight(ctx context.Context, height int) (
 	return &p, err
 }
 
-// ListEnabledProfiles returns only enabled profiles.
+// ListEnabledProfiles returns only enabled video pretranscode profiles (excludes audio-remux).
 func (r *PretranscodeRepo) ListEnabledProfiles(ctx context.Context) ([]model.PretranscodeProfile, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, height, video_bitrate, audio_bitrate, video_codec, audio_codec, enabled, created_at
-		FROM pretranscode_profiles WHERE enabled = 1 ORDER BY height ASC`)
+		FROM pretranscode_profiles WHERE enabled = 1 AND video_codec != 'copy' ORDER BY height ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -291,23 +291,28 @@ func (r *PretranscodeRepo) TotalDiskUsed(ctx context.Context) (int64, error) {
 
 // --- Queue ---
 
-// EnqueueJob adds a job to the queue. Silently ignores duplicates.
+// EnqueueJob adds a job to the queue. Re-queues cancelled/failed jobs.
 func (r *PretranscodeRepo) EnqueueJob(ctx context.Context, mediaFileID, profileID int64, priority int) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT OR IGNORE INTO pretranscode_queue (media_file_id, profile_id, priority)
-		VALUES (?, ?, ?)`, mediaFileID, profileID, priority)
+		INSERT INTO pretranscode_queue (media_file_id, profile_id, priority, status)
+		VALUES (?, ?, ?, 'queued')
+		ON CONFLICT (media_file_id, profile_id) DO UPDATE SET
+			status = 'queued', priority = excluded.priority
+		WHERE status IN ('cancelled', 'failed')`,
+		mediaFileID, profileID, priority)
 	return err
 }
 
-// PickNextJob picks the highest-priority queued job and marks it encoding.
+// PickNextJob picks the highest-priority queued video pretranscode job (excludes audio-remux).
 // Returns nil if no jobs available.
 func (r *PretranscodeRepo) PickNextJob(ctx context.Context) (*model.PretranscodeQueueItem, error) {
 	var q model.PretranscodeQueueItem
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, media_file_id, profile_id, priority, status, created_at
-		FROM pretranscode_queue
-		WHERE status = 'queued'
-		ORDER BY priority DESC, created_at ASC
+		SELECT pq.id, pq.media_file_id, pq.profile_id, pq.priority, pq.status, pq.created_at
+		FROM pretranscode_queue pq
+		JOIN pretranscode_profiles pp ON pp.id = pq.profile_id
+		WHERE pq.status = 'queued' AND pp.video_codec != 'copy'
+		ORDER BY pq.priority DESC, pq.created_at ASC
 		LIMIT 1`).Scan(&q.ID, &q.MediaFileID, &q.ProfileID, &q.Priority, &q.Status, &q.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -316,6 +321,29 @@ func (r *PretranscodeRepo) PickNextJob(ctx context.Context) (*model.Pretranscode
 		return nil, err
 	}
 
+	_, err = r.db.ExecContext(ctx, `UPDATE pretranscode_queue SET status = 'encoding' WHERE id = ?`, q.ID)
+	if err != nil {
+		return nil, err
+	}
+	q.Status = "encoding"
+	return &q, nil
+}
+
+// PickNextJobForProfile picks the next queued job for a specific profile.
+func (r *PretranscodeRepo) PickNextJobForProfile(ctx context.Context, profileID int64) (*model.PretranscodeQueueItem, error) {
+	var q model.PretranscodeQueueItem
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, media_file_id, profile_id, priority, status, created_at
+		FROM pretranscode_queue
+		WHERE status = 'queued' AND profile_id = ?
+		ORDER BY priority DESC, created_at ASC
+		LIMIT 1`, profileID).Scan(&q.ID, &q.MediaFileID, &q.ProfileID, &q.Priority, &q.Status, &q.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	_, err = r.db.ExecContext(ctx, `UPDATE pretranscode_queue SET status = 'encoding' WHERE id = ?`, q.ID)
 	if err != nil {
 		return nil, err
@@ -339,10 +367,13 @@ func (r *PretranscodeRepo) CancelAllQueued(ctx context.Context) (int64, error) {
 	return res.RowsAffected()
 }
 
-// QueueStats returns counts by status.
+// QueueStats returns counts by status (excludes audio-remux jobs).
 func (r *PretranscodeRepo) QueueStats(ctx context.Context) (total, queued, encoding, done, failed int, err error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT status, COUNT(*) FROM pretranscode_queue GROUP BY status`)
+		SELECT pq.status, COUNT(*) FROM pretranscode_queue pq
+		JOIN pretranscode_profiles pp ON pp.id = pq.profile_id
+		WHERE pp.video_codec != 'copy'
+		GROUP BY pq.status`)
 	if err != nil {
 		return
 	}
@@ -444,6 +475,54 @@ func (r *PretranscodeRepo) AvgDurationByLibrary(ctx context.Context, libraryID i
 		JOIN media m ON m.id = mf.media_id
 		WHERE m.library_id = ? AND mf.duration > 0`, libraryID).Scan(&avg)
 	return avg.Float64, err
+}
+
+// GetAudioRemuxProfile returns the "original" profile (video_codec='copy') for audio pretranscode.
+func (r *PretranscodeRepo) GetAudioRemuxProfile(ctx context.Context) (*model.PretranscodeProfile, error) {
+	var p model.PretranscodeProfile
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, name, height, video_bitrate, audio_bitrate, video_codec, audio_codec, enabled, created_at
+		FROM pretranscode_profiles WHERE video_codec = 'copy' LIMIT 1`).Scan(
+		&p.ID, &p.Name, &p.Height, &p.VideoBitrate, &p.AudioBitrate,
+		&p.VideoCodec, &p.AudioCodec, &p.Enabled, &p.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &p, err
+}
+
+// ListNonAACMediaFiles returns all media files with non-AAC audio that don't already
+// have an audio-remux pretranscode file (or queued job) for the given profile.
+func (r *PretranscodeRepo) ListNonAACMediaFiles(ctx context.Context, profileID int64) ([]model.MediaFile, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT mf.id, mf.media_id, mf.file_path, mf.file_size, mf.duration, mf.width, mf.height,
+		       mf.video_codec, mf.audio_codec, mf.container, mf.bitrate
+		FROM media_files mf
+		WHERE LOWER(mf.audio_codec) NOT IN ('aac')
+		  AND NOT EXISTS (
+			SELECT 1 FROM pretranscode_files pf
+			WHERE pf.media_file_id = mf.id AND pf.profile_id = ? AND pf.status = 'ready'
+		  )
+		  AND NOT EXISTS (
+			SELECT 1 FROM pretranscode_queue pq
+			WHERE pq.media_file_id = mf.id AND pq.profile_id = ? AND pq.status IN ('queued','encoding')
+		  )
+		ORDER BY mf.id ASC`, profileID, profileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []model.MediaFile
+	for rows.Next() {
+		var f model.MediaFile
+		if err := rows.Scan(&f.ID, &f.MediaID, &f.FilePath, &f.FileSize, &f.Duration,
+			&f.Width, &f.Height, &f.VideoCodec, &f.AudioCodec, &f.Container, &f.Bitrate); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return files, rows.Err()
 }
 
 func nullStr(s string) sql.NullString {

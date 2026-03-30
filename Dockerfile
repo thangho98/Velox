@@ -172,6 +172,11 @@ mkdir -p "$VELOX_DATA_DIR" \
          "$VELOX_DATA_DIR/trickplay" \
          "$VELOX_PRETRANSCODE_DIR"
 
+# ---- Clear realtime transcode cache on startup ----
+# HLS transcode segments are temporary — stale cache from prior versions
+# can cause playback failures. Pretranscode files are NOT affected.
+rm -rf "$VELOX_DATA_DIR/transcode/"*
+
 # ---- VAAPI: default to iHD driver (Intel 6th gen+) ----
 # Override via LIBVA_DRIVER_NAME env var in docker-compose if needed
 export LIBVA_DRIVER_NAME=${LIBVA_DRIVER_NAME:-iHD}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ type PlaybackHandler struct {
 	markerSvc       *service.MarkerService // NEW: marker service for skip segments
 	prefRepo        *repository.UserPreferencesRepo
 	appSettingsRepo *repository.AppSettingsRepo
+	apiKeyStore     *auth.APIKeyStore
 	activitySvc     *service.ActivityService
 }
 
@@ -43,6 +45,7 @@ func NewPlaybackHandler(
 	markerSvc *service.MarkerService,
 	prefRepo *repository.UserPreferencesRepo,
 	appSettingsRepo *repository.AppSettingsRepo,
+	apiKeyStore *auth.APIKeyStore,
 ) *PlaybackHandler {
 	return &PlaybackHandler{
 		mediaSvc:        mediaSvc,
@@ -53,6 +56,7 @@ func NewPlaybackHandler(
 		markerSvc:       markerSvc,
 		prefRepo:        prefRepo,
 		appSettingsRepo: appSettingsRepo,
+		apiKeyStore:     apiKeyStore,
 	}
 }
 
@@ -135,7 +139,7 @@ type SubtitleTrackInfo struct {
 // GetPlaybackInfo returns playback decision for a media item
 func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, _, ok := auth.UserFromContext(ctx)
+	userID, isAdmin, ok := auth.UserFromContext(ctx)
 	if !ok {
 		respondError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -297,18 +301,28 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		}
 		if ptFile, err := h.streamSvc.FindPretranscode(ctx, primaryFile.ID, maxHeight); err == nil && ptFile != nil {
 			ptProfile, _ := h.streamSvc.FindPretranscodeProfile(ctx, ptFile.ProfileID)
-			decision = playback.PlaybackDecision{
-				Method:           playback.MethodPreTranscode,
-				VideoAction:      playback.VideoCopy,
-				AudioAction:      playback.AudioCopy,
-				SubtitleAction:   playback.SubtitleNone,
-				Container:        "mp4",
-				Reason:           "Pre-transcoded file available",
-				PreTranscodePath: ptFile.FilePath,
+			// Validate: file must exist on disk and its video codec must be browser-compatible.
+			// Audio-remux pretranscodes (video_codec='copy') preserve the original video codec,
+			// so HEVC sources stay HEVC — unusable by browsers that don't support it.
+			ptVideoCodec := primaryFile.VideoCodec
+			if ptProfile != nil && ptProfile.VideoCodec != "copy" {
+				ptVideoCodec = ptProfile.VideoCodec
 			}
-			if ptProfile != nil {
-				decision.PreTranscodeQuality = ptProfile.Name
-				decision.EstimatedBitrate = ptProfile.VideoBitrate + ptProfile.AudioBitrate
+			ptUsable := fileExists(ptFile.FilePath) && profile.SupportsVideoCodec(playback.NormalizeCodec(ptVideoCodec))
+			if ptUsable {
+				decision = playback.PlaybackDecision{
+					Method:           playback.MethodPreTranscode,
+					VideoAction:      playback.VideoCopy,
+					AudioAction:      playback.AudioCopy,
+					SubtitleAction:   playback.SubtitleNone,
+					Container:        "mp4",
+					Reason:           "Pre-transcoded file available",
+					PreTranscodePath: ptFile.FilePath,
+				}
+				if ptProfile != nil {
+					decision.PreTranscodeQuality = ptProfile.Name
+					decision.EstimatedBitrate = ptProfile.VideoBitrate + ptProfile.AudioBitrate
+				}
 			}
 		}
 	}
@@ -363,48 +377,58 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	// ?fid= is always included so stream handlers serve the exact file used for this decision.
 	// Other user selections (audio track, subtitle) are forwarded as query params.
 	baseURL := "/api/stream/" + strconv.FormatInt(mediaID, 10)
-	fid := strconv.FormatInt(primaryFile.ID, 10)
+	apiKey := ""
+	if h.apiKeyStore != nil {
+		apiKey = h.apiKeyStore.Generate(userID, isAdmin)
+	}
+	baseQuery := url.Values{}
+	baseQuery.Set("fid", strconv.FormatInt(primaryFile.ID, 10))
+	if apiKey != "" {
+		baseQuery.Set("api_key", apiKey)
+	}
 	switch decision.Method {
 	case playback.MethodPreTranscode:
 		// Pre-transcoded MP4 — serve via same direct play endpoint (pre-transcode check runs first)
-		resp.StreamURL = baseURL + "?fid=" + fid
+		resp.StreamURL = buildURLWithQuery(baseURL, cloneValues(baseQuery))
 	case playback.MethodDirectPlay, playback.MethodDirectStream:
-		resp.StreamURL = baseURL + "?fid=" + fid + "&pm=" + playbackModeQuery(decision.Method)
+		query := cloneValues(baseQuery)
+		query.Set("pm", playbackModeQuery(decision.Method))
 		if effectiveAudioTrackID > 0 {
-			resp.StreamURL += "&at=" + strconv.Itoa(effectiveAudioTrackID)
+			query.Set("at", strconv.Itoa(effectiveAudioTrackID))
 		}
 		if prefs.SelectedSubtitle != "" && prefs.SelectedSubtitle != "off" {
-			resp.StreamURL += "&sub=" + prefs.SelectedSubtitle
+			query.Set("sub", prefs.SelectedSubtitle)
 		}
+		resp.StreamURL = buildURLWithQuery(baseURL, query)
 	case playback.MethodTranscodeAudio, playback.MethodFullTranscode:
-		resp.StreamURL = baseURL + "/hls/master.m3u8?fid=" + fid
+		query := cloneValues(baseQuery)
 		if decision.VideoAction == playback.VideoCopy {
-			resp.StreamURL += "&vcopy=1"
+			query.Set("vcopy", "1")
 		}
+		resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", query)
 		// ABR pipeline encodes audio once (default track only) and has no subtitle filter.
 		// Only offer ABR when neither subtitle burn-in nor a non-default audio track is needed.
+		// Only serve ABR if already cached — don't start background generation here
+		// because it consumes a transcode slot and can block realtime playback for
+		// other media. ABR will be generated opportunistically when slots are idle.
 		if subtitleStreamIndex < 0 && effectiveAudioTrackID == 0 {
 			if h.streamSvc.ABRCached(mediaID, primaryFile.ID) {
-				// Already transcoded — serve it immediately.
-				resp.AbrURL = baseURL + "/hls/abr.m3u8?fid=" + fid
-			} else {
-				// Not cached yet: kick off background generation; client will use
-				// regular HLS this time and get ABR on the next visit.
-				h.streamSvc.StartABRBackground(userID, mediaID, primaryFile.ID, primaryFile.FilePath, media.Media.Title, primaryFile.Height)
+				resp.AbrURL = buildURLWithQuery(baseURL+"/hls/abr.m3u8", cloneValues(baseQuery))
 			}
 		}
 		if subtitleStreamIndex >= 0 {
-			resp.StreamURL += "&si=" + strconv.Itoa(subtitleStreamIndex)
+			query.Set("si", strconv.Itoa(subtitleStreamIndex))
 		}
 		if effectiveAudioTrackID > 0 {
-			resp.StreamURL += "&at=" + strconv.Itoa(effectiveAudioTrackID)
+			query.Set("at", strconv.Itoa(effectiveAudioTrackID))
 		}
+		resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", query)
 		// On-demand pretranscode: remux HLS → MP4 for next time ⚡
 		if clientCaps.MaxHeight > 0 {
 			go h.streamSvc.RemuxToPretranscode(context.Background(), primaryFile.ID, mediaID, clientCaps.MaxHeight)
 		}
 	default:
-		resp.StreamURL = baseURL + "/hls/master.m3u8?fid=" + fid
+		resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", cloneValues(baseQuery))
 	}
 
 	// Populate audio tracks
@@ -457,7 +481,25 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		h.activitySvc.Log(&userID, "play_start", r.RemoteAddr, &mediaID, "")
 	}
 
+	w.Header().Set("Cache-Control", "no-store")
 	respondJSON(w, http.StatusOK, resp)
+}
+
+func cloneValues(values url.Values) url.Values {
+	cloned := make(url.Values, len(values))
+	for key, list := range values {
+		copied := make([]string, len(list))
+		copy(copied, list)
+		cloned[key] = copied
+	}
+	return cloned
+}
+
+func buildURLWithQuery(path string, values url.Values) string {
+	if len(values) == 0 {
+		return path
+	}
+	return path + "?" + values.Encode()
 }
 
 // buildQualityOptions returns the list of selectable qualities for the frontend.
@@ -740,15 +782,25 @@ func applyAdminPlaybackPolicy(
 
 	// Force direct play: never transcode video, but allow audio transcode
 	// when the browser can't decode the audio codec (DTS, TrueHD, etc.).
-	// This mirrors Emby/Jellyfin behavior: video direct play + audio fallback.
+	// Browser HLS audio-only transcode uses video copy segments that seek
+	// unreliably on some sources, so HLS clients must fully transcode instead.
 	decision.VideoAction = playback.VideoCopy
 	decision.SubtitleAction = playback.SubtitleCopy
 
 	if profile != nil && !profile.SupportsAudioCodec(mediaInfo.AudioCodec) {
-		// Audio incompatible — transcode audio only (lightweight)
-		decision.Method = playback.MethodTranscodeAudio
+		if playback.RequiresFullTranscodeForAudioMismatch(profile) {
+			decision.Method = playback.MethodFullTranscode
+			decision.VideoAction = playback.VideoTranscode
+			decision.VideoCodec = playback.CodecH264
+			decision.Reason = "forced direct play + audio mismatch uses full transcode for reliable HLS seeking (admin policy)"
+		} else {
+			// Video copy + audio transcode: video stream passed through unchanged,
+			// only audio re-encoded. Fast and avoids full transcode CPU overhead.
+			decision.Method = playback.MethodTranscodeAudio
+			decision.VideoAction = playback.VideoCopy
+			decision.Reason = "forced direct play + audio transcode with video copy (admin policy)"
+		}
 		decision.AudioAction = playback.AudioTranscode
-		decision.Reason = "forced direct play + audio transcode (admin policy)"
 	} else {
 		decision.Method = playback.MethodDirectPlay
 		decision.AudioAction = playback.AudioCopy

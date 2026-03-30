@@ -284,14 +284,25 @@ func runServer() {
 		metadataSvc.SetNotificationService(notificationSvc)
 	}
 
-	// Plan P: Pre-transcode service
-	pretranscodeRepo := repository.NewPretranscodeRepo(db)
+	// Plan P: Pre-transcode service — uses dedicated DB connection to avoid
+	// starvation from HTTP handler polling on shared connection pool.
+	bgDB, err := database.Open(cfg.DatabasePath)
+	if err != nil {
+		log.Fatalf("failed to open background database: %v", err)
+	}
+	defer bgDB.Close()
+	pretranscodeRepo := repository.NewPretranscodeRepo(bgDB)
 	pretranscodeSvc := service.NewPretranscodeService(
-		pretranscodeRepo, mediaFileRepo, appSettingsRepo, libraryRepo,
+		pretranscodeRepo,
+		repository.NewMediaFileRepo(bgDB),
+		repository.NewAppSettingsRepo(bgDB),
+		repository.NewLibraryRepo(bgDB),
 		cfg.PretranscodePath, hwAccel,
 	)
 	pretranscodeSvc.SetNotificationService(notificationSvc)
+	pretranscodeSvc.SetTranscoder(transcoderSvc)
 	streamSvc.SetPretranscodeService(pretranscodeSvc)
+	librarySvc.SetPretranscodeService(pretranscodeSvc)
 
 	// Handlers
 	libraryHandler := handler.NewLibraryHandler(librarySvc)
@@ -301,7 +312,7 @@ func runServer() {
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(authSvc)
 	profileHandler := handler.NewProfileHandler(authSvc, prefsRepo, userDataSvc)
-	playbackHandler := handler.NewPlaybackHandler(mediaSvc, streamSvc, userDataSvc, subtitleSvc, audioTrackSvc, markerSvc, prefsRepo, appSettingsRepo)
+	playbackHandler := handler.NewPlaybackHandler(mediaSvc, streamSvc, userDataSvc, subtitleSvc, audioTrackSvc, markerSvc, prefsRepo, appSettingsRepo, apiKeyStore)
 	subtitleHandler := handler.NewSubtitleHandler(subtitleSvc, mediaFileRepo, appSettingsRepo, cfg.SubtitleCachePath)
 	audioTrackHandler := handler.NewAudioTrackHandler(audioTrackSvc)
 	// Settings handler
@@ -341,7 +352,8 @@ func runServer() {
 	webhookHandler := handler.NewWebhookHandler(webhookSvc)
 	markerAdminHandler := handler.NewMarkerAdminHandler(markerSvc)
 	notificationHandler := handler.NewNotificationHandler(notificationSvc)
-	pretranscodeHandler := handler.NewPretranscodeHandler(pretranscodeSvc, appSettingsRepo)
+	pretranscodeStatusRepo := repository.NewPretranscodeRepo(db) // main DB for status queries
+	pretranscodeHandler := handler.NewPretranscodeHandler(pretranscodeSvc, pretranscodeStatusRepo, appSettingsRepo)
 	wsHandler := handler.NewWebSocketHandler(wsHub, jwtManager, slog.Default()) // NEW: marker admin handler for backfill
 
 	// Router
@@ -1269,12 +1281,10 @@ func runServer() {
 	scheduler.Start()
 	defer scheduler.Stop()
 
-	// Start pre-transcode scheduler if enabled
-	ptEnabled, _ := appSettingsRepo.Get(context.Background(), model.SettingPretranscodeEnabled)
-	if ptEnabled == "true" {
-		pretranscodeSvc.Start()
-		defer pretranscodeSvc.Stop()
-	}
+	// Always start pre-transcode scheduler — audio-remux runs regardless of
+	// pretranscode_enabled setting. Video pretranscode is gated inside the loop.
+	pretranscodeSvc.Start()
+	defer pretranscodeSvc.Stop()
 
 	server := &http.Server{
 		Addr:         cfg.Addr(),
