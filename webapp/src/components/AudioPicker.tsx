@@ -10,7 +10,7 @@ export function AudioPicker({ tracks, selectedLanguage, onSelect }: AudioPickerP
   if (tracks.length === 0) return null
 
   return (
-    <div className="min-w-[180px] rounded-lg bg-black/90 p-2 shadow-xl">
+    <div className="w-full rounded-lg bg-black/90 p-2 shadow-xl sm:w-auto sm:min-w-[180px]">
       <p className="mb-1 px-2 text-xs font-semibold text-gray-400">Audio Track</p>
       {tracks.map((track) => (
         <button

@@ -147,7 +147,7 @@ export function SubtitlePicker({
   const effectiveSecondaryTrackId = secondaryTrackId ?? secondarySources[0]?.id ?? null
 
   return (
-    <div className="w-72 rounded-xl bg-[#242424] shadow-2xl ring-1 ring-white/10 overflow-hidden">
+    <div className="w-full rounded-xl bg-[#242424] shadow-2xl ring-1 ring-white/10 overflow-hidden sm:w-72">
       {/* Header */}
       <div className="border-b border-white/10 px-4 py-3 text-center">
         <p className="text-sm font-semibold text-white">Subtitles</p>

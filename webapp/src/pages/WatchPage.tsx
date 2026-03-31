@@ -577,11 +577,8 @@ export function WatchPage() {
       webkitRequestFullscreen?: () => Promise<void>
     }
     const doc = document as FullscreenDoc
-    const el = document.documentElement as FullscreenEl
     const isFs = !!(document.fullscreenElement || doc.webkitFullscreenElement)
-
-    // On iOS, use native video fullscreen (webkitEnterFullscreen) which supports
-    // auto-rotation to landscape. The standard Fullscreen API on iOS doesn't rotate.
+    const container = containerRef.current as FullscreenEl | null
     const video = videoRef.current as
       | (HTMLVideoElement & {
           webkitEnterFullscreen?: () => void
@@ -589,11 +586,10 @@ export function WatchPage() {
           webkitDisplayingFullscreen?: boolean
         })
       | null
-    const isIOS =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
     if (isFs || video?.webkitDisplayingFullscreen) {
+      // Exit fullscreen
+      screen.orientation?.unlock?.()
       if (video?.webkitDisplayingFullscreen) {
         video.webkitExitFullscreen?.()
       } else if (document.exitFullscreen) {
@@ -602,15 +598,27 @@ export function WatchPage() {
         doc.webkitExitFullscreen?.()
       }
     } else {
-      if (isIOS && video?.webkitEnterFullscreen) {
-        video.webkitEnterFullscreen()
-      } else if (el.requestFullscreen) {
-        el.requestFullscreen().catch((err: Error) => {
-          showToastInfo(`Fullscreen: ${err.message}`)
-          console.error('[fullscreen]', err)
-        })
-      } else if (el.webkitRequestFullscreen) {
-        el.webkitRequestFullscreen()
+      // Enter fullscreen — use container element (keeps custom controls + subtitles visible)
+      const lockLandscape = () => {
+        const o = screen.orientation as ScreenOrientation & { lock?: (s: string) => Promise<void> }
+        o?.lock?.('landscape').catch(() => {})
+      }
+      if (container?.requestFullscreen) {
+        container
+          .requestFullscreen()
+          .then(lockLandscape)
+          .catch((err: Error) => {
+            // Fallback: iOS native video fullscreen (auto-rotates but loses custom UI)
+            if (video?.webkitEnterFullscreen) {
+              video.webkitEnterFullscreen()
+            } else {
+              showToastInfo(`Fullscreen: ${err.message}`)
+              console.error('[fullscreen]', err)
+            }
+          })
+      } else if (container?.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen()
+        lockLandscape()
       } else if (video?.webkitEnterFullscreen) {
         video.webkitEnterFullscreen()
       } else {
@@ -1015,6 +1023,7 @@ export function WatchPage() {
         case 'Escape':
           if (isFullscreen) {
             e.preventDefault()
+            screen.orientation?.unlock?.()
             document.exitFullscreen()
           }
           break
@@ -1035,18 +1044,32 @@ export function WatchPage() {
   ])
 
   useEffect(() => {
-    const onChange = () =>
-      setIsFullscreen(
-        !!(
-          document.fullscreenElement ??
-          (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement
-        ),
+    const onChange = () => {
+      const nowFs = !!(
+        document.fullscreenElement ??
+        (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement
       )
+      setIsFullscreen(nowFs)
+      if (!nowFs) screen.orientation?.unlock?.()
+    }
     document.addEventListener('fullscreenchange', onChange)
     document.addEventListener('webkitfullscreenchange', onChange)
+
+    // Track iOS native video fullscreen (webkitEnterFullscreen fallback)
+    const video = videoRef.current
+    const onBeginFs = () => setIsFullscreen(true)
+    const onEndFs = () => {
+      setIsFullscreen(false)
+      screen.orientation?.unlock?.()
+    }
+    video?.addEventListener('webkitbeginfullscreen', onBeginFs)
+    video?.addEventListener('webkitendfullscreen', onEndFs)
+
     return () => {
       document.removeEventListener('fullscreenchange', onChange)
       document.removeEventListener('webkitfullscreenchange', onChange)
+      video?.removeEventListener('webkitbeginfullscreen', onBeginFs)
+      video?.removeEventListener('webkitendfullscreen', onEndFs)
     }
   }, [])
 
@@ -1134,7 +1157,18 @@ export function WatchPage() {
           updateProgress({ mediaId, data: { position: duration, completed: true } })
         }}
         onError={() => setError('Video playback error')}
-      />
+      >
+        {/* Native <track> for iOS native fullscreen (webkitEnterFullscreen fallback) */}
+        {primarySub && !primarySub.is_image && subtitleServeUrl(primarySub) && (
+          <track
+            kind="subtitles"
+            src={subtitleServeUrl(primarySub)!}
+            srcLang={primarySub.language ?? 'und'}
+            label={primarySub.label ?? primarySub.language ?? 'Subtitles'}
+            default
+          />
+        )}
+      </video>
 
       {/* Subtitle overlay */}
       <DualSubtitleOverlay
@@ -1351,21 +1385,21 @@ export function WatchPage() {
           />
 
           <div
-            className={`px-6 transition-[opacity,transform] duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            className={`px-3 sm:px-6 transition-[opacity,transform] duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
               displayPanel === 'none'
-                ? 'translate-y-0 pb-4 pt-3 opacity-100'
-                : 'pointer-events-none translate-y-5 pb-4 pt-3 opacity-0'
+                ? 'translate-y-0 pb-3 pt-2 opacity-100 sm:pb-4 sm:pt-3'
+                : 'pointer-events-none translate-y-5 pb-3 pt-2 opacity-0 sm:pb-4 sm:pt-3'
             }`}
           >
-            <div className="space-y-2">
+            <div className="space-y-1.5 sm:space-y-2">
               {/* Row 1: Title + icon buttons */}
-              <div className="flex items-start justify-between gap-4">
-                <h1 className="text-xl font-bold text-white leading-tight drop-shadow">
+              <div className="flex items-center justify-between gap-2 sm:gap-4">
+                <h1 className="min-w-0 truncate text-sm font-bold text-white leading-tight drop-shadow sm:text-xl">
                   {media.media.title}
                 </h1>
 
                 {/* Right icon buttons */}
-                <div className="flex shrink-0 items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
                   {/* Subtitles — always visible so users can search for subs */}
                   <div className="relative">
                     <button
@@ -1375,7 +1409,7 @@ export function WatchPage() {
                         setShowSpeedMenu(false)
                         setShowSettings(false)
                       }}
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors sm:h-10 sm:w-10 ${
                         getActiveSubtitleTrack()
                           ? 'border-white bg-white/20 text-white'
                           : 'border-white/30 bg-white/5 text-white/70 hover:border-white/60 hover:text-white'
@@ -1385,7 +1419,7 @@ export function WatchPage() {
                       <LuCaptions size={18} />
                     </button>
                     {showSubtitleMenu && (
-                      <div className="absolute bottom-full right-0 mb-2">
+                      <div className="fixed inset-x-3 bottom-44 z-50 sm:absolute sm:inset-auto sm:bottom-full sm:right-0 sm:z-auto sm:mb-2">
                         <SubtitlePicker
                           subtitles={subtitles}
                           primaryLanguage={effectiveSubtitleLanguage}
@@ -1423,13 +1457,13 @@ export function WatchPage() {
                           setShowSpeedMenu(false)
                           setShowSettings(false)
                         }}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white sm:h-10 sm:w-10"
                         title={t('controls.audio')}
                       >
                         <LuMusic size={17} />
                       </button>
                       {showAudioMenu && (
-                        <div className="absolute bottom-full right-0 mb-2">
+                        <div className="fixed inset-x-3 bottom-44 z-50 sm:absolute sm:inset-auto sm:bottom-full sm:right-0 sm:z-auto sm:mb-2">
                           <AudioPicker
                             tracks={audioTracks}
                             selectedLanguage={audioLanguage}
@@ -1452,7 +1486,7 @@ export function WatchPage() {
                         setShowAudioMenu(false)
                         setShowSettings(false)
                       }}
-                      className={`flex h-10 min-w-[40px] items-center justify-center rounded-lg border px-2 transition-colors ${
+                      className={`flex h-9 min-w-[36px] items-center justify-center rounded-lg border px-1.5 transition-colors sm:h-10 sm:min-w-[40px] sm:px-2 ${
                         playbackRate !== 1
                           ? 'border-white bg-white/20 text-white'
                           : 'border-white/30 bg-white/5 text-white/70 hover:border-white/60 hover:text-white'
@@ -1464,7 +1498,7 @@ export function WatchPage() {
                       </span>
                     </button>
                     {showSpeedMenu && (
-                      <div className="absolute bottom-full right-0 mb-2 w-44 rounded-xl bg-[#1e1e1e] py-2 shadow-2xl ring-1 ring-white/10">
+                      <div className="fixed inset-x-3 bottom-44 z-50 rounded-xl bg-[#1e1e1e] py-2 shadow-2xl ring-1 ring-white/10 sm:absolute sm:inset-auto sm:bottom-full sm:right-0 sm:z-auto sm:mb-2 sm:w-44">
                         <p className="px-4 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
                           {t('controls.playbackSpeed')}
                         </p>
@@ -1503,7 +1537,7 @@ export function WatchPage() {
                         setShowAudioMenu(false)
                         setShowSpeedMenu(false)
                       }}
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors sm:h-10 sm:w-10 ${
                         showSettings
                           ? 'border-white bg-white/20 text-white'
                           : 'border-white/30 bg-white/5 text-white/70 hover:border-white/60 hover:text-white'
@@ -1513,7 +1547,7 @@ export function WatchPage() {
                       <LuSettings size={17} />
                     </button>
                     {showSettings && (
-                      <div className="absolute bottom-full right-0 mb-2 w-56 rounded-xl bg-[#1e1e1e] shadow-2xl ring-1 ring-white/10 overflow-hidden">
+                      <div className="fixed inset-x-3 bottom-44 z-50 overflow-hidden rounded-xl bg-[#1e1e1e] shadow-2xl ring-1 ring-white/10 sm:absolute sm:inset-auto sm:bottom-full sm:right-0 sm:z-auto sm:mb-2 sm:w-56">
                         {settingsView === 'quality' ? (
                           /* Quality submenu — resolution-based (Netflix style) */
                           <div className="flex flex-col">
@@ -1761,7 +1795,7 @@ export function WatchPage() {
                   {nextEpisodeMediaId && (
                     <button
                       onClick={() => navigate(`/watch/${nextEpisodeMediaId}`)}
-                      className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white sm:h-10 sm:w-10"
                       title="Next episode"
                     >
                       <LuSkipForward size={17} />
@@ -1774,7 +1808,7 @@ export function WatchPage() {
                       setIsLocked(true)
                       setShowControls(false)
                     }}
-                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white sm:h-10 sm:w-10"
                     title="Lock screen"
                   >
                     <LuLock size={17} />
@@ -1786,7 +1820,7 @@ export function WatchPage() {
                       e.stopPropagation()
                       toggleFullscreen()
                     }}
-                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white sm:h-10 sm:w-10"
                     title={isFullscreen ? t('controls.exitFullscreen') : t('controls.fullscreen')}
                   >
                     {isFullscreen ? <LuMinimize2 size={17} /> : <LuMaximize2 size={17} />}
@@ -1838,12 +1872,12 @@ export function WatchPage() {
               {/* Row 3: Transport + time */}
               <div className="flex items-center justify-between">
                 {/* Left: time + transport */}
-                <div className="flex items-center gap-4">
-                  <span className="text-sm tabular-nums text-white/70">
+                <div className="flex items-center gap-2 sm:gap-4">
+                  <span className="text-xs tabular-nums text-white/70 sm:text-sm">
                     {formatTime(displayTime)}
                   </span>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3">
                     <button
                       onClick={() => seek(-SEEK_STEP)}
                       className="flex items-center gap-0.5 p-2 text-white/75 transition-colors hover:text-white"
@@ -1876,7 +1910,7 @@ export function WatchPage() {
                 </div>
 
                 {/* Right: remaining */}
-                <span className="text-sm tabular-nums text-white/50">
+                <span className="text-xs tabular-nums text-white/50 sm:text-sm">
                   {duration > 0 ? `-${formatTime(remainingTime)}` : wallClock}
                 </span>
               </div>
