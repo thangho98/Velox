@@ -848,13 +848,17 @@ export default function WatchPage() {
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
+    // Native <track> is only for iOS native fullscreen (webkitEnterFullscreen).
+    // Normal rendering is handled by DualSubtitleOverlay.
+    // Use 'hidden' (cues available to JS but NOT rendered) instead of 'showing'
+    // to prevent double subtitle display.
     for (let i = 0; i < video.textTracks.length; i++) {
       const track = video.textTracks[i]
       if (track.kind === 'subtitles' || track.kind === 'captions') {
         track.mode = !subtitleLanguage
           ? 'disabled'
           : track.language === subtitleLanguage
-            ? 'showing'
+            ? 'hidden'
             : 'disabled'
       }
     }
