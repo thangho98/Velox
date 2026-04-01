@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -34,7 +35,8 @@ func (r *SeriesRepo) Create(ctx context.Context, s *model.Series) error {
 	return row.Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
 }
 
-// GetByID retrieves a series by ID
+// GetByID retrieves a series by ID.
+// Returns ErrNotFound if the series ID does not exist.
 func (r *SeriesRepo) GetByID(ctx context.Context, id int64) (*model.Series, error) {
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
@@ -44,6 +46,9 @@ func (r *SeriesRepo) GetByID(ctx context.Context, id int64) (*model.Series, erro
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
 			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
 			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
 		return nil, err
 	}

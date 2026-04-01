@@ -110,7 +110,7 @@ func TestGetSkipSegments(t *testing.T) {
 	db, markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo := setupMarkerTestDB(t)
 	defer db.Close()
 
-	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo)
+	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo, nil)
 
 	// No markers → empty segments
 	segments, err := svc.GetSkipSegments(ctx, 1)
@@ -151,7 +151,7 @@ func TestGetSkipSegments_SourcePriority(t *testing.T) {
 	db, markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo := setupMarkerTestDB(t)
 	defer db.Close()
 
-	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo)
+	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo, nil)
 
 	// Add fingerprint intro (low priority)
 	markerRepo.Create(ctx, &model.MediaMarker{
@@ -182,7 +182,7 @@ func TestBackfillMarkers_SkipsWhenHigherPriorityExists(t *testing.T) {
 	db, markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo := setupMarkerTestDB(t)
 	defer db.Close()
 
-	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo)
+	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo, nil)
 
 	// File 1: manual marker (highest priority)
 	markerRepo.Create(ctx, &model.MediaMarker{
@@ -213,7 +213,7 @@ func TestBackfillMarkers_AllowsFingerprintWhenNoMarkers(t *testing.T) {
 	db, markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo := setupMarkerTestDB(t)
 	defer db.Close()
 
-	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo)
+	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo, nil)
 
 	// File 3 has no markers — fingerprint detector is a stub so processed=1 but no markers saved
 	processed, skipped, err := svc.BackfillMarkers(ctx, []int64{3})
@@ -233,7 +233,7 @@ func TestDetectWithDetector_NotFound(t *testing.T) {
 	db, markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo := setupMarkerTestDB(t)
 	defer db.Close()
 
-	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo)
+	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo, nil)
 
 	err := svc.DetectWithDetector(ctx, 1, "nonexistent")
 	if err == nil {
@@ -244,7 +244,7 @@ func TestDetectWithDetector_NotFound(t *testing.T) {
 func TestGetAvailableDetectors(t *testing.T) {
 	_, markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo := setupMarkerTestDB(t)
 
-	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo)
+	svc := NewMarkerService(markerRepo, mediaFileRepo, fpRepo, episodeRepo, seasonRepo, nil)
 	names := svc.GetAvailableDetectors()
 
 	foundFingerprint := false

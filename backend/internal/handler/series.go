@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"database/sql"
 	"errors"
 	"net/http"
 
@@ -56,7 +55,7 @@ func (h *SeriesHandler) GetSeries(w http.ResponseWriter, r *http.Request) {
 
 	series, err := h.seriesRepo.GetByID(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "series not found")
 			return
 		}
