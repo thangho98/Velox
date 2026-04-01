@@ -4,7 +4,7 @@ import { useSetupStatus, useSetup, useLogin } from '@/hooks/stores/useAuth'
 import { useTranslation } from '@/hooks/useTranslation'
 import { Logo } from '@/components/Logo'
 
-export function SetupPage() {
+export default function SetupPage() {
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')

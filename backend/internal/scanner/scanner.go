@@ -71,7 +71,7 @@ func (s *Scanner) ScanLibrary(ctx context.Context, libraryID int64) error {
 		if err == nil {
 			return nil // already exists
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		if !errors.Is(err, repository.ErrNotFound) {
 			return fmt.Errorf("checking existing file %s: %w", path, err)
 		}
 

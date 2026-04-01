@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -185,8 +186,8 @@ func TestMediaMarkerRepo(t *testing.T) {
 
 	t.Run("NotFound", func(t *testing.T) {
 		_, err := repo.GetByID(ctx, 99999)
-		if err != sql.ErrNoRows {
-			t.Errorf("expected sql.ErrNoRows, got %v", err)
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("expected ErrNotFound, got %v", err)
 		}
 	})
 }

@@ -39,6 +39,28 @@ func setupMarkerTestDB(t *testing.T) (*sql.DB, *repository.MediaMarkerRepo, *rep
 		runtime INTEGER DEFAULT 0,
 		is_hidden BOOLEAN DEFAULT 0
 	);
+	CREATE TABLE series (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		library_id INTEGER NOT NULL REFERENCES libraries(id),
+		title TEXT NOT NULL
+	);
+	CREATE TABLE seasons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+		season_number INTEGER NOT NULL
+	);
+	CREATE TABLE episodes (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+		season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+		media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+		episode_number INTEGER NOT NULL,
+		title TEXT NOT NULL,
+		overview TEXT DEFAULT '',
+		still_path TEXT DEFAULT '',
+		air_date TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	CREATE TABLE media_files (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
@@ -70,7 +69,7 @@ func (s *MarkerService) GetSkipSegments(ctx context.Context, fileID int64) ([]mo
 	segments := make([]model.SkipSegment, 0, 2)
 
 	intro, err := s.markerRepo.GetBestByType(ctx, fileID, "intro")
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && err != repository.ErrNotFound {
 		return nil, fmt.Errorf("getting intro marker: %w", err)
 	}
 	if intro != nil {
@@ -84,7 +83,7 @@ func (s *MarkerService) GetSkipSegments(ctx context.Context, fileID int64) ([]mo
 	}
 
 	credits, err := s.markerRepo.GetBestByType(ctx, fileID, "credits")
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && err != repository.ErrNotFound {
 		return nil, fmt.Errorf("getting credits marker: %w", err)
 	}
 	if credits != nil {

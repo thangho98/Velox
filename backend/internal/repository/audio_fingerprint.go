@@ -93,7 +93,10 @@ func (r *AudioFingerprintRepo) GetByMediaFileIDs(ctx context.Context, fileIDs []
 // DeleteByMediaFileID removes all fingerprints for a media file.
 func (r *AudioFingerprintRepo) DeleteByMediaFileID(ctx context.Context, fileID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM audio_fingerprints WHERE media_file_id = ?", fileID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting fingerprints for media file %d: %w", fileID, err)
+	}
+	return nil
 }
 
 func joinStrings(ss []string, sep string) string {

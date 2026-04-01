@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { LuSkipForward } from 'react-icons/lu'
 import type { SkipSegment } from '@/types/api'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -23,19 +23,20 @@ export function SkipIntroCredits({
   const { t } = useTranslation('watch')
   // Track which segments the user already skipped (by start time) to avoid re-showing
   const skippedRef = useRef<Set<number>>(new Set())
-  const lastMediaSegmentsRef = useRef<SkipSegment[] | undefined>(undefined)
+  const [skippedSet, setSkippedSet] = useState<Set<number>>(() => new Set())
 
   // Reset skipped set when segments change (different media loaded)
-  if (segments !== lastMediaSegmentsRef.current) {
-    lastMediaSegmentsRef.current = segments
-    skippedRef.current = new Set()
-  }
+  useEffect(() => {
+    const newSet = new Set<number>()
+    skippedRef.current = newSet
+    setSkippedSet(newSet)
+  }, [segments])
 
   // Find active segment with boundary threshold to prevent flicker
   const activeSegment =
     segments?.find(
       (seg) =>
-        !skippedRef.current.has(seg.start) &&
+        !skippedSet.has(seg.start) &&
         !(seg.type === 'credits' && hideCredits) &&
         currentTime >= seg.start - BOUNDARY_THRESHOLD &&
         currentTime < seg.end - BOUNDARY_THRESHOLD,
@@ -49,7 +50,10 @@ export function SkipIntroCredits({
     <div className="absolute right-6 top-1/2 -translate-y-1/2 z-50 sm:translate-y-0 sm:top-auto sm:bottom-56">
       <button
         onClick={() => {
-          skippedRef.current.add(activeSegment.start)
+          const newSet = new Set(skippedRef.current)
+          newSet.add(activeSegment.start)
+          skippedRef.current = newSet
+          setSkippedSet(newSet)
           onSkip(activeSegment.end)
         }}
         className="flex items-center gap-2 rounded-lg bg-white/95 px-4 py-2.5 text-sm font-semibold text-black shadow-lg backdrop-blur-sm transition-all hover:bg-white hover:scale-105 active:scale-95"

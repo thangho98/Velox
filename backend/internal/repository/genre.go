@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -28,8 +30,11 @@ func (r *GenreRepo) GetByID(ctx context.Context, id int64) (*model.Genre, error)
 	var g model.Genre
 	err := r.db.QueryRowContext(ctx, "SELECT id, name, tmdb_id FROM genres WHERE id = ?", id).
 		Scan(&g.ID, &g.Name, &g.TmdbID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get genre by id %d: %w", id, err)
 	}
 	return &g, nil
 }
@@ -39,8 +44,11 @@ func (r *GenreRepo) GetByName(ctx context.Context, name string) (*model.Genre, e
 	var g model.Genre
 	err := r.db.QueryRowContext(ctx, "SELECT id, name, tmdb_id FROM genres WHERE name = ?", name).
 		Scan(&g.ID, &g.Name, &g.TmdbID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get genre by name %q: %w", name, err)
 	}
 	return &g, nil
 }
@@ -50,23 +58,40 @@ func (r *GenreRepo) GetByTmdbID(ctx context.Context, tmdbID int64) (*model.Genre
 	var g model.Genre
 	err := r.db.QueryRowContext(ctx, "SELECT id, name, tmdb_id FROM genres WHERE tmdb_id = ?", tmdbID).
 		Scan(&g.ID, &g.Name, &g.TmdbID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get genre by tmdb_id %d: %w", tmdbID, err)
 	}
 	return &g, nil
 }
 
 // Update updates a genre
 func (r *GenreRepo) Update(ctx context.Context, g *model.Genre) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE genres SET name = ?, tmdb_id = ? WHERE id = ?",
+	res, err := r.db.ExecContext(ctx, "UPDATE genres SET name = ?, tmdb_id = ? WHERE id = ?",
 		g.Name, g.TmdbID, g.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update genre %d: %w", g.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete removes a genre
 func (r *GenreRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM genres WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM genres WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete genre %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // List retrieves all genres
@@ -93,7 +118,10 @@ func (r *GenreRepo) LinkToMedia(ctx context.Context, mediaID, genreID int64) err
 	_, err := r.db.ExecContext(ctx,
 		"INSERT INTO media_genres (media_id, genre_id) VALUES (?, ?)",
 		mediaID, genreID)
-	return err
+	if err != nil {
+		return fmt.Errorf("linking genre %d to media %d: %w", genreID, mediaID, err)
+	}
+	return nil
 }
 
 // LinkToSeries links a genre to a series
@@ -101,7 +129,10 @@ func (r *GenreRepo) LinkToSeries(ctx context.Context, seriesID, genreID int64) e
 	_, err := r.db.ExecContext(ctx,
 		"INSERT INTO media_genres (series_id, genre_id) VALUES (?, ?)",
 		seriesID, genreID)
-	return err
+	if err != nil {
+		return fmt.Errorf("linking genre %d to series %d: %w", genreID, seriesID, err)
+	}
+	return nil
 }
 
 // UnlinkFromMedia removes a genre link from a media item
@@ -109,7 +140,10 @@ func (r *GenreRepo) UnlinkFromMedia(ctx context.Context, mediaID, genreID int64)
 	_, err := r.db.ExecContext(ctx,
 		"DELETE FROM media_genres WHERE media_id = ? AND genre_id = ?",
 		mediaID, genreID)
-	return err
+	if err != nil {
+		return fmt.Errorf("unlinking genre %d from media %d: %w", genreID, mediaID, err)
+	}
+	return nil
 }
 
 // UnlinkFromSeries removes a genre link from a series
@@ -117,7 +151,10 @@ func (r *GenreRepo) UnlinkFromSeries(ctx context.Context, seriesID, genreID int6
 	_, err := r.db.ExecContext(ctx,
 		"DELETE FROM media_genres WHERE series_id = ? AND genre_id = ?",
 		seriesID, genreID)
-	return err
+	if err != nil {
+		return fmt.Errorf("unlinking genre %d from series %d: %w", genreID, seriesID, err)
+	}
+	return nil
 }
 
 // ListByMediaID retrieves all genres for a media item
@@ -169,13 +206,19 @@ func (r *GenreRepo) ListBySeriesID(ctx context.Context, seriesID int64) ([]model
 // ClearMediaGenres removes all genre links for a media item
 func (r *GenreRepo) ClearMediaGenres(ctx context.Context, mediaID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM media_genres WHERE media_id = ?", mediaID)
-	return err
+	if err != nil {
+		return fmt.Errorf("clearing genres for media %d: %w", mediaID, err)
+	}
+	return nil
 }
 
 // ClearSeriesGenres removes all genre links for a series
 func (r *GenreRepo) ClearSeriesGenres(ctx context.Context, seriesID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM media_genres WHERE series_id = ?", seriesID)
-	return err
+	if err != nil {
+		return fmt.Errorf("clearing genres for series %d: %w", seriesID, err)
+	}
+	return nil
 }
 
 // ListWithFilter retrieves genres with optional type filtering.

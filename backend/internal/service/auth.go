@@ -87,7 +87,7 @@ func (s *AuthService) CreateUser(ctx context.Context, username, password, displa
 	if err == nil {
 		return nil, ErrUserExists
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if !errors.Is(err, repository.ErrNotFound) {
 		return nil, fmt.Errorf("checking username: %w", err)
 	}
 
@@ -123,7 +123,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, deviceName,
 
 	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil, ErrInvalidCredentials
 		}
 		return nil, nil, fmt.Errorf("fetching user: %w", err)
@@ -150,7 +150,7 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken, deviceName, ipA
 	// Atomically consume the token — only one concurrent request can succeed
 	rt, err := s.refreshTokenRepo.ConsumeByTokenHash(ctx, tokenHash)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrInvalidToken
 		}
 		return nil, fmt.Errorf("consuming refresh token: %w", err)
@@ -185,7 +185,7 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 
 	rt, err := s.refreshTokenRepo.GetByTokenHash(ctx, tokenHash)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil // Already logged out
 		}
 		return fmt.Errorf("fetching refresh token: %w", err)
@@ -262,7 +262,7 @@ func (s *AuthService) RevokeSession(ctx context.Context, sessionID, userID int64
 	// Verify the session belongs to the user
 	session, err := s.sessionRepo.GetByID(ctx, sessionID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("fetching session: %w", err)
@@ -294,7 +294,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID int64, oldPass,
 
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("fetching user: %w", err)
@@ -337,7 +337,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID int64, oldPass,
 func (s *AuthService) GetUser(ctx context.Context, id int64) (*model.User, error) {
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("fetching user: %w", err)
@@ -355,7 +355,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, user *model.User) error {
 	// Check if user exists
 	existing, err := s.userRepo.GetByID(ctx, user.ID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("fetching user: %w", err)
@@ -388,7 +388,7 @@ func (s *AuthService) DeleteUser(ctx context.Context, id int64, deletedBy int64)
 	// Check if user exists and get admin status
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("fetching user: %w", err)
@@ -416,7 +416,7 @@ func (s *AuthService) SetLibraryAccess(ctx context.Context, userID int64, librar
 	// Verify user exists
 	_, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("fetching user: %w", err)

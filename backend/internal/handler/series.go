@@ -5,19 +5,17 @@ import (
 	"net/http"
 
 	"github.com/thawng/velox/internal/model"
-	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/internal/service"
 )
 
 // SeriesHandler handles series, season, and episode endpoints.
 type SeriesHandler struct {
-	seriesRepo  *repository.SeriesRepo
-	seasonRepo  *repository.SeasonRepo
-	episodeRepo *repository.EpisodeRepo
+	seriesSvc *service.SeriesService
 }
 
 // NewSeriesHandler creates a new series handler.
-func NewSeriesHandler(seriesRepo *repository.SeriesRepo, seasonRepo *repository.SeasonRepo, episodeRepo *repository.EpisodeRepo) *SeriesHandler {
-	return &SeriesHandler{seriesRepo: seriesRepo, seasonRepo: seasonRepo, episodeRepo: episodeRepo}
+func NewSeriesHandler(seriesSvc *service.SeriesService) *SeriesHandler {
+	return &SeriesHandler{seriesSvc: seriesSvc}
 }
 
 // ListSeries returns a list of series with optional filtering.
@@ -36,7 +34,7 @@ func (h *SeriesHandler) ListSeries(w http.ResponseWriter, r *http.Request) {
 		Offset:    parseIntQuery(r, "offset", 0),
 	}
 
-	series, err := h.seriesRepo.ListFiltered(r.Context(), filter)
+	series, err := h.seriesSvc.ListFiltered(r.Context(), filter)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -53,9 +51,9 @@ func (h *SeriesHandler) GetSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	series, err := h.seriesRepo.GetByID(r.Context(), id)
+	series, err := h.seriesSvc.Get(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, service.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "series not found")
 			return
 		}
@@ -77,7 +75,7 @@ func (h *SeriesHandler) SearchSeries(w http.ResponseWriter, r *http.Request) {
 
 	limit := parseIntQuery(r, "limit", 20)
 
-	results, err := h.seriesRepo.Search(r.Context(), q, limit)
+	results, err := h.seriesSvc.Search(r.Context(), q, limit)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -95,7 +93,7 @@ func (h *SeriesHandler) ListSeasons(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	seasons, err := h.seasonRepo.ListBySeriesID(r.Context(), seriesID)
+	seasons, err := h.seriesSvc.ListSeasons(r.Context(), seriesID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -113,7 +111,7 @@ func (h *SeriesHandler) ListEpisodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	episodes, err := h.episodeRepo.ListBySeasonID(r.Context(), seasonID)
+	episodes, err := h.seriesSvc.ListEpisodes(r.Context(), seasonID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

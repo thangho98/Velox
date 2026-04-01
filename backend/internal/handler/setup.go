@@ -5,23 +5,20 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/thawng/velox/internal/model"
-	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/service"
 )
 
 type SetupHandler struct {
-	authSvc         *service.AuthService
-	appSettingsRepo *repository.AppSettingsRepo
+	setupSvc *service.SetupService
 }
 
-func NewSetupHandler(authSvc *service.AuthService, appSettingsRepo *repository.AppSettingsRepo) *SetupHandler {
-	return &SetupHandler{authSvc: authSvc, appSettingsRepo: appSettingsRepo}
+func NewSetupHandler(setupSvc *service.SetupService) *SetupHandler {
+	return &SetupHandler{setupSvc: setupSvc}
 }
 
 // Status returns whether the system is configured
 func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
-	configured, err := h.authSvc.IsConfigured(r.Context())
+	configured, err := h.setupSvc.Status(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -38,7 +35,7 @@ type setupReq struct {
 // Setup creates the first admin user (only works when not configured)
 func (h *SetupHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	// Check if already configured
-	configured, err := h.authSvc.IsConfigured(r.Context())
+	configured, err := h.setupSvc.Status(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -59,7 +56,7 @@ func (h *SetupHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.authSvc.CreateFirstAdmin(r.Context(), req.Username, req.Password, req.DisplayName)
+	user, err := h.setupSvc.CreateFirstAdmin(r.Context(), req.Username, req.Password, req.DisplayName)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidUsername):
@@ -82,18 +79,18 @@ func (h *SetupHandler) Setup(w http.ResponseWriter, r *http.Request) {
 // WizardStatus returns whether the setup wizard has been completed.
 // GET /api/setup/wizard
 func (h *SetupHandler) WizardStatus(w http.ResponseWriter, r *http.Request) {
-	val, err := h.appSettingsRepo.Get(r.Context(), model.SettingSetupWizardCompleted)
+	completed, err := h.setupSvc.WizardCompleted(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load wizard status")
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]bool{"completed": val == "true"})
+	respondJSON(w, http.StatusOK, map[string]bool{"completed": completed})
 }
 
 // CompleteWizard marks the setup wizard as completed.
 // POST /api/setup/wizard/complete
 func (h *SetupHandler) CompleteWizard(w http.ResponseWriter, r *http.Request) {
-	if err := h.appSettingsRepo.Set(r.Context(), model.SettingSetupWizardCompleted, "true"); err != nil {
+	if err := h.setupSvc.CompleteWizard(r.Context()); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save wizard status")
 		return
 	}

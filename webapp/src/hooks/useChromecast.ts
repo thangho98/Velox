@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api } from '@/lib/fetch'
 
 // Google Cast SDK types (loaded externally)
@@ -128,58 +128,55 @@ export function useChromecast() {
     }
   }, [])
 
-  const requestSession = useCallback(async () => {
+  const requestSession = async () => {
     if (!castContextRef.current) return
     try {
       await castContextRef.current.requestSession()
     } catch {
       // User cancelled or no devices
     }
-  }, [])
+  }
 
-  const castMedia = useCallback(
-    async (mediaId: number, title: string, posterUrl?: string, startTime = 0) => {
-      const session = castContextRef.current?.getCurrentSession()
-      if (!session || !window.chrome?.cast) return
+  const castMedia = async (mediaId: number, title: string, posterUrl?: string, startTime = 0) => {
+    const session = castContextRef.current?.getCurrentSession()
+    if (!session || !window.chrome?.cast) return
 
-      // Get stream URL with api_key
-      const streamData = await api.post<{
-        direct_url: string
-        api_key: string
-      }>(`/stream/${mediaId}/url`, {})
+    // Get stream URL with api_key
+    const streamData = await api.post<{
+      direct_url: string
+      api_key: string
+    }>(`/stream/${mediaId}/url`, {})
 
-      const mediaInfo = new window.chrome.cast.media.MediaInfo(streamData.direct_url, 'video/mp4')
-      mediaInfo.streamType = 'BUFFERED'
+    const mediaInfo = new window.chrome.cast.media.MediaInfo(streamData.direct_url, 'video/mp4')
+    mediaInfo.streamType = 'BUFFERED'
 
-      const metadata = new window.chrome.cast.media.GenericMediaMetadata()
-      metadata.metadataType = 0
-      metadata.title = title
-      if (posterUrl) {
-        metadata.images = [new window.chrome.cast.Image(posterUrl)]
-      }
-      mediaInfo.metadata = metadata
+    const metadata = new window.chrome.cast.media.GenericMediaMetadata()
+    metadata.metadataType = 0
+    metadata.title = title
+    if (posterUrl) {
+      metadata.images = [new window.chrome.cast.Image(posterUrl)]
+    }
+    mediaInfo.metadata = metadata
 
-      const request = new window.chrome.cast.media.LoadRequest(mediaInfo)
-      request.currentTime = startTime
-      request.autoplay = true
+    const request = new window.chrome.cast.media.LoadRequest(mediaInfo)
+    request.currentTime = startTime
+    request.autoplay = true
 
-      try {
-        await session.loadMedia(request)
-        setCasting(true)
-      } catch (err) {
-        console.error('Cast load failed:', err)
-      }
-    },
-    [],
-  )
+    try {
+      await session.loadMedia(request)
+      setCasting(true)
+    } catch (err) {
+      console.error('Cast load failed:', err)
+    }
+  }
 
-  const stopCasting = useCallback(() => {
+  const stopCasting = () => {
     const session = castContextRef.current?.getCurrentSession()
     if (session) {
       session.endSession(true)
       setCasting(false)
     }
-  }, [])
+  }
 
   return {
     available,

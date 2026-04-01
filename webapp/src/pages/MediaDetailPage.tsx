@@ -36,7 +36,7 @@ import { useTrailers } from '@/hooks/useCinemaMode'
 import { YouTubeBackground } from '@/components/YouTubeBackground'
 import { useTranslation } from '@/hooks/useTranslation'
 
-export function MediaDetailPage() {
+export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
   const mediaId = Number(id)
   const { t } = useTranslation('media')

@@ -5,7 +5,7 @@ import { FilterBar } from '@/components/FilterBar'
 import { AlphaIndex, useAlphaScroll } from '@/components/AlphaIndex'
 import { LuFilm } from 'react-icons/lu'
 
-export function MoviesPage() {
+export default function MoviesPage() {
   const { filters, setGenre, setYear, setSort, clearFilters, hasActiveFilters } = useFilterParams()
 
   const { data: movies, isLoading } = useMediaList({

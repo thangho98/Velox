@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
@@ -24,7 +23,7 @@ func NewUserDataService(userDataRepo *repository.UserDataRepo) *UserDataService 
 func (s *UserDataService) GetProgress(ctx context.Context, userID, mediaID int64) (*model.UserData, error) {
 	progress, err := s.userDataRepo.GetProgress(ctx, userID, mediaID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("getting progress: %w", err)

@@ -14,20 +14,32 @@ import (
 
 // AdminService provides admin dashboard functionality.
 type AdminService struct {
-	db        repository.DBTX
-	userRepo  *repository.UserRepo
-	startTime time.Time
-	hwAccel   string
-	dbPath    string
+	adminRepo     *repository.AdminRepo
+	libraryRepo   *repository.LibraryRepo
+	mediaFileRepo *repository.MediaFileRepo
+	userRepo      *repository.UserRepo
+	startTime     time.Time
+	hwAccel       string
+	dbPath        string
 }
 
-func NewAdminService(db repository.DBTX, userRepo *repository.UserRepo, startTime time.Time, hwAccel, dbPath string) *AdminService {
+func NewAdminService(
+	db repository.DBTX,
+	libraryRepo *repository.LibraryRepo,
+	mediaFileRepo *repository.MediaFileRepo,
+	userRepo *repository.UserRepo,
+	startTime time.Time,
+	hwAccel string,
+	dbPath string,
+) *AdminService {
 	return &AdminService{
-		db:        db,
-		userRepo:  userRepo,
-		startTime: startTime,
-		hwAccel:   hwAccel,
-		dbPath:    dbPath,
+		adminRepo:     repository.NewAdminRepo(db),
+		libraryRepo:   libraryRepo,
+		mediaFileRepo: mediaFileRepo,
+		userRepo:      userRepo,
+		startTime:     startTime,
+		hwAccel:       hwAccel,
+		dbPath:        dbPath,
 	}
 }
 
@@ -52,12 +64,12 @@ func (s *AdminService) GetServerInfo(ctx context.Context) (*model.ServerInfo, er
 
 	// Counts from DB
 	var err error
-	info.MediaCount, err = s.countTable(ctx, "media")
+	info.MediaCount, err = s.adminRepo.CountTable(ctx, "media")
 	if err != nil {
 		return nil, fmt.Errorf("counting media: %w", err)
 	}
 
-	info.SeriesCount, err = s.countTable(ctx, "series")
+	info.SeriesCount, err = s.adminRepo.CountTable(ctx, "series")
 	if err != nil {
 		return nil, fmt.Errorf("counting series: %w", err)
 	}
@@ -68,9 +80,9 @@ func (s *AdminService) GetServerInfo(ctx context.Context) (*model.ServerInfo, er
 	}
 
 	// Total file size
-	row := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(file_size), 0) FROM media_files`)
-	if err := row.Scan(&info.TotalSize); err != nil {
-		return nil, fmt.Errorf("summing file sizes: %w", err)
+	info.TotalSize, err = s.mediaFileRepo.TotalSize(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting total size: %w", err)
 	}
 
 	return info, nil
@@ -78,40 +90,7 @@ func (s *AdminService) GetServerInfo(ctx context.Context) (*model.ServerInfo, er
 
 // GetLibraryStats returns per-library statistics.
 func (s *AdminService) GetLibraryStats(ctx context.Context) ([]model.LibraryStats, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT
-			l.id, l.name, l.type,
-			(SELECT COUNT(*) FROM media m WHERE m.library_id = l.id) +
-			(SELECT COUNT(*) FROM series sr WHERE sr.library_id = l.id) as item_count,
-			(SELECT COUNT(*) FROM media_files mf
-			 JOIN media m2 ON mf.media_id = m2.id WHERE m2.library_id = l.id) as file_count,
-			(SELECT COALESCE(SUM(mf2.file_size), 0) FROM media_files mf2
-			 JOIN media m3 ON mf2.media_id = m3.id WHERE m3.library_id = l.id) as total_size,
-			COALESCE((SELECT MAX(sj.finished_at) FROM scan_jobs sj
-			          WHERE sj.library_id = l.id AND sj.status = 'completed'), '') as last_scanned
-		FROM libraries l
-		ORDER BY l.name`)
-	if err != nil {
-		return nil, fmt.Errorf("querying library stats: %w", err)
-	}
-	defer rows.Close()
-
-	var stats []model.LibraryStats
-	for rows.Next() {
-		var ls model.LibraryStats
-		if err := rows.Scan(&ls.ID, &ls.Name, &ls.Type, &ls.ItemCount, &ls.FileCount, &ls.TotalSize, &ls.LastScanned); err != nil {
-			return nil, fmt.Errorf("scanning library stats: %w", err)
-		}
-		stats = append(stats, ls)
-	}
-	return stats, rows.Err()
-}
-
-func (s *AdminService) countTable(ctx context.Context, table string) (int, error) {
-	var count int
-	row := s.db.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
-	err := row.Scan(&count)
-	return count, err
+	return s.libraryRepo.GetStats(ctx)
 }
 
 func detectFFmpegVersion() string {

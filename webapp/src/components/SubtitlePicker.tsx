@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { LuCaptions, LuLanguages, LuSearch } from 'react-icons/lu'
+import { LuCaptions, LuSearch } from 'react-icons/lu'
 import { SubtitleSearchModal } from '@/components/SubtitleSearchModal'
-import { useTranslateSubtitle } from '@/hooks/stores/useMedia'
+import { SubtitleTranslate } from '@/components/SubtitleTranslate'
+import { parseSubtitleLabel, languageMatches, buildVisibleSubtitles } from '@/lib/languages'
 import type { PlaybackSubtitleTrack } from '@/types/api'
 
 interface SubtitlePickerProps {
@@ -18,110 +19,6 @@ interface SubtitlePickerProps {
   allowImageSubtitles?: boolean
   mediaId: number
   onSubtitleAdded?: () => void
-}
-
-const LANG_NAMES: Record<string, string> = {
-  eng: 'English',
-  en: 'English',
-  vie: 'Vietnamese',
-  vi: 'Vietnamese',
-  jpn: 'Japanese',
-  ja: 'Japanese',
-  kor: 'Korean',
-  ko: 'Korean',
-  zho: 'Chinese',
-  zh: 'Chinese',
-  fra: 'French',
-  fr: 'French',
-  deu: 'German',
-  de: 'German',
-  spa: 'Spanish',
-  es: 'Spanish',
-  ita: 'Italian',
-  it: 'Italian',
-  por: 'Portuguese',
-  pt: 'Portuguese',
-  rus: 'Russian',
-  ru: 'Russian',
-  tha: 'Thai',
-  th: 'Thai',
-  ara: 'Arabic',
-  ar: 'Arabic',
-  hin: 'Hindi',
-  hi: 'Hindi',
-  ind: 'Indonesian',
-  id: 'Indonesian',
-  msa: 'Malay',
-  ms: 'Malay',
-}
-
-function parseLabel(label: string, language?: string): { name: string; fmt: string } {
-  const languageName = (language && LANG_NAMES[language]) || language || 'Unknown'
-  const normalizedLabel = label.trim()
-
-  if (/^(sdh|cc|forced)$/i.test(normalizedLabel)) {
-    return { name: languageName, fmt: normalizedLabel.toUpperCase() }
-  }
-
-  if (label) {
-    const match = label.match(/^(.*?)\s*\(([^)]+)\)$/)
-    if (match) return { name: match[1].trim(), fmt: match[2].trim() }
-    return { name: label, fmt: '' }
-  }
-  // Fallback to language name when label is empty
-  return { name: languageName, fmt: '' }
-}
-
-function normalizeLanguageCode(language: string | null | undefined): string {
-  const value = (language ?? '').trim().toLowerCase()
-  switch (value) {
-    case 'en':
-    case 'eng':
-      return 'eng'
-    case 'vi':
-    case 'vie':
-      return 'vie'
-    case 'zh':
-    case 'zho':
-    case 'chi':
-      return 'zho'
-    default:
-      return value
-  }
-}
-
-function languageMatches(lhs: string | null | undefined, rhs: string | null | undefined): boolean {
-  if (!lhs || !rhs) return false
-  return normalizeLanguageCode(lhs) === normalizeLanguageCode(rhs)
-}
-
-function buildVisibleSubtitles(
-  subtitles: PlaybackSubtitleTrack[],
-  allowImageSubtitles: boolean,
-): PlaybackSubtitleTrack[] {
-  const byLanguage = new Map<string, PlaybackSubtitleTrack>()
-
-  for (const subtitle of subtitles) {
-    if (!allowImageSubtitles && subtitle.is_image) continue
-
-    const key = normalizeLanguageCode(subtitle.language || String(subtitle.id))
-    const current = byLanguage.get(key)
-    if (!current) {
-      byLanguage.set(key, subtitle)
-      continue
-    }
-
-    if (current.is_image && !subtitle.is_image) {
-      byLanguage.set(key, subtitle)
-      continue
-    }
-
-    if (!current.is_default && subtitle.is_default) {
-      byLanguage.set(key, subtitle)
-    }
-  }
-
-  return Array.from(byLanguage.values())
 }
 
 export function SubtitlePicker({
@@ -155,7 +52,6 @@ export function SubtitlePicker({
 
       {/* Primary list */}
       <div className="max-h-[50vh] overflow-y-auto">
-        {/* Off */}
         <SubRow
           icon={<LuCaptions size={18} />}
           name="Off"
@@ -165,7 +61,7 @@ export function SubtitlePicker({
         />
 
         {allSubs.map((sub) => {
-          const { name, fmt } = parseLabel(sub.label, sub.language)
+          const { name, fmt } = parseSubtitleLabel(sub.label, sub.language)
           return (
             <SubRow
               key={sub.id}
@@ -207,7 +103,7 @@ export function SubtitlePicker({
             {allSubs
               .filter((s) => !s.is_image)
               .map((sub) => {
-                const { name, fmt } = parseLabel(sub.label, sub.language)
+                const { name, fmt } = parseSubtitleLabel(sub.label, sub.language)
                 return (
                   <SubRow
                     key={sub.id}
@@ -233,7 +129,7 @@ export function SubtitlePicker({
 
       {/* Translate existing subtitle */}
       {allSubs.length > 0 && (
-        <TranslateRow subtitles={allSubs} onTranslated={() => onSubtitleAdded?.()} />
+        <SubtitleTranslate subtitles={allSubs} onTranslated={() => onSubtitleAdded?.()} />
       )}
 
       {/* Search for Subtitles */}
@@ -261,6 +157,8 @@ export function SubtitlePicker({
   )
 }
 
+// ── Private helpers ──────────────────────────────────────────────────────────
+
 function buildSubtitleSources(
   subtitles: PlaybackSubtitleTrack[],
   language: string | null,
@@ -274,7 +172,7 @@ function buildSubtitleSources(
 }
 
 function buildSourceLabel(subtitle: PlaybackSubtitleTrack): string {
-  const { name, fmt } = parseLabel(subtitle.label, subtitle.language)
+  const { name, fmt } = parseSubtitleLabel(subtitle.label, subtitle.language)
   const sourceName = name || subtitle.language || `Track ${subtitle.id}`
   const meta = [
     `#${subtitle.id}`,
@@ -286,14 +184,17 @@ function buildSourceLabel(subtitle: PlaybackSubtitleTrack): string {
   return meta ? `${sourceName} (${meta})` : sourceName
 }
 
-interface SourceSelectorProps {
+function SourceSelector({
+  title,
+  sources,
+  selectedTrackId,
+  onSelect,
+}: {
   title: string
   sources: PlaybackSubtitleTrack[]
   selectedTrackId: number | null
   onSelect: (trackId: number | null) => void
-}
-
-function SourceSelector({ title, sources, selectedTrackId, onSelect }: SourceSelectorProps) {
+}) {
   return (
     <div className="border-t border-white/10 px-4 py-3">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-white/40">
@@ -314,15 +215,19 @@ function SourceSelector({ title, sources, selectedTrackId, onSelect }: SourceSel
   )
 }
 
-interface SubRowProps {
+function SubRow({
+  icon,
+  name,
+  fmt,
+  selected,
+  onClick,
+}: {
   icon: React.ReactNode
   name: string
   fmt: string
   selected: boolean
   onClick: () => void
-}
-
-function SubRow({ icon, name, fmt, selected, onClick }: SubRowProps) {
+}) {
   return (
     <button
       onClick={onClick}
@@ -337,122 +242,5 @@ function SubRow({ icon, name, fmt, selected, onClick }: SubRowProps) {
       </span>
       <span className="shrink-0 w-4 text-center text-sm">{selected ? '✓' : ''}</span>
     </button>
-  )
-}
-
-const TRANSLATE_LANGS = [
-  { code: 'vi', label: 'Vietnamese' },
-  { code: 'en', label: 'English' },
-  { code: 'fr', label: 'French' },
-  { code: 'de', label: 'German' },
-  { code: 'es', label: 'Spanish' },
-  { code: 'ja', label: 'Japanese' },
-  { code: 'ko', label: 'Korean' },
-  { code: 'zh', label: 'Chinese' },
-  { code: 'pt', label: 'Portuguese' },
-  { code: 'ru', label: 'Russian' },
-  { code: 'th', label: 'Thai' },
-]
-
-function TranslateRow({
-  subtitles,
-  onTranslated,
-}: {
-  subtitles: PlaybackSubtitleTrack[]
-  onTranslated: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [sourceId, setSourceId] = useState<number | null>(null)
-  const [targetLang, setTargetLang] = useState('')
-  const translateMutation = useTranslateSubtitle()
-
-  // Only show text-based subtitles as source
-  const textSubs = subtitles.filter((s) => !s.is_image)
-  if (textSubs.length === 0) return null
-
-  const handleTranslate = () => {
-    const subId = sourceId ?? textSubs[0]?.id
-    if (!subId || !targetLang) return
-    translateMutation.mutate(
-      { subtitleId: subId, targetLanguage: targetLang },
-      {
-        onSuccess: () => {
-          onTranslated()
-          setOpen(false)
-          setTargetLang('')
-        },
-      },
-    )
-  }
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-sm text-white/50 transition-colors hover:bg-white/8 hover:text-white/80"
-      >
-        <LuLanguages size={18} className="shrink-0" />
-        <span>Translate Subtitle</span>
-      </button>
-    )
-  }
-
-  return (
-    <div className="border-t border-white/10 px-4 py-3 space-y-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
-        Translate subtitle
-      </p>
-
-      {textSubs.length > 1 && (
-        <select
-          value={sourceId ?? textSubs[0]?.id ?? ''}
-          onChange={(e) => setSourceId(Number(e.target.value))}
-          className="w-full rounded-lg bg-white/6 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10"
-        >
-          {textSubs.map((s) => (
-            <option key={s.id} value={s.id} className="bg-[#242424] text-white">
-              {s.label || s.language} ({s.format})
-            </option>
-          ))}
-        </select>
-      )}
-
-      <select
-        value={targetLang}
-        onChange={(e) => setTargetLang(e.target.value)}
-        className="w-full rounded-lg bg-white/6 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10"
-      >
-        <option value="" className="bg-[#242424] text-white">
-          Translate to...
-        </option>
-        {TRANSLATE_LANGS.map((l) => (
-          <option key={l.code} value={l.code} className="bg-[#242424] text-white">
-            {l.label}
-          </option>
-        ))}
-      </select>
-
-      <div className="flex gap-2">
-        <button
-          onClick={handleTranslate}
-          disabled={!targetLang || translateMutation.isPending}
-          className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
-        >
-          {translateMutation.isPending ? 'Translating...' : 'Translate'}
-        </button>
-        <button
-          onClick={() => setOpen(false)}
-          className="rounded-lg bg-white/10 px-3 py-2 text-sm text-white/70 hover:bg-white/15"
-        >
-          Cancel
-        </button>
-      </div>
-
-      {translateMutation.isError && (
-        <p className="text-xs text-red-400">
-          {(translateMutation.error as Error)?.message || 'Translation failed'}
-        </p>
-      )}
-    </div>
   )
 }

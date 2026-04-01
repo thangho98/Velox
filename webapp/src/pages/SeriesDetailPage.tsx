@@ -23,7 +23,7 @@ import { YouTubeBackground } from '@/components/YouTubeBackground'
 import { useTranslation } from '@/hooks/useTranslation'
 import type { Episode } from '@/types/api'
 
-export function SeriesDetailPage() {
+export default function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>()
   const id = Number(seriesId)
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null)

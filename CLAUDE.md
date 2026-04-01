@@ -121,13 +121,9 @@ Pre-commit hook auto-formats staged files:
 Config: root `package.json` (lint-staged) + `.husky/pre-commit`
 
 ## Key Design Documents
-- `docs/database-design.md` — Full schema (22 tables, 11 migrations), ERD, query patterns
-- `plans/` — Implementation roadmap (Plans A-G, phased)
-
-## Development Plan Status
-- **Plan A Phase 01:** Migration system ✅ DONE
-- **Plan A Phase 02:** Core Data Model (migrations 002-004) — NEXT
-- **Current schema:** Migration 001 (libraries, media, progress)
+- `docs/development-rules.md` — **Development rules, conventions, patterns** (backend + frontend)
+- `docs/database-design.md` — Full schema, ERD, query patterns
+- `plans/` — Implementation roadmap (Plans A-R)
 
 ## Important Conventions
 - Vietnamese comments in plan files are intentional. Code comments in English.

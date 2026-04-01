@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -94,7 +93,7 @@ func (d *FingerprintDetector) Detect(ctx context.Context, fileID int64, filePath
 
 	episode, err := d.episodeRepo.GetByMediaID(ctx, file.MediaID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			slog.Debug("fingerprint: not an episode, skipping", "file_id", fileID)
 			return nil, nil // Not an episode (movie) — can't cross-compare
 		}

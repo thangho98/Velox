@@ -50,14 +50,14 @@ func (r *SeriesRepo) GetByID(ctx context.Context, id int64) (*model.Series, erro
 		return nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting series %d: %w", id, err)
 	}
 	return &s, nil
 }
 
 // Update updates a series (full update — used by metadata enrichment pipeline).
 func (r *SeriesRepo) Update(ctx context.Context, s *model.Series) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE series SET
+	res, err := r.db.ExecContext(ctx, `UPDATE series SET
 		title = ?, sort_title = ?, tmdb_id = ?, imdb_id = ?, tvdb_id = ?,
 		overview = ?, status = ?, network = ?, first_air_date = ?,
 		poster_path = ?, backdrop_path = ?, logo_path = ?, thumb_path = ?,
@@ -68,7 +68,14 @@ func (r *SeriesRepo) Update(ctx context.Context, s *model.Series) error {
 		s.Overview, s.Status, s.Network, s.FirstAirDate,
 		s.PosterPath, s.BackdropPath, s.LogoPath, s.ThumbPath,
 		s.MetadataLocked, s.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update series %d: %w", s.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // UpdateMetadata performs a partial metadata update for a series.
@@ -115,7 +122,7 @@ func (r *SeriesRepo) UpdateMetadata(ctx context.Context, id int64, req model.Ser
 	args = append(args, id)
 	res, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return err
+		return fmt.Errorf("updating series %d: %w", id, err)
 	}
 	return checkRowsAffected(res)
 }
@@ -129,7 +136,7 @@ func (r *SeriesRepo) UpdateImagePath(ctx context.Context, id int64, imageType, p
 	}
 	res, err := r.db.ExecContext(ctx, fmt.Sprintf("UPDATE series SET %s = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", col), path, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("updating image path for series %d: %w", id, err)
 	}
 	return checkRowsAffected(res)
 }
@@ -138,7 +145,7 @@ func (r *SeriesRepo) UpdateImagePath(ctx context.Context, id int64, imageType, p
 func (r *SeriesRepo) SetMetadataLocked(ctx context.Context, id int64, locked bool) error {
 	res, err := r.db.ExecContext(ctx, "UPDATE series SET metadata_locked = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", locked, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("setting metadata locked for series %d: %w", id, err)
 	}
 	return checkRowsAffected(res)
 }
@@ -157,8 +164,15 @@ func checkRowsAffected(res sql.Result) error {
 
 // Delete removes a series and its seasons/episodes (CASCADE)
 func (r *SeriesRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM series WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM series WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete series %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // List retrieves series with optional filters
@@ -420,8 +434,11 @@ func (r *SeasonRepo) GetByID(ctx context.Context, id int64) (*model.Season, erro
 		FROM seasons WHERE id = ?`, id).
 		Scan(&s.ID, &s.SeriesID, &s.SeasonNumber, &s.Title,
 			&s.Overview, &s.PosterPath, &s.EpisodeCount, &s.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get season by id %d: %w", id, err)
 	}
 	return &s, nil
 }
@@ -434,25 +451,42 @@ func (r *SeasonRepo) GetBySeriesAndNumber(ctx context.Context, seriesID int64, s
 		FROM seasons WHERE series_id = ? AND season_number = ?`, seriesID, seasonNumber).
 		Scan(&s.ID, &s.SeriesID, &s.SeasonNumber, &s.Title,
 			&s.Overview, &s.PosterPath, &s.EpisodeCount, &s.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get season by series %d number %d: %w", seriesID, seasonNumber, err)
 	}
 	return &s, nil
 }
 
 // Update updates a season
 func (r *SeasonRepo) Update(ctx context.Context, s *model.Season) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE seasons SET
+	res, err := r.db.ExecContext(ctx, `UPDATE seasons SET
 		season_number = ?, title = ?, overview = ?, poster_path = ?, episode_count = ?
 		WHERE id = ?`,
 		s.SeasonNumber, s.Title, s.Overview, s.PosterPath, s.EpisodeCount, s.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update season %d: %w", s.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete removes a season (episodes will be deleted by CASCADE)
 func (r *SeasonRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM seasons WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM seasons WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete season %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ListBySeriesID retrieves all seasons for a series
@@ -512,8 +546,11 @@ func (r *EpisodeRepo) GetByID(ctx context.Context, id int64) (*model.Episode, er
 		FROM episodes WHERE id = ?`, id).
 		Scan(&e.ID, &e.SeriesID, &e.SeasonID, &e.MediaID,
 			&e.EpisodeNumber, &e.Title, &e.Overview, &e.StillPath, &e.AirDate, &e.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get episode by id %d: %w", id, err)
 	}
 	return &e, nil
 }
@@ -526,8 +563,11 @@ func (r *EpisodeRepo) GetByMediaID(ctx context.Context, mediaID int64) (*model.E
 		FROM episodes WHERE media_id = ?`, mediaID).
 		Scan(&e.ID, &e.SeriesID, &e.SeasonID, &e.MediaID,
 			&e.EpisodeNumber, &e.Title, &e.Overview, &e.StillPath, &e.AirDate, &e.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get episode by media_id %d: %w", mediaID, err)
 	}
 	return &e, nil
 }
@@ -540,33 +580,57 @@ func (r *EpisodeRepo) GetBySeasonAndNumber(ctx context.Context, seasonID int64, 
 		FROM episodes WHERE season_id = ? AND episode_number = ?`, seasonID, episodeNumber).
 		Scan(&e.ID, &e.SeriesID, &e.SeasonID, &e.MediaID,
 			&e.EpisodeNumber, &e.Title, &e.Overview, &e.StillPath, &e.AirDate, &e.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get episode by season %d number %d: %w", seasonID, episodeNumber, err)
 	}
 	return &e, nil
 }
 
 // Update updates an episode
 func (r *EpisodeRepo) Update(ctx context.Context, e *model.Episode) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE episodes SET
+	res, err := r.db.ExecContext(ctx, `UPDATE episodes SET
 		episode_number = ?, title = ?, overview = ?, still_path = ?, air_date = ?
 		WHERE id = ?`,
 		e.EpisodeNumber, e.Title, e.Overview, e.StillPath, e.AirDate, e.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update episode %d: %w", e.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // UpdateSeasonLink updates the season and episode number for an episode record.
 func (r *EpisodeRepo) UpdateSeasonLink(ctx context.Context, id, seasonID int64, episodeNumber int) error {
-	_, err := r.db.ExecContext(ctx,
+	res, err := r.db.ExecContext(ctx,
 		`UPDATE episodes SET season_id = ?, episode_number = ? WHERE id = ?`,
 		seasonID, episodeNumber, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("update season link for episode %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete removes an episode
 func (r *EpisodeRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM episodes WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM episodes WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete episode %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ListBySeasonID retrieves all episodes for a season

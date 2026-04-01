@@ -2,7 +2,7 @@ import { useFavorites } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
 import { LuHeart } from 'react-icons/lu'
 
-export function FavoritesPage() {
+export default function FavoritesPage() {
   const { data: favorites, isLoading } = useFavorites({ limit: 100 })
 
   return (

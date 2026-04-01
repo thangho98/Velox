@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -35,8 +36,11 @@ func (r *ScanJobRepo) GetByID(ctx context.Context, id int64) (*model.ScanJob, er
 		Scan(&job.ID, &job.LibraryID, &job.Status, &job.TotalFiles,
 			&job.ScannedFiles, &job.NewFiles, &job.Errors, &job.ErrorLog,
 			&startedAt, &finishedAt, &job.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get scan job by id %d: %w", id, err)
 	}
 	if startedAt.Valid {
 		job.StartedAt = &startedAt.String
@@ -49,34 +53,62 @@ func (r *ScanJobRepo) GetByID(ctx context.Context, id int64) (*model.ScanJob, er
 
 // UpdateStatus updates job status
 func (r *ScanJobRepo) UpdateStatus(ctx context.Context, id int64, status string) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE scan_jobs SET status = ? WHERE id = ?", status, id)
-	return err
+	res, err := r.db.ExecContext(ctx, "UPDATE scan_jobs SET status = ? WHERE id = ?", status, id)
+	if err != nil {
+		return fmt.Errorf("update scan job status %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Start marks job as started
 func (r *ScanJobRepo) Start(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	res, err := r.db.ExecContext(ctx,
 		"UPDATE scan_jobs SET status = 'scanning', started_at = CURRENT_TIMESTAMP WHERE id = ?",
 		id)
-	return err
+	if err != nil {
+		return fmt.Errorf("start scan job %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Complete marks job as completed
 func (r *ScanJobRepo) Complete(ctx context.Context, id int64, totalFiles, newFiles, errors int, errorLog string) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE scan_jobs SET
+	res, err := r.db.ExecContext(ctx, `UPDATE scan_jobs SET
 		status = 'completed', total_files = ?, scanned_files = ?, new_files = ?,
 		errors = ?, error_log = ?, finished_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
 		totalFiles, totalFiles, newFiles, errors, errorLog, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("complete scan job %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Fail marks job as failed
 func (r *ScanJobRepo) Fail(ctx context.Context, id int64, errorLog string) error {
-	_, err := r.db.ExecContext(ctx,
+	res, err := r.db.ExecContext(ctx,
 		"UPDATE scan_jobs SET status = 'failed', error_log = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?",
 		errorLog, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("fail scan job %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // UpdateProgress updates scanned files count
@@ -84,14 +116,20 @@ func (r *ScanJobRepo) UpdateProgress(ctx context.Context, id int64, scannedFiles
 	_, err := r.db.ExecContext(ctx,
 		"UPDATE scan_jobs SET scanned_files = ? WHERE id = ?",
 		scannedFiles, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("updating progress for scan job %d: %w", id, err)
+	}
+	return nil
 }
 
 // IncrementNewFiles increments new files count
 func (r *ScanJobRepo) IncrementNewFiles(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx,
 		"UPDATE scan_jobs SET new_files = new_files + 1 WHERE id = ?", id)
-	return err
+	if err != nil {
+		return fmt.Errorf("incrementing new files for scan job %d: %w", id, err)
+	}
+	return nil
 }
 
 // IncrementErrors increments error count and appends to log
@@ -100,7 +138,10 @@ func (r *ScanJobRepo) IncrementErrors(ctx context.Context, id int64, errorMsg st
 		errors = errors + 1,
 		error_log = CASE WHEN error_log = '' THEN ? ELSE error_log || '\n' || ? END
 		WHERE id = ?`, errorMsg, errorMsg, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("incrementing errors for scan job %d: %w", id, err)
+	}
+	return nil
 }
 
 // ListByLibrary retrieves scan jobs for a library
@@ -175,7 +216,10 @@ func (r *ScanJobRepo) ListRecent(ctx context.Context, limit int) ([]model.ScanJo
 // Delete removes a scan job
 func (r *ScanJobRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM scan_jobs WHERE id = ?", id)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting scan job %d: %w", id, err)
+	}
+	return nil
 }
 
 // DeleteOld removes completed/failed jobs older than given days
@@ -185,5 +229,8 @@ func (r *ScanJobRepo) DeleteOld(ctx context.Context, days int) error {
 	}
 	query := fmt.Sprintf("DELETE FROM scan_jobs WHERE status IN ('completed', 'failed') AND created_at < datetime('now', '-%d days')", days)
 	_, err := r.db.ExecContext(ctx, query)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting old scan jobs: %w", err)
+	}
+	return nil
 }

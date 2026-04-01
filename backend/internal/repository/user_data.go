@@ -69,7 +69,10 @@ func (r *UserDataRepo) UpsertProgress(ctx context.Context, userID, mediaID int64
 							ELSE user_data.play_count END,
 			updated_at = CURRENT_TIMESTAMP`,
 		userID, mediaID, position, completedInt)
-	return err
+	if err != nil {
+		return fmt.Errorf("upserting progress for user %d, media %d: %w", userID, mediaID, err)
+	}
+	return nil
 }
 
 // ToggleFavorite flips is_favorite (UPSERT: INSERT if not exists, UPDATE if exists)
@@ -104,7 +107,10 @@ func (r *UserDataRepo) SetRating(ctx context.Context, userID, mediaID int64, rat
 			rating = excluded.rating,
 			updated_at = CURRENT_TIMESTAMP`,
 		userID, mediaID, ratingValue)
-	return err
+	if err != nil {
+		return fmt.Errorf("setting rating for user %d, media %d: %w", userID, mediaID, err)
+	}
+	return nil
 }
 
 // ListFavorites returns items where is_favorite = 1, JOIN media for title/poster
@@ -194,13 +200,19 @@ func (r *UserDataRepo) DeleteProgress(ctx context.Context, userID, mediaID int64
 	_, err := r.db.ExecContext(ctx, `
 		DELETE FROM user_data WHERE user_id = ? AND media_id = ?`,
 		userID, mediaID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting progress for user %d, media %d: %w", userID, mediaID, err)
+	}
+	return nil
 }
 
 // DeleteAllUserData removes all data for a user (useful when deleting user)
 func (r *UserDataRepo) DeleteAllUserData(ctx context.Context, userID int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM user_data WHERE user_id = ?`, userID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting all user data for user %d: %w", userID, err)
+	}
+	return nil
 }
 
 // DismissProgress resets progress fields while preserving favorite/rating/play_count
@@ -210,7 +222,10 @@ func (r *UserDataRepo) DismissProgress(ctx context.Context, userID, mediaID int6
 		SET position = 0, completed = 0, last_played_at = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE user_id = ? AND media_id = ?`,
 		userID, mediaID)
-	return err
+	if err != nil {
+		return fmt.Errorf("dismissing progress for user %d, media %d: %w", userID, mediaID, err)
+	}
+	return nil
 }
 
 // ListContinueWatching returns in-progress items (position > 0 AND completed = 0)

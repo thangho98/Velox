@@ -1,4 +1,4 @@
-import { memo, type RefObject } from 'react'
+import { memo, useEffect, useState, type RefObject } from 'react'
 import { LuActivity, LuX } from 'react-icons/lu'
 import type { PlaybackInfo } from '@/types/api'
 import { formatChannelLayout } from './watchHelpers'
@@ -43,6 +43,18 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
 
   const isTranscoding =
     playbackInfo.method === 'FullTranscode' || playbackInfo.method === 'TranscodeAudio'
+
+  // Read dropped frames from videoRef via effect to avoid accessing refs during render
+  const [droppedFrames, setDroppedFrames] = useState(0)
+  useEffect(() => {
+    const update = () => {
+      const quality = videoRef.current?.getVideoPlaybackQuality?.()
+      setDroppedFrames(quality?.droppedVideoFrames ?? 0)
+    }
+    update()
+    const id = setInterval(update, 1000)
+    return () => clearInterval(id)
+  }, [videoRef])
 
   return (
     <div className="absolute left-4 top-20 z-30 w-80 overflow-hidden rounded-xl bg-black/70 backdrop-blur-md ring-1 ring-white/10">
@@ -93,14 +105,8 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
           </p>
           <p className="mt-1 font-mono text-xs text-white/60">
             Dropped:{' '}
-            <span
-              className={
-                (videoRef.current?.getVideoPlaybackQuality?.()?.droppedVideoFrames ?? 0) > 0
-                  ? 'text-yellow-400'
-                  : 'text-white/60'
-              }
-            >
-              {videoRef.current?.getVideoPlaybackQuality?.()?.droppedVideoFrames ?? 0}
+            <span className={droppedFrames > 0 ? 'text-yellow-400' : 'text-white/60'}>
+              {droppedFrames}
             </span>
           </p>
         </div>

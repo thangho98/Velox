@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 import { useFolderBrowse } from '@/hooks/stores/useMedia'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -7,7 +6,7 @@ import { FolderCard } from '@/components/FolderCard'
 import { MediaCard } from '@/components/MediaCard'
 import { LuFolder, LuChevronLeft } from 'react-icons/lu'
 
-export function BrowsePage() {
+export default function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { t } = useTranslation('media')
 
@@ -20,7 +19,7 @@ export function BrowsePage() {
   const { data: result, isLoading } = useFolderBrowse(libraryId, currentPath)
 
   // Build breadcrumb
-  const breadcrumbs = useMemo(() => {
+  const breadcrumbs = (() => {
     const crumbs = [{ name: t('browse.title'), path: '', isRoot: true }]
 
     if (!libraryId && !currentPath) return crumbs
@@ -41,7 +40,7 @@ export function BrowsePage() {
     }
 
     return crumbs
-  }, [libraryId, currentPath])
+  })()
 
   const handleNavigate = (path: string) => {
     // Clicking a library folder (lib:N) → set library_id, clear path

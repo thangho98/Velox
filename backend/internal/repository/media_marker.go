@@ -39,7 +39,10 @@ func (r *MediaMarkerRepo) Create(ctx context.Context, m *model.MediaMarker) erro
 		// Marker already exists (IGNORE), not an error
 		return nil
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("creating marker for media file %d: %w", m.MediaFileID, err)
+	}
+	return nil
 }
 
 // GetByID retrieves a marker by ID
@@ -98,22 +101,32 @@ func (r *MediaMarkerRepo) GetBestByType(ctx context.Context, fileID int64, marke
 		fileID, markerType)
 
 	m, err := scanMarker(row)
-	if err == sql.ErrNoRows {
-		return nil, sql.ErrNoRows
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
 	}
 	return m, err
 }
 
 // Delete removes a marker
 func (r *MediaMarkerRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM media_markers WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM media_markers WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete marker %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteByMediaFileID removes all markers for a media file
 func (r *MediaMarkerRepo) DeleteByMediaFileID(ctx context.Context, fileID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM media_markers WHERE media_file_id = ?", fileID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting markers for media file %d: %w", fileID, err)
+	}
+	return nil
 }
 
 // DeleteBySource removes all markers from a specific source for a media file
@@ -122,7 +135,10 @@ func (r *MediaMarkerRepo) DeleteBySource(ctx context.Context, fileID int64, sour
 	_, err := r.db.ExecContext(ctx,
 		"DELETE FROM media_markers WHERE media_file_id = ? AND source = ?",
 		fileID, source)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting %s markers for media file %d: %w", source, fileID, err)
+	}
+	return nil
 }
 
 // MarkerStats holds aggregate counts for the admin dashboard
@@ -142,11 +158,11 @@ func (r *MediaMarkerRepo) GetStats(ctx context.Context) (*MarkerStats, error) {
 	var s MarkerStats
 	err := r.db.QueryRowContext(ctx, `SELECT
 		COUNT(*) AS total,
-		SUM(CASE WHEN marker_type = 'intro' THEN 1 ELSE 0 END),
-		SUM(CASE WHEN marker_type = 'credits' THEN 1 ELSE 0 END),
-		SUM(CASE WHEN source = 'chapter' THEN 1 ELSE 0 END),
-		SUM(CASE WHEN source = 'fingerprint' THEN 1 ELSE 0 END),
-		SUM(CASE WHEN source = 'manual' THEN 1 ELSE 0 END),
+		COALESCE(SUM(CASE WHEN marker_type = 'intro' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN marker_type = 'credits' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN source = 'chapter' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN source = 'fingerprint' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN source = 'manual' THEN 1 ELSE 0 END), 0),
 		COUNT(DISTINCT CASE WHEN marker_type = 'intro' THEN media_file_id END),
 		COUNT(DISTINCT CASE WHEN marker_type = 'credits' THEN media_file_id END)
 		FROM media_markers`).Scan(
@@ -172,8 +188,11 @@ func scanMarker(scanner interface{ Scan(...any) error }) (*model.MediaMarker, er
 	var m model.MediaMarker
 	err := scanner.Scan(&m.ID, &m.MediaFileID, &m.MarkerType, &m.StartSec, &m.EndSec,
 		&m.Source, &m.Confidence, &m.Label, &m.CreatedAt, &m.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scanning marker: %w", err)
 	}
 	return &m, nil
 }

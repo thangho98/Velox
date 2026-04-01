@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -37,8 +38,11 @@ func (r *RefreshTokenRepo) GetByTokenHash(ctx context.Context, tokenHash string)
 		`SELECT id, user_id, token_hash, device_name, ip_address, expires_at, created_at
 		FROM refresh_tokens WHERE token_hash = ?`, tokenHash).
 		Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.DeviceName, &rt.IPAddress, &rt.ExpiresAt, &rt.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get refresh token: %w", err)
 	}
 	return &rt, nil
 }
@@ -60,20 +64,33 @@ func (r *RefreshTokenRepo) ConsumeByTokenHash(ctx context.Context, tokenHash str
 
 // Delete removes a refresh token by ID
 func (r *RefreshTokenRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM refresh_tokens WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM refresh_tokens WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete refresh token %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteByUserID removes all refresh tokens for a user
 func (r *RefreshTokenRepo) DeleteByUserID(ctx context.Context, userID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM refresh_tokens WHERE user_id = ?", userID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting refresh tokens for user %d: %w", userID, err)
+	}
+	return nil
 }
 
 // DeleteExpired removes all expired refresh tokens
 func (r *RefreshTokenRepo) DeleteExpired(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM refresh_tokens WHERE expires_at < datetime('now')")
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting expired refresh tokens: %w", err)
+	}
+	return nil
 }
 
 // SessionRepo handles session database operations
@@ -115,8 +132,11 @@ func (r *SessionRepo) GetByID(ctx context.Context, id int64) (*model.Session, er
 		`SELECT id, user_id, refresh_token_id, device_name, ip_address, user_agent, expires_at, last_active_at, created_at
 		FROM sessions WHERE id = ?`, id).
 		Scan(&s.ID, &s.UserID, &s.RefreshTokenID, &s.DeviceName, &s.IPAddress, &s.UserAgent, &s.ExpiresAt, &lastActive, &s.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get session by id %d: %w", id, err)
 	}
 	if lastActive.Valid {
 		s.LastActiveAt = lastActive.Time
@@ -151,38 +171,64 @@ func (r *SessionRepo) ListByUserID(ctx context.Context, userID int64) ([]model.S
 
 // Delete removes a session by ID
 func (r *SessionRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete session %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteByUserID removes all sessions for a user
 func (r *SessionRepo) DeleteByUserID(ctx context.Context, userID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", userID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting sessions for user %d: %w", userID, err)
+	}
+	return nil
 }
 
 // DeleteByRefreshTokenID removes a session by refresh token ID
 func (r *SessionRepo) DeleteByRefreshTokenID(ctx context.Context, rtID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM sessions WHERE refresh_token_id = ?", rtID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting session by refresh token %d: %w", rtID, err)
+	}
+	return nil
 }
 
 // DeleteExpired removes all expired sessions
 func (r *SessionRepo) DeleteExpired(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at < datetime('now')")
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting expired sessions: %w", err)
+	}
+	return nil
 }
 
 // UpdateLastActive updates the last_active_at timestamp
 func (r *SessionRepo) UpdateLastActive(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	res, err := r.db.ExecContext(ctx,
 		"UPDATE sessions SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?", id)
-	return err
+	if err != nil {
+		return fmt.Errorf("update last active for session %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // UpdateLastActiveByUserID updates last_active_at for all sessions of a user
 func (r *SessionRepo) UpdateLastActiveByUserID(ctx context.Context, userID int64) error {
 	_, err := r.db.ExecContext(ctx,
 		"UPDATE sessions SET last_active_at = CURRENT_TIMESTAMP WHERE user_id = ?", userID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update last active for user %d sessions: %w", userID, err)
+	}
+	return nil
 }

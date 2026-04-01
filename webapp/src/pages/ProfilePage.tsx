@@ -12,7 +12,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { LuLogOut, LuMonitor } from 'react-icons/lu'
 
-export function ProfilePage() {
+export default function ProfilePage() {
   const { logout } = useAuthStore()
 
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'security' | 'sessions'>(

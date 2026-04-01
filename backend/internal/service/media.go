@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/thawng/velox/internal/model"
@@ -47,7 +46,7 @@ func (s *MediaService) ListFiltered(ctx context.Context, filter model.MediaListF
 
 func (s *MediaService) Get(ctx context.Context, id int64) (*model.Media, error) {
 	media, err := s.repo.GetByID(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrNotFound
 	}
 	return media, err
@@ -55,7 +54,7 @@ func (s *MediaService) Get(ctx context.Context, id int64) (*model.Media, error) 
 
 func (s *MediaService) GetWithFiles(ctx context.Context, id int64) (*model.MediaWithFiles, error) {
 	media, err := s.repo.GetByID(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
@@ -97,7 +96,7 @@ func (s *MediaService) Search(ctx context.Context, query string, limit int) ([]m
 // ListVersions returns all physical files for the given media, ordered by is_primary DESC.
 // Returns ErrNotFound if the media ID does not exist.
 func (s *MediaService) ListVersions(ctx context.Context, mediaID int64) ([]model.MediaFile, error) {
-	if _, err := s.repo.GetByID(ctx, mediaID); errors.Is(err, sql.ErrNoRows) {
+	if _, err := s.repo.GetByID(ctx, mediaID); errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err

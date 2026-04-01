@@ -3,28 +3,24 @@ package handler
 import (
 	"net/http"
 
-	"github.com/thawng/velox/internal/model"
-	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/service"
 )
 
 // PretranscodeHandler handles admin pre-transcode endpoints.
 type PretranscodeHandler struct {
-	svc          *service.PretranscodeService
-	statusRepo   *repository.PretranscodeRepo // main DB — for status queries only
-	settingsRepo *repository.AppSettingsRepo
+	svc *service.PretranscodeService
 }
 
 // NewPretranscodeHandler creates a new pre-transcode handler.
-func NewPretranscodeHandler(svc *service.PretranscodeService, statusRepo *repository.PretranscodeRepo, settingsRepo *repository.AppSettingsRepo) *PretranscodeHandler {
-	return &PretranscodeHandler{svc: svc, statusRepo: statusRepo, settingsRepo: settingsRepo}
+func NewPretranscodeHandler(svc *service.PretranscodeService) *PretranscodeHandler {
+	return &PretranscodeHandler{svc: svc}
 }
 
 // GetStatus returns the current pre-transcode status.
 // Uses main DB (not background DB) to avoid starving the scheduler goroutine.
 // GET /api/admin/pretranscode/status
 func (h *PretranscodeHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
-	status, err := h.svc.GetStatusWith(r.Context(), h.statusRepo, h.settingsRepo)
+	status, err := h.svc.GetStatus(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get status")
 		return
@@ -35,23 +31,10 @@ func (h *PretranscodeHandler) GetStatus(w http.ResponseWriter, r *http.Request) 
 // Start enqueues all libraries and starts encoding.
 // POST /api/admin/pretranscode/start
 func (h *PretranscodeHandler) Start(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Enable in settings if not already
-	if err := h.settingsRepo.Set(ctx, model.SettingPretranscodeEnabled, "true"); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to enable")
-		return
-	}
-
-	n, err := h.svc.EnqueueAllLibraries(ctx)
+	n, err := h.svc.StartAll(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to enqueue: "+err.Error())
 		return
-	}
-
-	h.svc.Resume()
-	if !h.svc.IsRunning() {
-		h.svc.Start()
 	}
 
 	respondJSON(w, http.StatusOK, map[string]int{"enqueued": n})
@@ -94,12 +77,11 @@ func (h *PretranscodeHandler) Estimate(w http.ResponseWriter, r *http.Request) {
 // Cleanup deletes all pre-transcode files.
 // DELETE /api/admin/pretranscode/files
 func (h *PretranscodeHandler) Cleanup(w http.ResponseWriter, r *http.Request) {
-	removed, err := h.svc.CleanupAll(r.Context())
+	removed, err := h.svc.CleanupAndDisable(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "cleanup failed")
 		return
 	}
-	_ = h.settingsRepo.Set(r.Context(), model.SettingPretranscodeEnabled, "false")
 	respondJSON(w, http.StatusOK, map[string]int{"removed": removed})
 }
 
@@ -141,31 +123,12 @@ func (h *PretranscodeHandler) ToggleProfile(w http.ResponseWriter, r *http.Reque
 // GetSettings returns the pre-transcode settings.
 // GET /api/admin/settings/pretranscode
 func (h *PretranscodeHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	vals, err := h.settingsRepo.GetMulti(ctx,
-		model.SettingPretranscodeEnabled,
-		model.SettingPretranscodeSchedule,
-		model.SettingPretranscodeConcurrency,
-	)
+	settings, err := h.svc.GetSettings(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-
-	schedule := vals[model.SettingPretranscodeSchedule]
-	if schedule == "" {
-		schedule = "always"
-	}
-	concurrency := vals[model.SettingPretranscodeConcurrency]
-	if concurrency == "" {
-		concurrency = "1"
-	}
-
-	respondJSON(w, http.StatusOK, map[string]any{
-		"enabled":     vals[model.SettingPretranscodeEnabled] == "true",
-		"schedule":    schedule,
-		"concurrency": concurrency,
-	})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdateSettings saves pre-transcode settings.
@@ -181,29 +144,14 @@ func (h *PretranscodeHandler) UpdateSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	ctx := r.Context()
-	if req.Enabled != nil {
-		val := "false"
-		if *req.Enabled {
-			val = "true"
-		}
-		if err := h.settingsRepo.Set(ctx, model.SettingPretranscodeEnabled, val); err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to save")
-			return
-		}
+	settings, err := h.svc.UpdateSettings(r.Context(), service.PretranscodeSettingsUpdate{
+		Enabled:     req.Enabled,
+		Schedule:    req.Schedule,
+		Concurrency: req.Concurrency,
+	})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save")
+		return
 	}
-	if req.Schedule != nil {
-		if err := h.settingsRepo.Set(ctx, model.SettingPretranscodeSchedule, *req.Schedule); err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to save")
-			return
-		}
-	}
-	if req.Concurrency != nil {
-		if err := h.settingsRepo.Set(ctx, model.SettingPretranscodeConcurrency, *req.Concurrency); err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to save")
-			return
-		}
-	}
-
-	h.GetSettings(w, r)
+	respondJSON(w, http.StatusOK, settings)
 }

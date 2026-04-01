@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -37,8 +38,11 @@ func scanMedia(scanner interface{ Scan(...any) error }) (*model.Media, error) {
 		&m.TmdbID, &m.ImdbID, &m.TvdbID, &m.Overview, &m.Tagline, &m.ReleaseDate, &m.Rating,
 		&m.IMDbRating, &m.RTScore, &m.MetacriticScore,
 		&m.PosterPath, &m.BackdropPath, &m.LogoPath, &m.ThumbPath, &locked, &m.CreatedAt, &m.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scanning media: %w", err)
 	}
 	m.MetadataLocked = locked == 1
 	return &m, nil
@@ -100,7 +104,7 @@ func (r *MediaRepo) Update(ctx context.Context, m *model.Media) error {
 	if m.MetadataLocked {
 		locked = 1
 	}
-	_, err := r.db.ExecContext(ctx, `UPDATE media SET
+	res, err := r.db.ExecContext(ctx, `UPDATE media SET
 		media_type = ?, title = ?, sort_title = ?, tmdb_id = ?, imdb_id = ?, tvdb_id = ?,
 		overview = ?, tagline = ?, release_date = ?, rating = ?,
 		imdb_rating = ?, rt_score = ?, metacritic_score = ?,
@@ -113,7 +117,14 @@ func (r *MediaRepo) Update(ctx context.Context, m *model.Media) error {
 		m.IMDbRating, m.RTScore, m.MetacriticScore,
 		m.PosterPath, m.BackdropPath, m.LogoPath, m.ThumbPath,
 		locked, m.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update media %d: %w", m.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // UpdateMetadata performs a partial metadata update — only SET fields present in the request.
@@ -163,7 +174,7 @@ func (r *MediaRepo) UpdateMetadata(ctx context.Context, id int64, req model.Meta
 	args = append(args, id)
 	res, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return err
+		return fmt.Errorf("updating media %d: %w", id, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -181,7 +192,7 @@ func (r *MediaRepo) UpdateImagePath(ctx context.Context, id int64, imageType, pa
 	}
 	res, err := r.db.ExecContext(ctx, fmt.Sprintf("UPDATE media SET %s = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", col), path, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("updating image path for media %d: %w", id, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -198,7 +209,7 @@ func (r *MediaRepo) SetMetadataLocked(ctx context.Context, id int64, locked bool
 	}
 	res, err := r.db.ExecContext(ctx, "UPDATE media SET metadata_locked = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", v, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("setting metadata locked for media %d: %w", id, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -212,11 +223,17 @@ func (r *MediaRepo) UpdateOMDbRatings(ctx context.Context, id int64, imdbRating 
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE media SET imdb_rating = ?, rt_score = ?, metacritic_score = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		imdbRating, rtScore, metacriticScore, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("updating OMDb ratings for media %d: %w", id, err)
+	}
+	return nil
 }
 
 // UpdateTitle updates only the title and sort_title of a media item.
 func (r *MediaRepo) UpdateTitle(ctx context.Context, id int64, title string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE media SET title = ?, sort_title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, title, title, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("updating title for media %d: %w", id, err)
+	}
+	return nil
 }

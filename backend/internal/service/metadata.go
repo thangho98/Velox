@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log"
 	"sync"
@@ -242,7 +241,7 @@ func (s *MetadataService) ensureSeries(ctx context.Context, result *metadata.TVM
 		if err == nil && existing != nil {
 			return existing, false, nil
 		}
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
 			return nil, false, err
 		}
 	}
@@ -294,7 +293,7 @@ func (s *MetadataService) findOrCreateSeason(ctx context.Context, seriesID int64
 	if err == nil && existing != nil {
 		return existing, nil
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return nil, err
 	}
 
@@ -368,7 +367,7 @@ func (s *MetadataService) updateEpisodeLink(ctx context.Context, episode *model.
 func (s *MetadataService) GetSeries(ctx context.Context, id int64) (*model.Series, error) {
 	series, err := s.seriesRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err

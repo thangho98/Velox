@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -50,8 +51,11 @@ func (r *UserRepo) GetByID(ctx context.Context, id int64) (*model.User, error) {
 		FROM users WHERE id = ?`, id).
 		Scan(&u.ID, &u.Username, &u.DisplayName, &u.PasswordHash,
 			&isAdmin, &u.AvatarPath, &u.CreatedAt, &u.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get user by id %d: %w", id, err)
 	}
 	u.IsAdmin = isAdmin == 1
 	return &u, nil
@@ -66,8 +70,11 @@ func (r *UserRepo) GetByUsername(ctx context.Context, username string) (*model.U
 		FROM users WHERE username = ?`, username).
 		Scan(&u.ID, &u.Username, &u.DisplayName, &u.PasswordHash,
 			&isAdmin, &u.AvatarPath, &u.CreatedAt, &u.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get user by username %q: %w", username, err)
 	}
 	u.IsAdmin = isAdmin == 1
 	return &u, nil
@@ -104,26 +111,47 @@ func (r *UserRepo) Update(ctx context.Context, u *model.User) error {
 		isAdmin = 1
 	}
 
-	_, err := r.db.ExecContext(ctx, `UPDATE users SET
+	res, err := r.db.ExecContext(ctx, `UPDATE users SET
 		username = ?, display_name = ?, is_admin = ?, avatar_path = ?,
 		updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
 		u.Username, u.DisplayName, isAdmin, u.AvatarPath, u.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update user %d: %w", u.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // UpdatePassword updates only the password hash
 func (r *UserRepo) UpdatePassword(ctx context.Context, userID int64, hash string) error {
-	_, err := r.db.ExecContext(ctx,
+	res, err := r.db.ExecContext(ctx,
 		"UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
 		hash, userID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update password for user %d: %w", userID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete removes a user
 func (r *UserRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete user %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Count returns the total number of users
@@ -194,7 +222,10 @@ func (r *UserRepo) GrantAllLibraries(ctx context.Context, userID int64) error {
 		SELECT ?, id FROM libraries
 		ON CONFLICT (user_id, library_id) DO NOTHING`,
 		userID)
-	return err
+	if err != nil {
+		return fmt.Errorf("granting all libraries to user %d: %w", userID, err)
+	}
+	return nil
 }
 
 // UserPreferencesRepo handles user preferences
@@ -244,5 +275,8 @@ func (r *UserPreferencesRepo) Update(ctx context.Context, p *model.UserPreferenc
 			theme = excluded.theme,
 			language = excluded.language`,
 		p.UserID, p.SubtitleLanguage, p.AudioLanguage, p.MaxStreamingQuality, p.Theme, p.Language)
-	return err
+	if err != nil {
+		return fmt.Errorf("upserting preferences for user %d: %w", p.UserID, err)
+	}
+	return nil
 }

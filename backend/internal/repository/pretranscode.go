@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/thawng/velox/internal/model"
 )
@@ -99,7 +100,7 @@ func (r *PretranscodeRepo) SetProfileEnabled(ctx context.Context, id int64, enab
 	}
 	res, err := r.db.ExecContext(ctx, `UPDATE pretranscode_profiles SET enabled = ? WHERE id = ?`, val, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("setting profile %d enabled=%d: %w", id, val, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -231,7 +232,10 @@ func (r *PretranscodeRepo) UpdateFileStatus(ctx context.Context, id int64, statu
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE pretranscode_files SET status = ?, error_message = ?, started_at = COALESCE(?, started_at), completed_at = ?
 		WHERE id = ?`, status, nullStr(errMsg), nullStr(startedAt), nullStr(completedAt), id)
-	return err
+	if err != nil {
+		return fmt.Errorf("updating file status for %d: %w", id, err)
+	}
+	return nil
 }
 
 // DeleteFilesByProfile deletes all pre-transcode files for a given profile.
@@ -300,7 +304,10 @@ func (r *PretranscodeRepo) EnqueueJob(ctx context.Context, mediaFileID, profileI
 			status = 'queued', priority = excluded.priority
 		WHERE status IN ('cancelled', 'failed')`,
 		mediaFileID, profileID, priority)
-	return err
+	if err != nil {
+		return fmt.Errorf("enqueueing job for media file %d, profile %d: %w", mediaFileID, profileID, err)
+	}
+	return nil
 }
 
 // PickNextJob picks the highest-priority queued video pretranscode job (excludes audio-remux).
@@ -355,7 +362,10 @@ func (r *PretranscodeRepo) PickNextJobForProfile(ctx context.Context, profileID 
 // CompleteJob marks a queue job as done or failed.
 func (r *PretranscodeRepo) CompleteJob(ctx context.Context, id int64, status string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE pretranscode_queue SET status = ? WHERE id = ?`, status, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("completing job %d with status %s: %w", id, status, err)
+	}
+	return nil
 }
 
 // CancelAllQueued cancels all queued (not encoding) jobs.
@@ -418,7 +428,10 @@ func (r *PretranscodeRepo) ResetEncodingFiles(ctx context.Context) {
 // ClearQueue deletes all queue entries.
 func (r *PretranscodeRepo) ClearQueue(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM pretranscode_queue`)
-	return err
+	if err != nil {
+		return fmt.Errorf("clearing pretranscode queue: %w", err)
+	}
+	return nil
 }
 
 // CountMediaFilesInLibrary returns the number of media files in a library.

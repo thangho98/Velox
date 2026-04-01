@@ -5,35 +5,21 @@ import { useTokenRefresh, useWizardStatus } from '@/hooks/stores/useAuth'
 import { Layout } from '@/components/Layout'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })))
-const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
-const SetupPage = lazy(() => import('@/pages/SetupPage').then((m) => ({ default: m.SetupPage })))
-const SetupWizardPage = lazy(() =>
-  import('@/pages/SetupWizardPage').then((m) => ({ default: m.SetupWizardPage })),
-)
-const LibraryListPage = lazy(() =>
-  import('@/pages/LibraryListPage').then((m) => ({ default: m.LibraryListPage })),
-)
-const MediaDetailPage = lazy(() =>
-  import('@/pages/MediaDetailPage').then((m) => ({ default: m.MediaDetailPage })),
-)
-const SeriesDetailPage = lazy(() =>
-  import('@/pages/SeriesDetailPage').then((m) => ({ default: m.SeriesDetailPage })),
-)
-const WatchPage = lazy(() => import('@/pages/WatchPage').then((m) => ({ default: m.WatchPage })))
-const SettingsPage = lazy(() =>
-  import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
-)
-const MoviesPage = lazy(() => import('@/pages/MoviesPage').then((m) => ({ default: m.MoviesPage })))
-const SeriesPage = lazy(() => import('@/pages/SeriesPage').then((m) => ({ default: m.SeriesPage })))
-const FavoritesPage = lazy(() =>
-  import('@/pages/FavoritesPage').then((m) => ({ default: m.FavoritesPage })),
-)
-const RecentlyWatchedPage = lazy(() =>
-  import('@/pages/RecentlyWatchedPage').then((m) => ({ default: m.RecentlyWatchedPage })),
-)
-const SearchPage = lazy(() => import('@/pages/SearchPage').then((m) => ({ default: m.SearchPage })))
-const BrowsePage = lazy(() => import('@/pages/BrowsePage').then((m) => ({ default: m.BrowsePage })))
+const HomePage = lazy(() => import('@/pages/HomePage'))
+const LoginPage = lazy(() => import('@/pages/LoginPage'))
+const SetupPage = lazy(() => import('@/pages/SetupPage'))
+const SetupWizardPage = lazy(() => import('@/pages/SetupWizardPage'))
+const LibraryListPage = lazy(() => import('@/pages/LibraryListPage'))
+const MediaDetailPage = lazy(() => import('@/pages/MediaDetailPage'))
+const SeriesDetailPage = lazy(() => import('@/pages/SeriesDetailPage'))
+const WatchPage = lazy(() => import('@/pages/WatchPage'))
+const SettingsPage = lazy(() => import('@/pages/settings'))
+const MoviesPage = lazy(() => import('@/pages/MoviesPage'))
+const SeriesPage = lazy(() => import('@/pages/SeriesPage'))
+const FavoritesPage = lazy(() => import('@/pages/FavoritesPage'))
+const RecentlyWatchedPage = lazy(() => import('@/pages/RecentlyWatchedPage'))
+const SearchPage = lazy(() => import('@/pages/SearchPage'))
+const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
 
 // Auth guard component - wraps content with Layout
 function RequireAuth() {

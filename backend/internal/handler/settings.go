@@ -3,31 +3,17 @@ package handler
 import (
 	"net/http"
 
-	"github.com/thawng/velox/internal/model"
-	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/internal/service"
 )
 
 // SettingsHandler handles admin settings endpoints.
 type SettingsHandler struct {
-	repo             *repository.AppSettingsRepo
-	hasBuiltinTMDb   bool
-	hasBuiltinOMDb   bool
-	hasBuiltinTVDB   bool
-	hasBuiltinFanart bool
-	hasBuiltinSubdl  bool
+	settingsSvc *service.SettingsService
 }
 
 // NewSettingsHandler creates a new settings handler.
-// builtinKeys indicates which providers have env-based default keys configured.
-func NewSettingsHandler(repo *repository.AppSettingsRepo, builtinKeys map[string]bool) *SettingsHandler {
-	return &SettingsHandler{
-		repo:             repo,
-		hasBuiltinTMDb:   builtinKeys["tmdb"],
-		hasBuiltinOMDb:   builtinKeys["omdb"],
-		hasBuiltinTVDB:   builtinKeys["tvdb"],
-		hasBuiltinFanart: builtinKeys["fanart"],
-		hasBuiltinSubdl:  builtinKeys["subdl"],
-	}
+func NewSettingsHandler(settingsSvc *service.SettingsService) *SettingsHandler {
+	return &SettingsHandler{settingsSvc: settingsSvc}
 }
 
 // openSubsResponse is the JSON shape for GET /api/admin/settings/opensubtitles.
@@ -47,23 +33,12 @@ type openSubsRequest struct {
 // GetOpenSubtitles returns the current OpenSubtitles configuration.
 // GET /api/admin/settings/opensubtitles
 func (h *SettingsHandler) GetOpenSubtitles(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	vals, err := h.repo.GetMulti(ctx,
-		model.SettingOpenSubsAPIKey,
-		model.SettingOpenSubsUsername,
-		model.SettingOpenSubsPassword,
-	)
+	settings, err := h.settingsSvc.GetOpenSubtitles(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-
-	respondJSON(w, http.StatusOK, openSubsResponse{
-		APIKey:      vals[model.SettingOpenSubsAPIKey],
-		Username:    vals[model.SettingOpenSubsUsername],
-		PasswordSet: vals[model.SettingOpenSubsPassword] != "",
-	})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdateOpenSubtitles saves OpenSubtitles credentials.
@@ -75,26 +50,12 @@ func (h *SettingsHandler) UpdateOpenSubtitles(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	ctx := r.Context()
-
-	if err := h.repo.Set(ctx, model.SettingOpenSubsAPIKey, req.APIKey); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save api_key")
+	settings, err := h.settingsSvc.UpdateOpenSubtitles(r.Context(), req.APIKey, req.Username, req.Password)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save OpenSubtitles settings")
 		return
 	}
-	if err := h.repo.Set(ctx, model.SettingOpenSubsUsername, req.Username); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save username")
-		return
-	}
-	if err := h.repo.Set(ctx, model.SettingOpenSubsPassword, req.Password); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save password")
-		return
-	}
-
-	respondJSON(w, http.StatusOK, openSubsResponse{
-		APIKey:      req.APIKey,
-		Username:    req.Username,
-		PasswordSet: req.Password != "",
-	})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // tmdbResponse is the JSON shape for GET /api/admin/settings/tmdb.
@@ -111,12 +72,12 @@ type tmdbRequest struct {
 // GetTMDb returns the current TMDb configuration.
 // GET /api/admin/settings/tmdb
 func (h *SettingsHandler) GetTMDb(w http.ResponseWriter, r *http.Request) {
-	val, err := h.repo.Get(r.Context(), model.SettingTMDbAPIKey)
+	settings, err := h.settingsSvc.GetTMDb(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, tmdbResponse{APIKey: val, HasBuiltin: h.hasBuiltinTMDb})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdateTMDb saves the TMDb API key.
@@ -128,12 +89,12 @@ func (h *SettingsHandler) UpdateTMDb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.Set(r.Context(), model.SettingTMDbAPIKey, req.APIKey); err != nil {
+	settings, err := h.settingsSvc.UpdateTMDb(r.Context(), req.APIKey)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save api_key")
 		return
 	}
-
-	respondJSON(w, http.StatusOK, tmdbResponse{APIKey: req.APIKey})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // omdbResponse is the JSON shape for GET /api/admin/settings/omdb.
@@ -150,12 +111,12 @@ type omdbRequest struct {
 // GetOMDb returns the current OMDb configuration.
 // GET /api/admin/settings/omdb
 func (h *SettingsHandler) GetOMDb(w http.ResponseWriter, r *http.Request) {
-	val, err := h.repo.Get(r.Context(), model.SettingOMDbAPIKey)
+	settings, err := h.settingsSvc.GetOMDb(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, omdbResponse{APIKey: val, HasBuiltin: h.hasBuiltinOMDb})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdateOMDb saves the OMDb API key.
@@ -167,12 +128,12 @@ func (h *SettingsHandler) UpdateOMDb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.Set(r.Context(), model.SettingOMDbAPIKey, req.APIKey); err != nil {
+	settings, err := h.settingsSvc.UpdateOMDb(r.Context(), req.APIKey)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save api_key")
 		return
 	}
-
-	respondJSON(w, http.StatusOK, omdbResponse{APIKey: req.APIKey})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // tvdbResponse is the JSON shape for GET /api/admin/settings/tvdb.
@@ -189,12 +150,12 @@ type tvdbRequest struct {
 // GetTVDB returns the current TheTVDB configuration.
 // GET /api/admin/settings/tvdb
 func (h *SettingsHandler) GetTVDB(w http.ResponseWriter, r *http.Request) {
-	val, err := h.repo.Get(r.Context(), model.SettingTVDBAPIKey)
+	settings, err := h.settingsSvc.GetTVDB(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, tvdbResponse{APIKey: val, HasBuiltin: h.hasBuiltinTVDB})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdateTVDB saves the TheTVDB API key.
@@ -206,12 +167,12 @@ func (h *SettingsHandler) UpdateTVDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.Set(r.Context(), model.SettingTVDBAPIKey, req.APIKey); err != nil {
+	settings, err := h.settingsSvc.UpdateTVDB(r.Context(), req.APIKey)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save api_key")
 		return
 	}
-
-	respondJSON(w, http.StatusOK, tvdbResponse{APIKey: req.APIKey})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // playbackResponse is the JSON shape for GET /api/admin/settings/playback.
@@ -227,15 +188,12 @@ type playbackRequest struct {
 // GetPlayback returns the current playback policy.
 // GET /api/admin/settings/playback
 func (h *SettingsHandler) GetPlayback(w http.ResponseWriter, r *http.Request) {
-	val, err := h.repo.Get(r.Context(), model.SettingPlaybackMode)
+	settings, err := h.settingsSvc.GetPlayback(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	if val == "" {
-		val = "auto"
-	}
-	respondJSON(w, http.StatusOK, playbackResponse{PlaybackMode: val})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdatePlayback saves the playback policy.
@@ -247,17 +205,12 @@ func (h *SettingsHandler) UpdatePlayback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if req.PlaybackMode != "auto" && req.PlaybackMode != "direct_play" {
-		respondError(w, http.StatusBadRequest, "playback_mode must be 'auto' or 'direct_play'")
+	settings, err := h.settingsSvc.UpdatePlayback(r.Context(), req.PlaybackMode)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	if err := h.repo.Set(r.Context(), model.SettingPlaybackMode, req.PlaybackMode); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save setting")
-		return
-	}
-
-	respondJSON(w, http.StatusOK, playbackResponse{PlaybackMode: req.PlaybackMode})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // fanartResponse is the JSON shape for GET /api/admin/settings/fanart.
@@ -274,12 +227,12 @@ type fanartRequest struct {
 // GetFanart returns the current fanart.tv configuration.
 // GET /api/admin/settings/fanart
 func (h *SettingsHandler) GetFanart(w http.ResponseWriter, r *http.Request) {
-	val, err := h.repo.Get(r.Context(), model.SettingFanartAPIKey)
+	settings, err := h.settingsSvc.GetFanart(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, fanartResponse{APIKey: val, HasBuiltin: h.hasBuiltinFanart})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdateFanart saves the fanart.tv API key.
@@ -291,12 +244,12 @@ func (h *SettingsHandler) UpdateFanart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.Set(r.Context(), model.SettingFanartAPIKey, req.APIKey); err != nil {
+	settings, err := h.settingsSvc.UpdateFanart(r.Context(), req.APIKey)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save api_key")
 		return
 	}
-
-	respondJSON(w, http.StatusOK, fanartResponse{APIKey: req.APIKey})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // autoSubResponse is the JSON shape for GET /api/admin/settings/auto-subtitles.
@@ -312,12 +265,12 @@ type autoSubRequest struct {
 // GetAutoSubtitles returns the auto-download subtitle configuration.
 // GET /api/admin/settings/auto-subtitles
 func (h *SettingsHandler) GetAutoSubtitles(w http.ResponseWriter, r *http.Request) {
-	val, err := h.repo.Get(r.Context(), model.SettingAutoSubLanguages)
+	settings, err := h.settingsSvc.GetAutoSubtitles(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, autoSubResponse{Languages: val})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdateAutoSubtitles saves the auto-download subtitle configuration.
@@ -329,12 +282,12 @@ func (h *SettingsHandler) UpdateAutoSubtitles(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := h.repo.Set(r.Context(), model.SettingAutoSubLanguages, req.Languages); err != nil {
+	settings, err := h.settingsSvc.UpdateAutoSubtitles(r.Context(), req.Languages)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save setting")
 		return
 	}
-
-	respondJSON(w, http.StatusOK, autoSubResponse{Languages: req.Languages})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // subdlResponse is the JSON shape for GET /api/admin/settings/subdl.
@@ -351,12 +304,12 @@ type subdlRequest struct {
 // GetSubdl returns the current Subdl configuration.
 // GET /api/admin/settings/subdl
 func (h *SettingsHandler) GetSubdl(w http.ResponseWriter, r *http.Request) {
-	val, err := h.repo.Get(r.Context(), model.SettingSubdlAPIKey)
+	settings, err := h.settingsSvc.GetSubdl(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	respondJSON(w, http.StatusOK, subdlResponse{APIKey: val, HasBuiltin: h.hasBuiltinSubdl})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdateSubdl saves the Subdl API key.
@@ -368,12 +321,12 @@ func (h *SettingsHandler) UpdateSubdl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.Set(r.Context(), model.SettingSubdlAPIKey, req.APIKey); err != nil {
+	settings, err := h.settingsSvc.UpdateSubdl(r.Context(), req.APIKey)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save api_key")
 		return
 	}
-
-	respondJSON(w, http.StatusOK, subdlResponse{APIKey: req.APIKey})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // deeplResponse is the JSON shape for GET /api/admin/settings/deepl.
@@ -384,11 +337,12 @@ type deeplResponse struct {
 // GetDeepL returns the current DeepL configuration.
 // GET /api/admin/settings/deepl
 func (h *SettingsHandler) GetDeepL(w http.ResponseWriter, r *http.Request) {
-	val, err := h.repo.Get(r.Context(), model.SettingDeepLAPIKey)
+	settings, err := h.settingsSvc.GetDeepL(r.Context())
 	if err != nil {
-		val = ""
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
 	}
-	respondJSON(w, http.StatusOK, deeplResponse{APIKey: val})
+	respondJSON(w, http.StatusOK, settings)
 }
 
 // UpdateDeepL saves the DeepL API key.
@@ -399,9 +353,10 @@ func (h *SettingsHandler) UpdateDeepL(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if err := h.repo.Set(r.Context(), model.SettingDeepLAPIKey, req.APIKey); err != nil {
+	settings, err := h.settingsSvc.UpdateDeepL(r.Context(), req.APIKey)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save api_key")
 		return
 	}
-	respondJSON(w, http.StatusOK, deeplResponse{APIKey: req.APIKey})
+	respondJSON(w, http.StatusOK, settings)
 }

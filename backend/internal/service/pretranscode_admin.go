@@ -13,6 +13,20 @@ import (
 	"github.com/thawng/velox/internal/repository"
 )
 
+// PretranscodeSettings is the admin-facing settings payload.
+type PretranscodeSettings struct {
+	Enabled     bool   `json:"enabled"`
+	Schedule    string `json:"schedule"`
+	Concurrency string `json:"concurrency"`
+}
+
+// PretranscodeSettingsUpdate is the writable pre-transcode settings payload.
+type PretranscodeSettingsUpdate struct {
+	Enabled     *bool
+	Schedule    *string
+	Concurrency *string
+}
+
 // EnqueueLibrary enqueues all eligible media files in a library for encoding.
 func (s *PretranscodeService) EnqueueLibrary(ctx context.Context, libraryID int64) (int, error) {
 	profiles, err := s.repo.ListEnabledProfiles(ctx)
@@ -82,7 +96,11 @@ func (s *PretranscodeService) CancelAll(ctx context.Context) (int64, error) {
 
 // GetStatus returns the current status using the service's own repos.
 func (s *PretranscodeService) GetStatus(ctx context.Context) (*model.PretranscodeStatus, error) {
-	return s.GetStatusWith(ctx, s.repo, s.settingsRepo)
+	repo := s.repo
+	if s.statusRepo != nil {
+		repo = s.statusRepo
+	}
+	return s.GetStatusWith(ctx, repo, s.settingsRepo)
 }
 
 // GetStatusWith returns the current status using the provided repos.
@@ -219,6 +237,93 @@ func (s *PretranscodeService) ListProfiles(ctx context.Context) ([]model.Pretran
 // SetProfileEnabled toggles a profile.
 func (s *PretranscodeService) SetProfileEnabled(ctx context.Context, id int64, enabled bool) error {
 	return s.repo.SetProfileEnabled(ctx, id, enabled)
+}
+
+// StartAll enables pretranscode, enqueues all libraries, and starts the scheduler.
+func (s *PretranscodeService) StartAll(ctx context.Context) (int, error) {
+	if err := s.settingsRepo.Set(ctx, model.SettingPretranscodeEnabled, "true"); err != nil {
+		return 0, err
+	}
+
+	n, err := s.EnqueueAllLibraries(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	s.Resume()
+	if !s.IsRunning() {
+		s.Start()
+	}
+
+	return n, nil
+}
+
+// CleanupAndDisable removes pre-transcode files and disables the feature.
+func (s *PretranscodeService) CleanupAndDisable(ctx context.Context) (int, error) {
+	removed, err := s.CleanupAll(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.settingsRepo.Set(ctx, model.SettingPretranscodeEnabled, "false"); err != nil {
+		return 0, err
+	}
+	return removed, nil
+}
+
+// GetSettings returns pre-transcode settings.
+func (s *PretranscodeService) GetSettings(ctx context.Context) (*PretranscodeSettings, error) {
+	vals, err := s.settingsRepo.GetMulti(
+		ctx,
+		model.SettingPretranscodeEnabled,
+		model.SettingPretranscodeSchedule,
+		model.SettingPretranscodeConcurrency,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	schedule := vals[model.SettingPretranscodeSchedule]
+	if schedule == "" {
+		schedule = "always"
+	}
+	concurrency := vals[model.SettingPretranscodeConcurrency]
+	if concurrency == "" {
+		concurrency = "1"
+	}
+
+	return &PretranscodeSettings{
+		Enabled:     vals[model.SettingPretranscodeEnabled] == "true",
+		Schedule:    schedule,
+		Concurrency: concurrency,
+	}, nil
+}
+
+// UpdateSettings saves pre-transcode settings and returns the updated values.
+func (s *PretranscodeService) UpdateSettings(
+	ctx context.Context,
+	update PretranscodeSettingsUpdate,
+) (*PretranscodeSettings, error) {
+	if update.Enabled != nil {
+		val := "false"
+		if *update.Enabled {
+			val = "true"
+		}
+		if err := s.settingsRepo.Set(ctx, model.SettingPretranscodeEnabled, val); err != nil {
+			return nil, err
+		}
+	}
+	if update.Schedule != nil {
+		if err := s.settingsRepo.Set(ctx, model.SettingPretranscodeSchedule, *update.Schedule); err != nil {
+			return nil, err
+		}
+	}
+	if update.Concurrency != nil {
+		if err := s.settingsRepo.Set(ctx, model.SettingPretranscodeConcurrency, *update.Concurrency); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.GetSettings(ctx)
 }
 
 // ListReadyFiles returns all ready pre-transcode files for a media file.

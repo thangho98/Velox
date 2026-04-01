@@ -5,7 +5,7 @@ import { LibraryContent } from '@/components/library/LibraryContent'
 import { useAuthStore } from '@/stores/auth'
 import { LuPlus, LuChevronRight, LuLibrary } from 'react-icons/lu'
 
-export function LibraryListPage() {
+export default function LibraryListPage() {
   const { user } = useAuthStore()
   const { data: libraries } = useLibraries()
   const [selectedLibrary, setSelectedLibrary] = useState<number | null>(null)

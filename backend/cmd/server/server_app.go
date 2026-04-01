@@ -77,6 +77,14 @@ type serverServices struct {
 	transcoder     *transcoder.Transcoder
 	library        *service.LibraryService
 	media          *service.MediaService
+	setup          *service.SetupService
+	settings       *service.SettingsService
+	profile        *service.ProfileService
+	playbackConfig *service.PlaybackConfigService
+	catalog        *service.CatalogService
+	browse         *service.BrowseService
+	cinema         *service.CinemaService
+	series         *service.SeriesService
 	stream         *service.StreamService
 	auth           *service.AuthService
 	userData       *service.UserDataService
@@ -245,14 +253,31 @@ func (app *serverApp) initServices() error {
 	app.services.media = service.NewMediaService(repos.media, repos.mediaFile)
 	app.services.media.SetEpisodeRepo(repos.episode)
 	app.services.media.SetSeasonRepo(repos.season)
+	app.services.catalog = service.NewCatalogService(repos.media, repos.series, repos.genre, repos.person)
+	app.services.browse = service.NewBrowseService(repos.library, repos.media, repos.mediaFile, repos.user)
+	app.services.cinema = service.NewCinemaService(
+		repos.appSettings,
+		repos.media,
+		repos.episode,
+		repos.series,
+		app.tmdbClient,
+		app.cfg.DataDir,
+	)
+	app.services.series = service.NewSeriesService(repos.series, repos.season, repos.episode)
 	app.services.stream = service.NewStreamService(repos.mediaFile, repos.audioTrack, app.services.transcoder)
 	app.services.auth = service.NewAuthService(repos.user, repos.refreshToken, repos.session, app.jwtManager, app.db)
 	app.services.userData = service.NewUserDataService(repos.userData)
-	app.services.subtitle = service.NewSubtitleService(repos.subtitle, repos.mediaFile)
-	app.services.audioTrack = service.NewAudioTrackService(repos.audioTrack)
+	app.services.subtitle = service.NewSubtitleService(app.db, repos.subtitle, repos.mediaFile)
+	app.services.subtitle.SetSettingsRepo(repos.appSettings)
+	app.services.subtitle.SetCacheDir(app.cfg.SubtitleCachePath)
+	app.services.audioTrack = service.NewAudioTrackService(app.db, repos.audioTrack)
+	app.services.setup = service.NewSetupService(app.services.auth, repos.appSettings)
+	app.services.settings = service.NewSettingsService(repos.appSettings, builtinSettingsPresence(app.cfg))
+	app.services.profile = service.NewProfileService(app.services.auth, repos.prefs, app.services.userData)
+	app.services.playbackConfig = service.NewPlaybackConfigService(repos.prefs, repos.appSettings)
 	app.services.marker = service.NewMarkerService(repos.marker, repos.mediaFile, repos.fingerprint, repos.episode, repos.season, app.wsHub)
 	app.services.activity = service.NewActivityService(repos.activity)
-	app.services.admin = service.NewAdminService(app.db, repos.user, app.startTime, app.hwAccel, app.cfg.DatabasePath)
+	app.services.admin = service.NewAdminService(app.db, repos.library, repos.mediaFile, repos.user, app.startTime, app.hwAccel, app.cfg.DatabasePath)
 	app.services.webhook = service.NewWebhookService(repos.webhook)
 	app.services.notification = service.NewNotificationService(repos.notification, repos.user, app.wsHub, slog.Default())
 	app.services.notification.SetWebhookService(app.services.webhook)
@@ -303,6 +328,7 @@ func (app *serverApp) initPretranscodeService() error {
 	)
 	app.services.pretranscode.SetNotificationService(app.services.notification)
 	app.services.pretranscode.SetTranscoder(app.services.transcoder)
+	app.services.pretranscode.SetStatusRepo(app.repos.pretranscodeStatus)
 	app.services.stream.SetPretranscodeService(app.services.pretranscode)
 	app.services.library.SetPretranscodeService(app.services.pretranscode)
 
@@ -325,17 +351,16 @@ func (app *serverApp) initTrickplayGenerator() error {
 }
 
 func (app *serverApp) initHandlers() {
-	repos := app.repos
 	services := app.services
 
 	app.handlers.library = handler.NewLibraryHandler(services.library)
 	app.handlers.media = handler.NewMediaHandler(services.media)
 	app.handlers.stream = handler.NewStreamHandler(services.stream)
 	app.handlers.streamURL = handler.NewStreamURLHandler(app.apiKeyStore)
-	app.handlers.setup = handler.NewSetupHandler(services.auth, repos.appSettings)
+	app.handlers.setup = handler.NewSetupHandler(services.setup)
 	app.handlers.auth = handler.NewAuthHandler(services.auth)
 	app.handlers.user = handler.NewUserHandler(services.auth)
-	app.handlers.profile = handler.NewProfileHandler(services.auth, repos.prefs, services.userData)
+	app.handlers.profile = handler.NewProfileHandler(services.profile)
 	app.handlers.playback = handler.NewPlaybackHandler(
 		services.media,
 		services.stream,
@@ -343,27 +368,26 @@ func (app *serverApp) initHandlers() {
 		services.subtitle,
 		services.audioTrack,
 		services.marker,
-		repos.prefs,
-		repos.appSettings,
+		services.playbackConfig,
 		app.apiKeyStore,
 	)
-	app.handlers.subtitle = handler.NewSubtitleHandler(services.subtitle, repos.mediaFile, repos.appSettings, app.cfg.SubtitleCachePath)
+	app.handlers.subtitle = handler.NewSubtitleHandler(services.subtitle)
 	app.handlers.audioTrack = handler.NewAudioTrackHandler(services.audioTrack)
-	app.handlers.settings = handler.NewSettingsHandler(repos.appSettings, builtinSettingsPresence(app.cfg))
+	app.handlers.settings = handler.NewSettingsHandler(services.settings)
 	app.handlers.subtitleSearch = handler.NewSubtitleSearchHandler(services.subtitleSearch)
 	app.handlers.trickplay = handler.NewTrickplayHandler(app.trickplayGen, services.stream)
 	app.handlers.image = handler.NewImageHandler()
-	app.handlers.browse = handler.NewBrowseHandler(repos.library, repos.media, repos.mediaFile, repos.user)
-	app.handlers.catalog = handler.NewCatalogHandler(repos.media, repos.series, repos.genre, repos.person)
-	app.handlers.series = handler.NewSeriesHandler(repos.series, repos.season, repos.episode)
+	app.handlers.browse = handler.NewBrowseHandler(services.browse)
+	app.handlers.catalog = handler.NewCatalogHandler(services.catalog)
+	app.handlers.series = handler.NewSeriesHandler(services.series)
 	app.handlers.metadata = handler.NewMetadataHandler(services.media, services.metadata, storage.NewImageStorage(app.cfg.DataDir))
-	app.handlers.cinema = handler.NewCinemaHandler(repos.appSettings, repos.media, repos.episode, repos.series, app.tmdbClient, app.cfg.DataDir)
+	app.handlers.cinema = handler.NewCinemaHandler(services.cinema)
 	app.handlers.activity = handler.NewActivityHandler(services.activity)
 	app.handlers.admin = handler.NewAdminHandler(services.admin)
 	app.handlers.webhook = handler.NewWebhookHandler(services.webhook)
 	app.handlers.markerAdmin = handler.NewMarkerAdminHandler(services.marker)
 	app.handlers.notification = handler.NewNotificationHandler(services.notification)
-	app.handlers.pretranscode = handler.NewPretranscodeHandler(services.pretranscode, repos.pretranscodeStatus, repos.appSettings)
+	app.handlers.pretranscode = handler.NewPretranscodeHandler(services.pretranscode)
 	app.handlers.ws = handler.NewWebSocketHandler(app.wsHub, app.jwtManager, slog.Default())
 	app.handlers.scheduler = handler.NewSchedulerHandler(services.scheduler)
 

@@ -4,7 +4,7 @@ import { useSearch } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
 import { LuSearch, LuFilm, LuTv } from 'react-icons/lu'
 
-export function SearchPage() {
+export default function SearchPage() {
   const [searchParams] = useSearchParams()
   const query = searchParams.get('q') || ''
   const [typeFilter, setTypeFilter] = useState(searchParams.get('type') || '')

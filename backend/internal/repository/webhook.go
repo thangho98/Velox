@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -33,6 +35,9 @@ func (r *WebhookRepo) GetByID(ctx context.Context, id int64) (*model.Webhook, er
 		`SELECT id, url, events, secret, active, created_at, updated_at
 		 FROM webhooks WHERE id = ?`, id)
 	if err := row.Scan(&w.ID, &w.URL, &w.Events, &w.Secret, &w.Active, &w.CreatedAt, &w.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, fmt.Errorf("getting webhook %d: %w", id, err)
 	}
 	return &w, nil
@@ -61,21 +66,29 @@ func (r *WebhookRepo) List(ctx context.Context) ([]model.Webhook, error) {
 
 // Update updates a webhook's URL, events, secret, and active status.
 func (r *WebhookRepo) Update(ctx context.Context, w *model.Webhook) error {
-	_, err := r.db.ExecContext(ctx,
+	res, err := r.db.ExecContext(ctx,
 		`UPDATE webhooks SET url = ?, events = ?, secret = ?, active = ?, updated_at = CURRENT_TIMESTAMP
 		 WHERE id = ?`,
 		w.URL, w.Events, w.Secret, w.Active, w.ID)
 	if err != nil {
 		return fmt.Errorf("updating webhook %d: %w", w.ID, err)
 	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
 	return nil
 }
 
 // Delete removes a webhook by ID.
 func (r *WebhookRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM webhooks WHERE id = ?`, id)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM webhooks WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("deleting webhook %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
 	}
 	return nil
 }

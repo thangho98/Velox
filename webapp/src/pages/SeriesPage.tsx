@@ -6,7 +6,7 @@ import { AlphaIndex, useAlphaScroll } from '@/components/AlphaIndex'
 import { LuTv } from 'react-icons/lu'
 import type { SeriesListItem } from '@/types/api'
 
-export function SeriesPage() {
+export default function SeriesPage() {
   const { filters, setGenre, setYear, setSort, clearFilters, hasActiveFilters } = useFilterParams()
 
   const { data: series, isLoading } = useSeriesList({

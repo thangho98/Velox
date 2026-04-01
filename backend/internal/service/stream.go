@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -108,7 +107,7 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID in
 	} else {
 		mf, err = s.mediaFileRepo.GetPrimaryByMediaID(ctx, mediaID)
 	}
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return "", ErrNotFound
 	}
 	if err != nil {
@@ -154,13 +153,13 @@ func (s *StreamService) WaitForSegment(path string, timeout time.Duration) bool 
 func (s *StreamService) GetPrimaryFile(ctx context.Context, mediaID, fileID int64) (*model.MediaFile, error) {
 	if fileID > 0 {
 		mf, err := s.mediaFileRepo.GetByID(ctx, fileID)
-		if errors.Is(err, sql.ErrNoRows) || (err == nil && mf.MediaID != mediaID) {
+		if errors.Is(err, repository.ErrNotFound) || (err == nil && mf.MediaID != mediaID) {
 			return nil, ErrNotFound
 		}
 		return mf, err
 	}
 	mf, err := s.mediaFileRepo.GetPrimaryByMediaID(ctx, mediaID)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrNotFound
 	}
 	return mf, err

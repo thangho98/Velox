@@ -732,7 +732,7 @@ const STEP_COMPONENTS: Record<Step, () => React.ReactNode> = {
   summary: SummaryStep,
 }
 
-export function SetupWizardPage() {
+export default function SetupWizardPage() {
   const navigate = useNavigate()
   const { t } = useTranslation('wizard')
   const { mutate: completeWizard } = useCompleteWizard()

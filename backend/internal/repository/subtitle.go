@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -63,8 +64,11 @@ func (r *SubtitleRepo) GetByID(ctx context.Context, id int64) (*model.Subtitle, 
 		FROM subtitles WHERE id = ?`, id).
 		Scan(&s.ID, &s.MediaFileID, &s.Language, &s.Codec, &s.Title,
 			&isEmbedded, &s.StreamIndex, &s.FilePath, &isForced, &isDefault, &isSDH)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get subtitle by id %d: %w", id, err)
 	}
 	s.IsEmbedded = isEmbedded == 1
 	s.IsForced = isForced == 1
@@ -105,13 +109,23 @@ func (r *SubtitleRepo) ListByMediaFileID(ctx context.Context, mediaFileID int64)
 // DeleteByMediaFileID removes all subtitles for a media file (for rescan)
 func (r *SubtitleRepo) DeleteByMediaFileID(ctx context.Context, mediaFileID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM subtitles WHERE media_file_id = ?", mediaFileID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting subtitles for media file %d: %w", mediaFileID, err)
+	}
+	return nil
 }
 
 // Delete removes a subtitle
 func (r *SubtitleRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM subtitles WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM subtitles WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete subtitle %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Update updates a subtitle
@@ -133,23 +147,48 @@ func (r *SubtitleRepo) Update(ctx context.Context, s *model.Subtitle) error {
 		isSDH = 1
 	}
 
-	_, err := r.db.ExecContext(ctx, `UPDATE subtitles SET
+	res, err := r.db.ExecContext(ctx, `UPDATE subtitles SET
 		language = ?, codec = ?, title = ?, is_embedded = ?, stream_index = ?,
 		file_path = ?, is_forced = ?, is_default = ?, is_sdh = ?
 		WHERE id = ?`,
 		s.Language, s.Codec, s.Title, isEmbedded, s.StreamIndex,
 		s.FilePath, isForced, isDefault, isSDH, s.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update subtitle %d: %w", s.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
-// SetDefault sets a subtitle as the default for its media file
+// SetDefault sets a subtitle as the default for its media file.
+// Returns ErrNotFound if the subtitle does not exist or does not belong to the media file.
 func (r *SubtitleRepo) SetDefault(ctx context.Context, mediaFileID, subtitleID int64) error {
-	// First clear default for all subtitles of this media file
-	_, err := r.db.ExecContext(ctx, "UPDATE subtitles SET is_default = 0 WHERE media_file_id = ?", mediaFileID)
-	if err != nil {
-		return err
+	// First validate the subtitle exists and belongs to this media file
+	// This prevents partial state if the subtitle is stale
+	var exists int
+	err := r.db.QueryRowContext(ctx,
+		"SELECT 1 FROM subtitles WHERE id = ? AND media_file_id = ?",
+		subtitleID, mediaFileID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
 	}
-	// Then set the new default
+	if err != nil {
+		return fmt.Errorf("checking subtitle existence: %w", err)
+	}
+
+	// Subtitle validated, now clear default for all subtitles of this media file
+	_, err = r.db.ExecContext(ctx, "UPDATE subtitles SET is_default = 0 WHERE media_file_id = ?", mediaFileID)
+	if err != nil {
+		return fmt.Errorf("clearing default subtitle for media file %d: %w", mediaFileID, err)
+	}
+
+	// Set the new default
 	_, err = r.db.ExecContext(ctx, "UPDATE subtitles SET is_default = 1 WHERE id = ? AND media_file_id = ?", subtitleID, mediaFileID)
-	return err
+	if err != nil {
+		return fmt.Errorf("setting default subtitle %d for media file %d: %w", subtitleID, mediaFileID, err)
+	}
+	return nil
 }

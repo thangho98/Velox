@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -28,8 +30,11 @@ func (r *PersonRepo) GetByID(ctx context.Context, id int64) (*model.Person, erro
 	var p model.Person
 	err := r.db.QueryRowContext(ctx, "SELECT id, name, tmdb_id, profile_path FROM people WHERE id = ?", id).
 		Scan(&p.ID, &p.Name, &p.TmdbID, &p.ProfilePath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get person by id %d: %w", id, err)
 	}
 	return &p, nil
 }
@@ -39,8 +44,11 @@ func (r *PersonRepo) GetByName(ctx context.Context, name string) (*model.Person,
 	var p model.Person
 	err := r.db.QueryRowContext(ctx, "SELECT id, name, tmdb_id, profile_path FROM people WHERE name = ?", name).
 		Scan(&p.ID, &p.Name, &p.TmdbID, &p.ProfilePath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get person by name %q: %w", name, err)
 	}
 	return &p, nil
 }
@@ -50,23 +58,40 @@ func (r *PersonRepo) GetByTmdbID(ctx context.Context, tmdbID int64) (*model.Pers
 	var p model.Person
 	err := r.db.QueryRowContext(ctx, "SELECT id, name, tmdb_id, profile_path FROM people WHERE tmdb_id = ?", tmdbID).
 		Scan(&p.ID, &p.Name, &p.TmdbID, &p.ProfilePath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get person by tmdb_id %d: %w", tmdbID, err)
 	}
 	return &p, nil
 }
 
 // Update updates a person
 func (r *PersonRepo) Update(ctx context.Context, p *model.Person) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE people SET name = ?, tmdb_id = ?, profile_path = ? WHERE id = ?",
+	res, err := r.db.ExecContext(ctx, "UPDATE people SET name = ?, tmdb_id = ?, profile_path = ? WHERE id = ?",
 		p.Name, p.TmdbID, p.ProfilePath, p.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update person %d: %w", p.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete removes a person
 func (r *PersonRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM people WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM people WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete person %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Search searches people by name
@@ -104,17 +129,31 @@ func (r *PersonRepo) AddCredit(ctx context.Context, c *model.Credit) error {
 
 // UpdateCredit updates a credit
 func (r *PersonRepo) UpdateCredit(ctx context.Context, c *model.Credit) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE credits SET
+	res, err := r.db.ExecContext(ctx, `UPDATE credits SET
 		media_id = ?, series_id = ?, person_id = ?, character = ?, role = ?, display_order = ?
 		WHERE id = ?`,
 		c.MediaID, c.SeriesID, c.PersonID, c.Character, c.Role, c.DisplayOrder, c.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update credit %d: %w", c.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // RemoveCredit removes a credit by ID
 func (r *PersonRepo) RemoveCredit(ctx context.Context, creditID int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM credits WHERE id = ?", creditID)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM credits WHERE id = ?", creditID)
+	if err != nil {
+		return fmt.Errorf("remove credit %d: %w", creditID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ListCreditsByMedia retrieves all credits for a media item with person details
@@ -197,11 +236,17 @@ func (r *PersonRepo) ListCreditsByPerson(ctx context.Context, personID int64) ([
 // ClearMediaCredits removes all credits for a media item
 func (r *PersonRepo) ClearMediaCredits(ctx context.Context, mediaID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM credits WHERE media_id = ?", mediaID)
-	return err
+	if err != nil {
+		return fmt.Errorf("clearing credits for media %d: %w", mediaID, err)
+	}
+	return nil
 }
 
 // ClearSeriesCredits removes all credits for a series
 func (r *PersonRepo) ClearSeriesCredits(ctx context.Context, seriesID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM credits WHERE series_id = ?", seriesID)
-	return err
+	if err != nil {
+		return fmt.Errorf("clearing credits for series %d: %w", seriesID, err)
+	}
+	return nil
 }

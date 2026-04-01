@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState, useEffect, useCallback } from 'react'
 
 interface AlphaIndexProps {
@@ -62,7 +63,7 @@ export function useAlphaScroll(items: { sort_title?: string; title: string }[] |
 
   useEffect(() => {
     window.addEventListener('scroll', handleScroll, { passive: true })
-    handleScroll()
+    requestAnimationFrame(handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
 

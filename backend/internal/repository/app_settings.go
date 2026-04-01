@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/thawng/velox/internal/model"
 )
@@ -33,7 +34,10 @@ func (r *AppSettingsRepo) Set(ctx context.Context, key, value string) error {
 		INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
 		key, value)
-	return err
+	if err != nil {
+		return fmt.Errorf("setting app config %s: %w", key, err)
+	}
+	return nil
 }
 
 // GetMulti returns a map of key-value pairs for the given keys.

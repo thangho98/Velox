@@ -50,6 +50,9 @@ export function MediaCard({
   const { data: cinemaSettings } = useCinemaSettings()
   const cinemaEnabled = cinemaSettings?.enabled ?? false
 
+  // Series cards: id is series.id, NOT media_id — skip progress/favorite
+  const isSeries = type === 'series'
+
   useEffect(() => {
     if (!isHovered || !cinemaEnabled) {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
@@ -76,10 +79,7 @@ export function MediaCard({
     return () => {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     }
-  }, [isHovered, id, trailerKey, cinemaEnabled])
-
-  // Series cards: id is series.id, NOT media_id — skip progress/favorite
-  const isSeries = type === 'series'
+  }, [isHovered, id, trailerKey, cinemaEnabled, isSeries, seriesId])
   const { data: fetchedProgress } = useProgress(!isSeries && showProgress ? id : 0)
 
   // Force no progress/favorite for series cards

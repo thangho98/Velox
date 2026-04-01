@@ -542,8 +542,9 @@ func TestRealMigrations_Rollback(t *testing.T) {
 		t.Fatalf("Up() error: %v", err)
 	}
 
-	// Rollback migrations 009, 008, 007, 006, 005, and 004 to test rollback of 004
-	for i := 0; i < 6; i++ {
+	// Roll back through version 004 so only migrations 001-003 remain applied.
+	rollbacksToVersion004 := len(All()) - 3
+	for i := 0; i < rollbacksToVersion004; i++ {
 		if err := runner.Rollback(); err != nil {
 			t.Fatalf("Rollback() error at iteration %d: %v", i, err)
 		}

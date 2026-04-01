@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -50,8 +51,11 @@ func (r *AudioTrackRepo) GetByID(ctx context.Context, id int64) (*model.AudioTra
 		FROM audio_tracks WHERE id = ?`, id).
 		Scan(&at.ID, &at.MediaFileID, &at.StreamIndex, &at.Codec,
 			&at.Language, &at.Channels, &at.ChannelLayout, &at.Bitrate, &at.SampleRate, &at.Title, &isDefault)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get audio track by id %d: %w", id, err)
 	}
 	at.IsDefault = isDefault == 1
 	return &at, nil
@@ -86,13 +90,23 @@ func (r *AudioTrackRepo) ListByMediaFileID(ctx context.Context, mediaFileID int6
 // DeleteByMediaFileID removes all audio tracks for a media file (for rescan)
 func (r *AudioTrackRepo) DeleteByMediaFileID(ctx context.Context, mediaFileID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM audio_tracks WHERE media_file_id = ?", mediaFileID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting audio tracks for media file %d: %w", mediaFileID, err)
+	}
+	return nil
 }
 
 // Delete removes an audio track
 func (r *AudioTrackRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM audio_tracks WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM audio_tracks WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete audio track %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Update updates an audio track
@@ -102,21 +116,46 @@ func (r *AudioTrackRepo) Update(ctx context.Context, at *model.AudioTrack) error
 		isDefault = 1
 	}
 
-	_, err := r.db.ExecContext(ctx, `UPDATE audio_tracks SET
+	res, err := r.db.ExecContext(ctx, `UPDATE audio_tracks SET
 		codec = ?, language = ?, channels = ?, channel_layout = ?, bitrate = ?, title = ?, is_default = ?
 		WHERE id = ?`,
 		at.Codec, at.Language, at.Channels, at.ChannelLayout, at.Bitrate, at.Title, isDefault, at.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update audio track %d: %w", at.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
-// SetDefault sets an audio track as the default for its media file
+// SetDefault sets an audio track as the default for its media file.
+// Returns ErrNotFound if the track does not exist or does not belong to the media file.
 func (r *AudioTrackRepo) SetDefault(ctx context.Context, mediaFileID, trackID int64) error {
-	// First clear default for all tracks of this media file
-	_, err := r.db.ExecContext(ctx, "UPDATE audio_tracks SET is_default = 0 WHERE media_file_id = ?", mediaFileID)
-	if err != nil {
-		return err
+	// First validate the track exists and belongs to this media file
+	// This prevents partial state if the track is stale
+	var exists int
+	err := r.db.QueryRowContext(ctx,
+		"SELECT 1 FROM audio_tracks WHERE id = ? AND media_file_id = ?",
+		trackID, mediaFileID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
 	}
-	// Then set the new default
+	if err != nil {
+		return fmt.Errorf("checking audio track existence: %w", err)
+	}
+
+	// Track validated, now clear default for all tracks of this media file
+	_, err = r.db.ExecContext(ctx, "UPDATE audio_tracks SET is_default = 0 WHERE media_file_id = ?", mediaFileID)
+	if err != nil {
+		return fmt.Errorf("clearing default track for media file %d: %w", mediaFileID, err)
+	}
+
+	// Set the new default
 	_, err = r.db.ExecContext(ctx, "UPDATE audio_tracks SET is_default = 1 WHERE id = ? AND media_file_id = ?", trackID, mediaFileID)
-	return err
+	if err != nil {
+		return fmt.Errorf("setting default track %d for media file %d: %w", trackID, mediaFileID, err)
+	}
+	return nil
 }

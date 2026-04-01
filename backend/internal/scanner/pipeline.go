@@ -256,7 +256,7 @@ func (p *Pipeline) processFile(scanCtx *ScanContext, path string) (bool, error) 
 
 	// Step 2: Check if file exists by fingerprint (rename detection)
 	existingFile, err := p.mediaFileRepo.FindByFingerprint(scanCtx.ctx, fp)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return false, fmt.Errorf("checking fingerprint: %w", err)
 	}
 	if err == nil && existingFile != nil {
@@ -293,7 +293,7 @@ func (p *Pipeline) processFile(scanCtx *ScanContext, path string) (bool, error) 
 	var replaceMediaID int64
 	replacePrimary := true // new files default to primary
 	existingByPath, err := p.mediaFileRepo.FindByPath(scanCtx.ctx, path)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return false, fmt.Errorf("checking path: %w", err)
 	}
 	if err == nil && existingByPath != nil {

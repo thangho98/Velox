@@ -14,6 +14,7 @@ import (
 // PretranscodeService manages offline encoding of media files.
 type PretranscodeService struct {
 	repo            *repository.PretranscodeRepo
+	statusRepo      *repository.PretranscodeRepo
 	mediaFileRepo   *repository.MediaFileRepo
 	settingsRepo    *repository.AppSettingsRepo
 	libraryRepo     *repository.LibraryRepo
@@ -63,6 +64,11 @@ func (s *PretranscodeService) SetNotificationService(svc *NotificationService) {
 // SetTranscoder sets the realtime transcoder so pretranscode can yield when users are watching.
 func (s *PretranscodeService) SetTranscoder(t interface{ TryActiveCount() int }) {
 	s.transcoder = t
+}
+
+// SetStatusRepo configures the main-db status repo used by HTTP handlers.
+func (s *PretranscodeService) SetStatusRepo(repo *repository.PretranscodeRepo) {
+	s.statusRepo = repo
 }
 
 // OutputDir returns the base directory for pre-transcode files.

@@ -123,8 +123,8 @@ func TestUserRepo_GetByID_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := repo.GetByID(ctx, 999)
-	if !errors.Is(err, sql.ErrNoRows) {
-		t.Errorf("GetByID() error = %v, want ErrNoRows", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetByID() error = %v, want ErrNotFound", err)
 	}
 }
 
@@ -240,7 +240,7 @@ func TestUserRepo_Delete(t *testing.T) {
 	}
 
 	_, err = repo.GetByID(ctx, user.ID)
-	if !errors.Is(err, sql.ErrNoRows) {
+	if !errors.Is(err, ErrNotFound) {
 		t.Error("Delete() did not remove user")
 	}
 }

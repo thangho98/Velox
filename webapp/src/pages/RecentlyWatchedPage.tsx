@@ -4,7 +4,7 @@ import { MediaCard } from '@/components/MediaCard'
 import { useState } from 'react'
 import { LuClock } from 'react-icons/lu'
 
-export function RecentlyWatchedPage() {
+export default function RecentlyWatchedPage() {
   const [limit, setLimit] = useState(20)
   const { data: recentlyWatched, isLoading } = useRecentlyWatched({ limit })
 

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -32,8 +33,11 @@ func scanMediaFile(scanner interface{ Scan(...any) error }) (*model.MediaFile, e
 		&mf.Width, &mf.Height, &mf.VideoCodec, &mf.VideoProfile, &mf.VideoLevel, &mf.VideoFPS,
 		&mf.AudioCodec, &mf.Container, &mf.Bitrate,
 		&mf.Fingerprint, &isPrimary, &mf.AddedAt, &lastVerified)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scanning media file: %w", err)
 	}
 	mf.IsPrimary = isPrimary == 1
 	if lastVerified.Valid {
@@ -66,7 +70,10 @@ func (r *MediaFileRepo) Create(ctx context.Context, mf *model.MediaFile) error {
 	if lastVerified.Valid {
 		mf.LastVerifiedAt = &lastVerified.String
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("creating media file for media %d: %w", mf.MediaID, err)
+	}
+	return nil
 }
 
 // GetByID retrieves a media file by ID
@@ -86,7 +93,7 @@ func (r *MediaFileRepo) Update(ctx context.Context, mf *model.MediaFile) error {
 		isPrimary = 1
 	}
 
-	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET
+	res, err := r.db.ExecContext(ctx, `UPDATE media_files SET
 		file_path = ?, file_size = ?, duration = ?, width = ?, height = ?,
 		video_codec = ?, video_profile = ?, video_level = ?, video_fps = ?,
 		audio_codec = ?, container = ?, bitrate = ?,
@@ -96,13 +103,27 @@ func (r *MediaFileRepo) Update(ctx context.Context, mf *model.MediaFile) error {
 		mf.VideoCodec, mf.VideoProfile, mf.VideoLevel, mf.VideoFPS,
 		mf.AudioCodec, mf.Container, mf.Bitrate,
 		mf.Fingerprint, isPrimary, mf.ID)
-	return err
+	if err != nil {
+		return fmt.Errorf("update media file %d: %w", mf.ID, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete removes a media file
 func (r *MediaFileRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM media_files WHERE id = ?", id)
-	return err
+	res, err := r.db.ExecContext(ctx, "DELETE FROM media_files WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete media file %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ListByMediaID retrieves all files for a media item
@@ -160,14 +181,24 @@ func (r *MediaFileRepo) FindByPath(ctx context.Context, path string) (*model.Med
 
 // UpdatePath updates the file path (for rename detection)
 func (r *MediaFileRepo) UpdatePath(ctx context.Context, id int64, newPath string) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE media_files SET file_path = ? WHERE id = ?", newPath, id)
-	return err
+	res, err := r.db.ExecContext(ctx, "UPDATE media_files SET file_path = ? WHERE id = ?", newPath, id)
+	if err != nil {
+		return fmt.Errorf("update path for media file %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // MarkMissing marks a file as missing (sets last_verified_at = NULL)
 func (r *MediaFileRepo) MarkMissing(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "UPDATE media_files SET last_verified_at = NULL WHERE id = ?", id)
-	return err
+	if err != nil {
+		return fmt.Errorf("marking media file %d missing: %w", id, err)
+	}
+	return nil
 }
 
 // ListByLibraryID retrieves all media files for a given library (via media table join).
@@ -224,13 +255,19 @@ func (r *MediaFileRepo) ListAllPaginated(ctx context.Context, limit, offset int)
 // UpdateLastVerified updates the last_verified_at timestamp for a file.
 func (r *MediaFileRepo) UpdateLastVerified(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "UPDATE media_files SET last_verified_at = CURRENT_TIMESTAMP WHERE id = ?", id)
-	return err
+	if err != nil {
+		return fmt.Errorf("updating last verified for media file %d: %w", id, err)
+	}
+	return nil
 }
 
 // DeleteByMediaID removes all files for a media item
 func (r *MediaFileRepo) DeleteByMediaID(ctx context.Context, mediaID int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM media_files WHERE media_id = ?", mediaID)
-	return err
+	if err != nil {
+		return fmt.Errorf("deleting files for media %d: %w", mediaID, err)
+	}
+	return nil
 }
 
 // SetPrimary sets a file as the primary version for its media
@@ -238,9 +275,22 @@ func (r *MediaFileRepo) SetPrimary(ctx context.Context, mediaID, fileID int64) e
 	// First clear primary for all files of this media
 	_, err := r.db.ExecContext(ctx, "UPDATE media_files SET is_primary = 0 WHERE media_id = ?", mediaID)
 	if err != nil {
-		return err
+		return fmt.Errorf("clearing primary for media %d: %w", mediaID, err)
 	}
 	// Then set the new primary
 	_, err = r.db.ExecContext(ctx, "UPDATE media_files SET is_primary = 1 WHERE id = ? AND media_id = ?", fileID, mediaID)
-	return err
+	if err != nil {
+		return fmt.Errorf("setting primary file %d for media %d: %w", fileID, mediaID, err)
+	}
+	return nil
+}
+
+// TotalSize returns the sum of all media file sizes
+func (r *MediaFileRepo) TotalSize(ctx context.Context) (int64, error) {
+	var size int64
+	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(file_size), 0) FROM media_files`).Scan(&size)
+	if err != nil {
+		return 0, fmt.Errorf("summing file sizes: %w", err)
+	}
+	return size, nil
 }

@@ -13,7 +13,7 @@ import { ScrollRow } from '@/components/ScrollRow'
 import { useAuthStore } from '@/stores/auth'
 import { LuPlay, LuFilm, LuLibrary } from 'react-icons/lu'
 
-export function HomePage() {
+export default function HomePage() {
   const { user } = useAuthStore()
   const { data: libraries, isLoading: libsLoading } = useLibraries()
   const { data: continueWatching, isLoading: continueLoading } = useContinueWatching({ limit: 20 })
