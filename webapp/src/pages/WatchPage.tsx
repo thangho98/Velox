@@ -852,15 +852,23 @@ export default function WatchPage() {
     // Normal rendering is handled by DualSubtitleOverlay.
     // Use 'hidden' (cues available to JS but NOT rendered) instead of 'showing'
     // to prevent double subtitle display.
-    for (let i = 0; i < video.textTracks.length; i++) {
-      const track = video.textTracks[i]
-      if (track.kind === 'subtitles' || track.kind === 'captions') {
-        track.mode = !subtitleLanguage
-          ? 'disabled'
-          : track.language === subtitleLanguage
-            ? 'hidden'
-            : 'disabled'
+    const suppressTracks = () => {
+      for (let i = 0; i < video.textTracks.length; i++) {
+        const track = video.textTracks[i]
+        if (track.kind === 'subtitles' || track.kind === 'captions') {
+          track.mode = !subtitleLanguage
+            ? 'disabled'
+            : track.language === subtitleLanguage
+              ? 'hidden'
+              : 'disabled'
+        }
       }
+    }
+    suppressTracks()
+    // Also suppress any tracks added later (e.g. HLS.js or browser auto-adding)
+    video.textTracks.addEventListener('addtrack', suppressTracks)
+    return () => {
+      video.textTracks.removeEventListener('addtrack', suppressTracks)
     }
   }, [subtitleLanguage])
 
@@ -1055,7 +1063,6 @@ export default function WatchPage() {
             src={subtitleServeUrl(primarySub)!}
             srcLang={primarySub.language ?? 'und'}
             label={primarySub.label ?? primarySub.language ?? 'Subtitles'}
-            default
           />
         )}
       </video>

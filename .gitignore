@@ -45,3 +45,5 @@ backend/.gocache/
 
 .Velox
 note.md
+
+.playwright-mcp/
