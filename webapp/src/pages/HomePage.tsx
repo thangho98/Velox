@@ -46,28 +46,27 @@ export function HomePage() {
     <div className="space-y-8">
       {/* Hero Section */}
       <section className="relative -mt-4 -mx-4 lg:-mx-8">
-        <div className="relative h-[45vh] bg-gradient-to-b from-netflix-dark to-netflix-black lg:h-[55vh]">
-          <div className="absolute inset-0 bg-gradient-to-r from-netflix-black via-netflix-black/60 to-transparent" />
-          <div className="absolute bottom-0 left-0 p-8 lg:p-16">
-            <h1 className="mb-3 max-w-2xl text-3xl font-bold text-white lg:text-5xl">
-              Welcome back{user?.display_name ? `, ${user.display_name}` : ''}
-            </h1>
-            <p className="mb-6 max-w-lg text-gray-300">Your personal media server.</p>
-            <div className="flex gap-3">
-              <Link
-                to="/movies"
-                className="flex items-center gap-2 rounded bg-netflix-red px-5 py-2.5 font-semibold text-white transition-colors hover:bg-netflix-red-hover"
-              >
-                <LuPlay size={16} />
-                Movies
-              </Link>
-              <Link
-                to="/series"
-                className="flex items-center gap-2 rounded bg-white/10 px-5 py-2.5 font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/20"
-              >
-                Series
-              </Link>
-            </div>
+        <div className="relative bg-gradient-to-b from-netflix-dark to-netflix-black px-6 pb-8 pt-12 lg:px-16 lg:pb-12 lg:pt-20">
+          <h1 className="mb-2 max-w-2xl text-2xl font-bold text-white lg:text-4xl">
+            Welcome back{user?.display_name ? `, ${user.display_name}` : ''}
+          </h1>
+          <p className="mb-5 max-w-lg text-sm text-gray-400 lg:text-base">
+            Your personal media server.
+          </p>
+          <div className="flex gap-3">
+            <Link
+              to="/movies"
+              className="flex items-center gap-2 rounded bg-netflix-red px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-netflix-red-hover"
+            >
+              <LuPlay size={16} />
+              Movies
+            </Link>
+            <Link
+              to="/series"
+              className="flex items-center gap-2 rounded bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+            >
+              Series
+            </Link>
           </div>
         </div>
       </section>

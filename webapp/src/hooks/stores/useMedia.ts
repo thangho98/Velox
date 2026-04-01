@@ -378,6 +378,22 @@ export function useStreamUrls(mediaId: number, request: PlaybackInfoRequest = {}
     },
     staleTime: 5 * 60 * 1000,
     placeholderData: (prev) => prev, // Keep previous data while refetching to prevent video remount
+    // Preserve object identity when stream URLs haven't changed — prevents
+    // the HLS init effect from restarting the video on subtitle selection changes.
+    structuralSharing: (prev, next) => {
+      const p = prev as StreamUrls | undefined
+      const n = next as StreamUrls
+      if (
+        p &&
+        p.direct === n.direct &&
+        p.hls === n.hls &&
+        p.abr === n.abr &&
+        p.primary_file_id === n.primary_file_id
+      ) {
+        return p
+      }
+      return n
+    },
     enabled: mediaId > 0,
   })
 }

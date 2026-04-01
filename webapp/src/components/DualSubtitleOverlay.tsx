@@ -75,17 +75,17 @@ function activeCue(cues: VTTCue[], time: number): string | null {
 }
 
 // Font size mapping — Netflix uses ~32px for large on a 1080p screen
-// Mobile-first: smaller sizes on <1024px, full sizes on lg+
+// Mobile → tablet (md 768px) → desktop (lg 1024px)
 const SIZE_MAP = {
-  small: 'text-base lg:text-2xl', // 16px mobile/tablet, 24px desktop
-  medium: 'text-lg lg:text-[32px]', // 18px mobile/tablet, 32px desktop
-  large: 'text-xl lg:text-[40px]', // 20px mobile/tablet, 40px desktop — Netflix-sized
+  small: 'text-base md:text-xl lg:text-2xl', // 16px → 20px → 24px
+  medium: 'text-lg md:text-2xl lg:text-[32px]', // 18px → 24px → 32px
+  large: 'text-xl md:text-[28px] lg:text-[40px]', // 20px → 28px → 40px
 } as const
 
 const SECONDARY_SIZE_MAP = {
-  small: 'text-xs lg:text-base', // 12px mobile/tablet, 16px desktop
-  medium: 'text-sm lg:text-xl', // 14px mobile/tablet, 20px desktop
-  large: 'text-base lg:text-2xl', // 16px mobile/tablet, 24px desktop
+  small: 'text-xs md:text-sm lg:text-base', // 12px → 14px → 16px
+  medium: 'text-sm md:text-base lg:text-xl', // 14px → 16px → 20px
+  large: 'text-base md:text-lg lg:text-2xl', // 16px → 18px → 24px
 } as const
 
 // Text stroke for no-background mode (Netflix/Emby style)

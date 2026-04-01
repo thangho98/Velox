@@ -237,6 +237,58 @@ export function WatchPage() {
     }
   }, [secondarySubtitleLanguage, secondarySubtitleTrackId, setSecondarySubtitleTrackId, subtitles])
 
+  // ── Media Session API — lock screen / notification controls ──────────────
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !media) return
+
+    const title = media.media.title ?? ''
+    const artist =
+      isEpisode && media.season_number && media.episode_number
+        ? `S${media.season_number}E${media.episode_number}`
+        : ''
+    const posterUrl = media.media.poster_path ? tmdbImage(media.media.poster_path, 'w342') : ''
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist,
+      album: 'Velox',
+      artwork: posterUrl ? [{ src: posterUrl, sizes: '342x513', type: 'image/jpeg' }] : [],
+    })
+
+    navigator.mediaSession.setActionHandler('play', () => videoRef.current?.play())
+    navigator.mediaSession.setActionHandler('pause', () => videoRef.current?.pause())
+    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+      const v = videoRef.current
+      if (v) v.currentTime = Math.max(0, v.currentTime - (details.seekOffset ?? 10))
+    })
+    navigator.mediaSession.setActionHandler('seekforward', (details) => {
+      const v = videoRef.current
+      if (v) v.currentTime = Math.min(v.duration || 0, v.currentTime + (details.seekOffset ?? 10))
+    })
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      const v = videoRef.current
+      if (v && details.seekTime != null) v.currentTime = details.seekTime
+    })
+
+    if (isEpisode && nextEpisodeMediaId) {
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        navigate(`/watch/${nextEpisodeMediaId}`)
+      })
+    } else {
+      navigator.mediaSession.setActionHandler('nexttrack', null)
+    }
+
+    return () => {
+      navigator.mediaSession.metadata = null
+      navigator.mediaSession.setActionHandler('play', null)
+      navigator.mediaSession.setActionHandler('pause', null)
+      navigator.mediaSession.setActionHandler('seekbackward', null)
+      navigator.mediaSession.setActionHandler('seekforward', null)
+      navigator.mediaSession.setActionHandler('seekto', null)
+      navigator.mediaSession.setActionHandler('nexttrack', null)
+    }
+  }, [media, isEpisode, nextEpisodeMediaId, navigate])
+
   const primaryFileId = streamUrls?.primary_file_id ?? media?.files[0]?.id
   const subtitleServeUrl = (sub: PlaybackSubtitleTrack | undefined) => {
     if (!sub || !primaryFileId) return null
@@ -311,6 +363,19 @@ export function WatchPage() {
   const [showQualityIndicator, setShowQualityIndicator] = useState(false)
   const allowsImageSubtitles =
     playbackInfo?.method === 'FullTranscode' || playbackInfo?.method === 'TranscodeAudio'
+
+  // Media Session — update position state for lock screen progress bar
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !videoRef.current) return
+    const v = videoRef.current
+    if (Number.isFinite(v.duration) && v.duration > 0) {
+      navigator.mediaSession.setPositionState({
+        duration: v.duration,
+        playbackRate: v.playbackRate,
+        position: Math.min(v.currentTime, v.duration),
+      })
+    }
+  }, [currentTime, duration])
 
   // Wall clock
   const [wallClock, setWallClock] = useState(() => getWallClock())
@@ -388,6 +453,8 @@ export function WatchPage() {
 
   // Screen lock
   const [isLocked, setIsLocked] = useState(false)
+  const [showLockedUI, setShowLockedUI] = useState(false)
+  const lockedUITimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Up Next — trigger when credits start (Netflix-style) or fallback to 90%
   const [upNextDismissed, setUpNextDismissed] = useState(false)
@@ -1229,10 +1296,10 @@ export function WatchPage() {
           </div>
         ))}
 
-      {/* Up Next card */}
+      {/* Up Next card — z-50 so it stays above lock overlay */}
       {showUpNext && (
         <div
-          className="absolute bottom-56 right-6 z-20 w-64 rounded-xl bg-[#1e1e1e] p-4 shadow-2xl ring-1 ring-white/10"
+          className="absolute bottom-56 right-6 z-50 w-64 rounded-xl bg-[#1e1e1e] p-4 shadow-2xl ring-1 ring-white/10"
           onClick={(e) => e.stopPropagation()}
         >
           <p className="mb-1 text-xs text-white/50">Up next</p>
@@ -1265,26 +1332,29 @@ export function WatchPage() {
         hideCredits={isEpisode && nextEpisodeMediaId != null}
       />
 
-      {/* Screen lock overlay */}
+      {/* Screen lock overlay — tap to show unlock icon, auto-hides after 3s */}
       {isLocked && (
         <div
           className="absolute inset-0 z-40"
           onClick={(e) => {
             e.stopPropagation()
             e.preventDefault()
+            if (lockedUITimeoutRef.current) clearTimeout(lockedUITimeoutRef.current)
+            setShowLockedUI(true)
+            lockedUITimeoutRef.current = setTimeout(() => setShowLockedUI(false), 3000)
           }}
         >
-          {/* Unlock button — always visible when locked */}
           <button
             onClick={(e) => {
               e.stopPropagation()
               setIsLocked(false)
+              setShowLockedUI(false)
+              if (lockedUITimeoutRef.current) clearTimeout(lockedUITimeoutRef.current)
               resetControlsTimeout()
             }}
-            className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-black/60 px-5 py-2.5 text-white/80 backdrop-blur-sm transition-opacity hover:text-white"
+            className={`absolute left-6 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-3 text-white/80 backdrop-blur-sm transition-opacity duration-300 hover:text-white ${showLockedUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           >
-            <LuLockOpen size={18} />
-            <span className="text-sm font-medium">Tap to unlock</span>
+            <LuLockOpen size={22} />
           </button>
         </div>
       )}

@@ -52,6 +52,10 @@ var (
 
 	// Empty parentheses/brackets
 	emptyBracketsPattern = regexp.MustCompile(`[\(\[]\s*[\)\]]`)
+
+	// Leading parenthesized/bracketed tags that are not part of the title
+	// e.g. "(Sub Viet)", "[Vietsub]", "(Sub Eng)", "(Thuyết Minh)", "(Lồng Tiếng)"
+	leadingTagPattern = regexp.MustCompile(`^(?:[\(\[][^\)\]]*[\)\]]\s*)+`)
 )
 
 // Parse extracts metadata from a filename
@@ -178,6 +182,9 @@ func cleanSeriesTitle(s string) string {
 	// Replace file separators (dots, underscores) with spaces
 	s = separatorPattern.ReplaceAllString(s, " ")
 
+	// Strip leading parenthesized/bracketed tags: (Sub Viet), [Vietsub], etc.
+	s = leadingTagPattern.ReplaceAllString(s, "")
+
 	// Remove year with optional parens: (2000) or 2000
 	s = yearPattern.ReplaceAllString(s, "")
 
@@ -223,6 +230,9 @@ func extractEpisodeTitle(s string) string {
 // cleanMovieTitle extracts movie title, cutting before year or quality markers.
 func cleanMovieTitle(base string, year int) string {
 	s := separatorPattern.ReplaceAllString(base, " ")
+
+	// Strip leading parenthesized/bracketed tags: (Sub Viet), [Vietsub], etc.
+	s = leadingTagPattern.ReplaceAllString(s, "")
 
 	// Cut at year position if found
 	if year > 0 {

@@ -46,7 +46,7 @@ export function SkipIntroCredits({
   const label = activeSegment.type === 'intro' ? t('controls.skipIntro') : t('controls.skipCredits')
 
   return (
-    <div className="absolute bottom-56 right-6 z-30">
+    <div className="absolute right-6 top-1/2 -translate-y-1/2 z-50 sm:translate-y-0 sm:top-auto sm:bottom-56">
       <button
         onClick={() => {
           skippedRef.current.add(activeSegment.start)

@@ -241,6 +241,40 @@ func TestParse(t *testing.T) {
 				Quality:      "1080p",
 			},
 		},
+		// Leading language/subtitle tags stripped
+		{
+			name:     "Movie with (Sub Viet) prefix",
+			filename: "(Sub Viet) Avatar Fire and Ash 2025 2160p iT WEB-DL DD 5.1 Atmos DV H.265-ETHEL.mkv",
+			want: ParsedMedia{
+				Title:     "Avatar Fire and Ash",
+				Year:      2025,
+				MediaType: "movie",
+				Quality:   "2160p",
+				Codec:     "H265",
+			},
+		},
+		{
+			name:     "Movie with [Vietsub] prefix",
+			filename: "[Vietsub] Some Movie 2024 1080p.mkv",
+			want: ParsedMedia{
+				Title:     "Some Movie",
+				Year:      2024,
+				MediaType: "movie",
+				Quality:   "1080p",
+			},
+		},
+		{
+			name:     "Series with (Sub Viet) prefix",
+			filename: "(Sub Viet) Show Name S01E05 Episode Title 720p.mkv",
+			want: ParsedMedia{
+				Title:        "Show Name",
+				EpisodeTitle: "Episode Title",
+				Season:       1,
+				Episode:      5,
+				MediaType:    "episode",
+				Quality:      "720p",
+			},
+		},
 		// Real-world test: Malcolm in the Middle format
 		{
 			name:     "Malcolm in the Middle AMZN WEB-DL",

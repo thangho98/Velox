@@ -46,10 +46,11 @@ var SafariDesktop = DeviceProfile{
 }
 
 // MobileSafari profile for Safari on iOS/iPadOS
+// iOS natively decodes AC3/EAC3 via hardware (Apple A-series chips)
 var MobileSafari = DeviceProfile{
 	Name:                     "Mobile Safari",
 	SupportedVideoCodecs:     []string{CodecH264, CodecH265},
-	SupportedAudioCodecs:     []string{CodecAAC, CodecOpus, CodecMP3},
+	SupportedAudioCodecs:     []string{CodecAAC, CodecOpus, CodecMP3, CodecAC3, CodecEAC3},
 	SupportedContainers:      []string{ContainerMP4, ContainerMOV, ContainerHLS},
 	SupportedSubtitleFormats: []string{SubtitleVTT},
 	MaxWidth:                 0,
