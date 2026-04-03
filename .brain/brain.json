@@ -1,7 +1,7 @@
 {
   "meta": {
     "schema_version": "1.1.0",
-    "updated_at": "2026-03-30",
+    "updated_at": "2026-04-01",
     "plan_status": {
       "A": "✅ Done — Core Domain & Ingestion (all 5 phases 100%)",
       "B": "✅ Done — Auth & Sessions",
@@ -16,7 +16,10 @@
       "M": "🟡 Designed — Search, Filter & Folder Browser (3 phases, plan + design reviewed)",
       "N": "🟡 In Progress — Multi-language Support (i18n infrastructure ✅, SettingsPage ✅, remaining pages pending)",
       "O": "✅ Done — WebSocket Notification System",
-      "P": "✅ Done — Pre-transcode / Offline Encoding (5 phases all complete, Docker verified)"
+      "P": "✅ Done — Pre-transcode / Offline Encoding (5 phases all complete, Docker verified)",
+      "Q": "✅ Done — Refactor God Files (backend: 5 god files split + audit P1-P4/P6 fixes)",
+      "R": "✅ Done — Refactor Frontend (SettingsPage→17 sections, useMedia→9 modules, useSettings→4+factory, types→7 modules, WatchPage hooks extracted, React 19 patterns)",
+      "S": "🟡 Designed — Expo Mobile App (18 phases, 3 review rounds, ready to build)"
     }
   },
   "project": {
@@ -181,10 +184,11 @@
   "architecture": {
     "layers": [
       "handler (HTTP) → service (business logic) → repository (SQL) → model (structs)",
-      "Migrations via internal/database/migrate/registry.go (27 migrations)",
+      "Migrations via internal/database/migrate/registry.go (28 migrations)",
       "DBTX interface (repository/db.go) — repos accept *sql.DB or *sql.Tx",
-      "repository.ErrNotFound sentinel for RowsAffected==0 checks",
-      "service.ErrNotFound sentinel wrapping sql.ErrNoRows",
+      "repository.ErrNotFound sentinel — 35 repo Get methods wrap sql.ErrNoRows, 35 update/delete methods check RowsAffected",
+      "service.ErrNotFound sentinel wrapping repository.ErrNotFound (not raw sql.ErrNoRows)",
+      "Backend god files split (Plan Q): service/{browse,catalog,cinema,settings,setup,profile,series,playback_config}.go, subtitle split into {subtitle,subtitle_helpers,subtitle_tracks,subtitle_search_providers,subtitle_search_ranking}.go, metadata_editor→metadata_editor_operations.go, handler/playback_info.go, repository/admin.go",
       "respondJSON wraps success in {\"data\": ...}, logs encode errors",
       "storage/image.go — local image storage + resize via disintegration/imaging",
       "auth/apikey.go — in-memory API key store for external player stream URLs"
@@ -208,8 +212,8 @@
     "youtube_background": "YouTubeBackground.tsx — YouTube IFrame API wrapper. Programmatic mute/unmute (no YouTube UI visible).",
     "cinema_overlay": "CinemaOverlay.tsx — fullscreen intro/trailer player (kept for potential future use).",
     "i18n": "Full i18n support: react-i18next + i18next-browser-languagedetector. Namespaces: common, auth, navigation, settings, media, watch, errors. SettingsPage fully translated (en/vi).",
-    "pretranscode_settings": "PretranscodeSection in SettingsPage.tsx — toggle, profiles, schedule, storage estimation, progress dashboard with real-time polling.",
-    "notifications_page": "NotificationsSection in SettingsPage — /settings?section=notifications. Full list with filter (All/Unread), limit selector, mark as read, delete. NotificationBell 'View all' navigates here (not Activity).",
+    "settings_page": "SettingsPage split into 17 section components under pages/settings/components/ (Plan R). Each section is independent: ProfileSection, PreferencesSection, SecuritySection, SessionsSection, NotificationsSection, MetadataSection, SubtitlesSection, PlaybackSection, GeneralSection, LibrariesSection, UsersSection, ActivitySection, TasksSection, WebhooksSection, CinemaSection, MarkersSection, PretranscodeSection. Shared UI in shared.tsx. Query-param navigation (?section=X).",
+    "frontend_modularization": "Plan R: useMedia.ts→barrel re-export from hooks/stores/media/ (9 modules). useSettings.ts→barrel from hooks/stores/settings/ (4 modules + createSettingsHooks factory). types/api.ts→barrel from types/{common,auth,media,series,playback,admin}.ts. WatchPage: extracted useFullscreen + useKeyboardShortcuts hooks, useEffectEvent for event handlers. All pages use default exports, Router uses direct lazy imports. SubtitlePicker: language utils extracted to lib/languages.ts, SubtitleTranslate extracted to own component.",
     "toggle_component": "ui/Toggle.tsx — reusable toggle switch (h-6 w-11, netflix-red when enabled). Used in Cinema Mode + Pre-transcode settings.",
     "cinema_mode_guard": "useCinemaMode.ts hooks check cinemaSettings.enabled before fetching trailers. MediaCard hover preview also gated. When cinema disabled: no YouTube embeds, no trailer fetches.",
     "select_component": "ui/Select.tsx — reusable select with custom SVG chevron (appearance-none). Sizes: sm/md. Used in all SettingsPage selects. Replaces native browser select arrow.",
@@ -251,7 +255,10 @@
     "M": "Search, Filter & Folder Browser (3 phases: backend API, frontend filter, folder browser)",
     "N": "Multi-language Support (5 phases: i18n setup, English strings, Vietnamese, switcher, polish)",
     "O": "WebSocket Notification System (i18n support)",
-    "P": "Pre-transcode / Offline Encoding (5 phases: DB+settings, engine, playback integration, UI, testing)"
+    "P": "Pre-transcode / Offline Encoding (5 phases: DB+settings, engine, playback integration, UI, testing)",
+    "Q": "Refactor God Files (backend: split 5 files >800 lines + audit P1-P4/P6)",
+    "R": "Refactor Frontend (SettingsPage→17 sections, stores→domain modules, types→domain modules, WatchPage hook extraction)",
+    "S": "Expo Mobile App (18 phases: 01-08 monorepo+shared package, 09-18 Expo app. pnpm workspaces, @velox/shared, dev build+CNG, ExoPlayer Direct Play)"
   },
   "conventions": {
     "language": "Vietnamese in plans, English in code/commits",

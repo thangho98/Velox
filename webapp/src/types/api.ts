@@ -1,7 +1,3 @@
 // Barrel re-export — all types accessible from '@/types/api'
-export * from './common'
-export * from './auth'
-export * from './media'
-export * from './series'
-export * from './playback'
-export * from './admin'
+// Re-export from shared package for both webapp and mobile app
+export * from '@velox/shared/types'

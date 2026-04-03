@@ -78,10 +78,10 @@ export function Navbar() {
           : 'bg-gradient-to-b from-black/70 to-transparent'
       }`}
     >
-      <div className="flex h-16 items-center justify-between px-4 lg:px-8">
+      <div className="flex h-16 items-center justify-between gap-3 px-3 sm:px-4 lg:px-8">
         {/* Left: Logo + Nav */}
-        <div className="flex items-center gap-8">
-          <Logo />
+        <div className="flex min-w-0 items-center gap-3 sm:gap-8">
+          <Logo size="sm" className="shrink-0 sm:text-2xl" />
           {isAuthenticated && (
             <nav className="hidden items-center gap-6 md:flex">
               {navItems.map((item) => (
@@ -102,15 +102,15 @@ export function Navbar() {
         </div>
 
         {/* Right: Search + User */}
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
           {isAuthenticated && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <NotificationBell />
               <div className="relative">
                 {isSearchOpen ? (
                   <form
                     onSubmit={handleSearch}
-                    className="flex items-center gap-2 rounded bg-netflix-black/80 border border-gray-500 px-3 py-1.5"
+                    className="flex items-center gap-2 rounded border border-gray-500 bg-netflix-black/80 px-2.5 py-1.5 sm:px-3"
                   >
                     <LuSearch size={16} className="text-gray-400" />
                     <input
@@ -119,7 +119,7 @@ export function Navbar() {
                       placeholder={t('search.placeholder')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-48 bg-transparent text-sm text-white placeholder-gray-400 outline-none"
+                      className="w-28 min-w-0 bg-transparent text-sm text-white placeholder-gray-400 outline-none sm:w-48"
                     />
                     <button
                       type="button"
@@ -132,10 +132,10 @@ export function Navbar() {
                 ) : (
                   <button
                     onClick={toggleSearch}
-                    className="p-2 text-gray-300 transition-colors hover:text-white"
+                    className="p-1.5 text-gray-300 transition-colors hover:text-white sm:p-2"
                     aria-label="Search"
                   >
-                    <LuSearch size={20} />
+                    <LuSearch className="h-4 w-4 sm:h-5 sm:w-5" />
                   </button>
                 )}
               </div>
@@ -146,16 +146,16 @@ export function Navbar() {
             <div ref={userMenuRef} className="relative">
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="flex items-center gap-2 text-sm font-medium text-white hover:opacity-80"
+                className="flex items-center gap-1.5 text-sm font-medium text-white hover:opacity-80 sm:gap-2"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded bg-netflix-red text-sm font-bold">
+                <div className="flex h-7 w-7 items-center justify-center rounded bg-netflix-red text-xs font-bold sm:h-8 sm:w-8 sm:text-sm">
                   {user.display_name?.[0]?.toUpperCase() ||
                     user.username?.[0]?.toUpperCase() ||
                     'U'}
                 </div>
                 <LuChevronDown
                   size={12}
-                  className={`transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}
+                  className={`hidden transition-transform sm:block ${isUserMenuOpen ? 'rotate-180' : ''}`}
                 />
               </button>
 

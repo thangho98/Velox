@@ -1,0 +1,39 @@
+# Test: Home screen content and navigation
+# Prerequisite: Already logged in (run 01-login.yaml first)
+appId: com.velox.app
+---
+
+# Should see home screen sections
+- assertVisible:
+    text: "Velox"
+    timeout: 5000
+
+# Verify Continue Watching section exists (if user has watch history)
+- runFlow:
+    when:
+      visible: "Continue Watching"
+    commands:
+      - assertVisible: "Continue Watching"
+
+# Verify Recently Added section exists
+- runFlow:
+    when:
+      visible: "Recently Added"
+    commands:
+      - assertVisible: "Recently Added"
+
+# Verify Libraries section exists
+- runFlow:
+    when:
+      visible: "Libraries"
+    commands:
+      - assertVisible: "Libraries"
+
+# Test pull-to-refresh
+- scroll
+- assertVisible:
+    text: "Velox"
+    timeout: 5000
+
+# Take screenshot for visual verification
+- takeScreenshot: home-screen

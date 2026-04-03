@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -175,6 +176,29 @@ func TestUserDataRepo_ListContinueWatchingIncludesSeriesContext(t *testing.T) {
 	}
 	if got := items[1].SeriesID; got != 0 {
 		t.Fatalf("movie item series_id = %d, want 0", got)
+	}
+}
+
+func TestUserDataRepo_GetProgressReturnsErrNotFoundWhenMissing(t *testing.T) {
+	db := setupUserDataTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	repo := NewUserDataRepo(db)
+
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO media (id, media_type, title) VALUES (174, 'episode', 'Missing Progress Episode');
+	`)
+	if err != nil {
+		t.Fatalf("failed to seed media: %v", err)
+	}
+
+	progress, err := repo.GetProgress(ctx, 1, 174)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetProgress() error = %v, want ErrNotFound", err)
+	}
+	if progress != nil {
+		t.Fatalf("GetProgress() progress = %#v, want nil", progress)
 	}
 }
 

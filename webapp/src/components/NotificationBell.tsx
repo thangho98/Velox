@@ -87,12 +87,12 @@ export function NotificationBell() {
       <button
         ref={buttonRef}
         onClick={() => setOpen(!open)}
-        className="relative p-2 text-gray-300 transition-colors hover:text-white"
+        className="relative p-1.5 text-gray-300 transition-colors hover:text-white sm:p-2"
         aria-label="Notifications"
       >
-        <LuBell size={20} />
+        <LuBell className="h-4 w-4 sm:h-5 sm:w-5" />
         {unreadCount > 0 ? (
-          <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-netflix-red text-xs font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-netflix-red px-1 text-[10px] font-bold text-white sm:h-5 sm:min-w-5 sm:text-xs">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         ) : !connected ? (

@@ -1,0 +1,35 @@
+{
+  "name": "@velox/shared",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    "./types": "./types/index.ts",
+    "./types/*": "./types/*.ts",
+    "./api": "./api/index.ts",
+    "./api/*": "./api/*.ts",
+    "./hooks": "./hooks/index.ts",
+    "./hooks/*": "./hooks/*.ts",
+    "./hooks/media": "./hooks/media/index.ts",
+    "./hooks/settings": "./hooks/settings/index.ts",
+    "./stores": "./stores/index.ts",
+    "./stores/*": "./stores/*.ts",
+    "./lib": "./lib/index.ts",
+    "./lib/*": "./lib/*.ts",
+    "./platform": "./platform.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0 || ^19.0.0",
+    "typescript": "^5.0.0"
+  }
+}

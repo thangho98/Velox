@@ -68,9 +68,9 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
   ]
 
   return (
-    <div className="group flex items-center gap-4 rounded-lg bg-netflix-dark/80 p-4 backdrop-blur-sm transition-colors hover:bg-netflix-gray">
+    <div className="group flex items-start gap-3 rounded-lg bg-netflix-dark/80 p-3 backdrop-blur-sm transition-colors hover:bg-netflix-gray sm:items-center sm:gap-4 sm:p-4">
       {/* Thumbnail */}
-      <div className="relative flex h-20 w-32 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-netflix-black">
+      <div className="relative flex h-16 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-netflix-black sm:h-20 sm:w-32">
         {episode.still_path ? (
           <img
             src={tmdbImage(episode.still_path, 'w300')!}
@@ -93,11 +93,13 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
       </div>
 
       {/* Info */}
-      <div className="flex-1">
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-bold text-gray-500">{episode.episode_number}</span>
-          <h3 className="font-semibold text-white">{episode.title}</h3>
-          {progress?.completed && <LuCheck size={16} className="text-green-500" />}
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <span className="flex-shrink-0 text-base font-bold text-gray-500 sm:text-lg">
+            {episode.episode_number}
+          </span>
+          <h3 className="truncate font-semibold text-white">{episode.title}</h3>
+          {progress?.completed && <LuCheck size={16} className="flex-shrink-0 text-green-500" />}
         </div>
         {episode.overview && (
           <p className="mt-1 line-clamp-2 text-sm text-gray-400">{episode.overview}</p>
@@ -121,10 +123,17 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-shrink-0 items-center gap-1 self-center sm:gap-2">
         <Link
           to={`/watch/${episode.media_id}`}
-          className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white opacity-0 transition-all group-hover:opacity-100 hover:bg-netflix-red"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-netflix-red sm:hidden"
+          aria-label={hasProgress ? t('actions.resume') : t('actions.play')}
+        >
+          <LuPlay size={16} />
+        </Link>
+        <Link
+          to={`/watch/${episode.media_id}`}
+          className="hidden items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white opacity-0 transition-all hover:bg-netflix-red group-hover:opacity-100 sm:flex"
         >
           <LuPlay size={16} />
           {hasProgress ? t('actions.resume') : t('actions.play')}

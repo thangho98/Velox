@@ -1,10 +1,67 @@
 // Barrel re-export for backward compatibility
-export * from './media/useLibrary'
-export * from './media/useMediaQuery'
-export * from './media/useProgress'
-export * from './media/useContinueWatching'
-export * from './media/useSeries'
-export * from './media/usePlayback'
-export * from './media/useSubtitleOps'
-export * from './media/useMetadataOps'
-export * from './media/useGenres'
+export {
+  // Media query
+  mediaKeys,
+  useMediaList,
+  useMedia,
+  useMediaWithFiles,
+  // Series
+  seriesKeys,
+  useSeriesList,
+  useSeriesDetail,
+  useSeriesSearch,
+  useSeasons,
+  useEpisodes,
+  useEpisode,
+  // Playback
+  streamingKeys,
+  useStreamUrls,
+  useSubtitles,
+  useAudioTracks,
+  usePlaybackInfo,
+  useStreamUrl,
+  // Progress
+  userDataKeys,
+  useProgress,
+  useUpdateProgress,
+  useFavorites,
+  useToggleFavorite,
+  useRecentlyWatched,
+  // Continue watching
+  continueWatchingKeys,
+  nextUpKeys,
+  useContinueWatching,
+  useNextUp,
+  useDismissProgress,
+  // Subtitle ops
+  subtitleSearchKeys,
+  useSubtitleSearch,
+  useDownloadSubtitle,
+  useTranslateSubtitle,
+  // Metadata ops
+  useRefreshMetadata,
+  useEditMediaMetadata,
+  useEditSeriesMetadata,
+  useUploadMediaImage,
+  useUploadSeriesImage,
+  useUnlockMetadata,
+  useEditEpisodeMetadata,
+  // Genres
+  useAllGenres,
+  useMediaGenres,
+  useMediaCredits,
+  useSeriesGenres,
+  useSeriesCredits,
+  searchKeys,
+  useSearch,
+  useGenres,
+  browseKeys,
+  useFolderBrowse,
+  // Library
+  useFsBrowse,
+  libraryKeys,
+  useLibraries,
+  useCreateLibrary,
+  useDeleteLibrary,
+  useScanLibrary,
+} from '@velox/shared/hooks/media'

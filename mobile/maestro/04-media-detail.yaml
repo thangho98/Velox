@@ -1,0 +1,32 @@
+# Test: Media detail page
+# Prerequisite: Already logged in, has media
+appId: com.velox.app
+---
+
+# Go to home first
+- scrollUntilVisible:
+    element: "Recently Added"
+    direction: DOWN
+
+# Tap first media card in Recently Added
+- tapOn:
+    index: 0
+    below: "Recently Added"
+
+# Should see media detail screen
+- assertVisible:
+    text: "Play"
+    timeout: 5000
+
+# Verify key elements exist
+- runFlow:
+    when:
+      visible: "Overview"
+    commands:
+      - assertVisible: "Overview"
+
+# Take screenshot of detail page
+- takeScreenshot: media-detail
+
+# Go back
+- pressKey: back

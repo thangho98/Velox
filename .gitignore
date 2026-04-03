@@ -47,3 +47,9 @@ backend/.gocache/
 note.md
 
 .playwright-mcp/
+
+# === Mobile (Expo) ===
+mobile/android/
+mobile/ios/
+mobile/.expo/
+mobile/dist/

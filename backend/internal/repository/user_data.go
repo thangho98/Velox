@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/thawng/velox/internal/model"
@@ -37,6 +38,9 @@ func (r *UserDataRepo) GetProgress(ctx context.Context, userID, mediaID int64) (
 		userID, mediaID).
 		Scan(&d.UserID, &d.MediaID, &d.Position, &completed, &isFavorite, &rating, &d.PlayCount, &lastPlayedAt, &d.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	d.Completed = completed == 1

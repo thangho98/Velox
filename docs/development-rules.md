@@ -247,6 +247,169 @@ Reusable logic lives in `src/lib/`:
 
 ---
 
+## Mobile Rules (React Native / Expo)
+
+### Architecture
+
+```
+mobile/
+  App.tsx                  # Root: QueryClient, Platform init, AuthGate, Navigation
+  index.js                 # Entry: registerRootComponent
+  src/
+    screens/               # Full-screen pages (like webapp/pages/)
+    components/            # Reusable UI components
+    stores/                # Zustand stores (platform wrappers around shared)
+    platform/              # PlatformAdapter implementation (mobile-adapter.ts)
+
+packages/shared/           # Cross-platform shared code (@velox/shared)
+  types/                   # Shared TypeScript types
+  api/                     # API client (fetch + auth refresh)
+  hooks/                   # React Query hooks
+  stores/                  # Store factories (createAuthStore, createPlayerStore)
+  lib/                     # Utilities (mediaImage, languages, etc.)
+  platform.ts              # PlatformAdapter interface
+```
+
+### Layer Responsibilities
+
+| Layer | Location | Responsibility |
+|-------|----------|----------------|
+| **Screen** | `src/screens/` | Layout, navigation, compose components + shared hooks |
+| **Component** | `src/components/` | Reusable UI, receives data via props |
+| **Store** | `src/stores/` | Platform-specific Zustand wrappers (SecureStore adapter) |
+| **Shared Hook** | `@velox/shared/hooks` | React Query hooks (data fetching, mutations) |
+| **Shared Store** | `@velox/shared/stores` | Store factories (platform-agnostic) |
+| **Platform Adapter** | `src/platform/` | Device-specific: storage, server URL, API base |
+
+### Naming Conventions
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Screen | `[Feature]Screen.tsx` | `HomeScreen.tsx`, `MediaDetailScreen.tsx` |
+| Component | `PascalCase.tsx` | `MediaCard.tsx`, `SectionHeader.tsx` |
+| Store | `use[Name].ts` | `auth.ts` → exports `useAuthStore` |
+| Props | `[Component]Props` | `interface MediaCardProps { ... }` |
+
+- **Named exports** for screens and components (not default).
+- Screens use `export function HomeScreen()` pattern.
+
+### Navigation
+
+- **React Navigation** with typed `RootStackParamList`.
+- Stack Navigator as primary (Bottom Tab Navigator planned).
+- Auth gate in `App.tsx` — redirects to `LoginScreen` if not authenticated.
+- Type-safe navigation:
+  ```typescript
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>()
+  const route = useRoute<RouteProp<RootStackParamList, 'Media'>>()
+  ```
+
+### State Management
+
+| Need | Solution |
+|------|----------|
+| Server data (API) | React Query via `@velox/shared/hooks` |
+| Auth tokens | Zustand + `expo-secure-store` (encrypted) |
+| Player prefs | Zustand + `expo-secure-store` |
+| Component-local state | `useState` |
+| Complex UI state (player) | `useRef` (avoid stale closures) |
+
+- Query client: `staleTime: 5min`, `retry: 1`.
+- Never create React Query hooks in mobile — use shared hooks from `@velox/shared/hooks`.
+
+### Styling
+
+- **React Native `StyleSheet` only.** No NativeWind, no styled-components.
+- StyleSheet defined at bottom of each file.
+- Responsive sizing via `Dimensions.get('window')`.
+
+**Color Palette (Dark Netflix Theme):**
+```
+#141414  — Background (screens, header)
+#0a0a0a  — Deep background (profile, settings)
+#1f1f1f  — Card/input background
+#2a2a2a  — Tab hover, secondary surface
+#e50914  — Accent red (buttons, active states)
+#fff     — Primary text
+#888     — Secondary/muted text
+```
+
+**Spacing Scale:** 4, 8, 12, 16, 20, 24
+**Border Radius:** 8, 12, 16
+
+### Platform Adapter Pattern
+
+Mobile injects platform-specific behavior into shared code:
+```typescript
+// mobile-adapter.ts
+export const mobilePlatform: PlatformAdapter = {
+  storage: secureStorageAdapter,      // expo-secure-store
+  secureStorage: secureStorageAdapter,
+  getDeviceName: () => 'Mobile Device',
+  getApiBaseUrl: () => `${serverUrl}/api`,
+}
+
+// App.tsx — called once at startup
+initPlatform(mobilePlatform)
+```
+
+Server URL stored in SecureStore (user enters on first login).
+
+### Shared Code Usage
+
+Import from `@velox/shared` — never duplicate logic:
+```typescript
+// Types
+import type { MediaListItem, UserInfo } from '@velox/shared/types'
+
+// Hooks (React Query)
+import { useContinueWatching, useMediaList } from '@velox/shared/hooks'
+
+// Store factories
+import { createAuthStore } from '@velox/shared/stores'
+
+// Utilities
+import { mediaImage, seriesImage } from '@velox/shared/lib'
+```
+
+### Monorepo / Metro
+
+- `metro.config.js` watches parent folder for monorepo resolution.
+- Forces React, React Native, React Query, Zustand from `mobile/node_modules` (prevents duplicates).
+- Shared package uses `workspace:*` in `package.json`.
+
+### Error Handling
+
+- `Alert.alert()` for user-facing errors (login failures, network errors).
+- `try/catch` in async operations inside `useEffect`.
+- Refs for timeouts: `useRef<ReturnType<typeof setTimeout> | null>(null)`.
+
+### Anti-Patterns (Mobile-Specific)
+
+| Don't | Do |
+|-------|-----|
+| Create React Query hooks in mobile | Use `@velox/shared/hooks` |
+| `localStorage` or `AsyncStorage` for tokens | `expo-secure-store` (encrypted) |
+| Inline `style={{ }}` for static styles | `StyleSheet.create()` |
+| Default exports for screens/components | Named exports |
+| NativeWind / styled-components | Plain StyleSheet |
+| Hardcode API base URL | Use `PlatformAdapter.getApiBaseUrl()` |
+| `console.log` in production | Remove or use `__DEV__` guard |
+| Manual `useMemo`/`useCallback` | React Compiler handles it (same as web) |
+
+### Build & Run
+```sh
+cd mobile
+npx expo prebuild              # Generate native dirs (android/, ios/)
+npx expo run:android           # Build + run on Android (needs JDK 17 + NDK)
+npx expo run:ios               # Build + run on iOS (needs Xcode)
+npx expo start --dev-client    # Start dev server (after prebuild)
+```
+
+**Requirements:** JDK 17, Android SDK + NDK 27, Xcode (for iOS).
+
+---
+
 ## Git & CI
 
 ### Commit Convention

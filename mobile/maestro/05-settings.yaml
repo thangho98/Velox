@@ -1,0 +1,29 @@
+# Test: Settings screen
+# Prerequisite: Already logged in
+appId: com.velox.app
+---
+
+# Navigate to Settings (tap settings icon in header)
+- tapOn:
+    id: ".*settings.*"
+
+# Should see settings screen
+- assertVisible:
+    text: "Settings"
+    timeout: 5000
+
+# Verify settings sections
+- assertVisible: "Playback"
+- assertVisible: "Account"
+
+# Verify logout button exists
+- scrollUntilVisible:
+    element: "Logout"
+    direction: DOWN
+- assertVisible: "Logout"
+
+# Take screenshot
+- takeScreenshot: settings
+
+# Go back
+- pressKey: back

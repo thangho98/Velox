@@ -1,47 +1,44 @@
 
 # HANDOVER DOCUMENT
 
-**Date:** 2026-03-30
+**Date:** 2026-04-01
 
-## Current State: Pretranscode scheduler fix + Playback UI improvements
+## Current State: Plan S designed (18 phases), subtitle bug fixed
 
 ### Done this session:
 
-#### Pretranscode Scheduler (major fix):
-1. **Auto-enqueue on startup** — scheduler now auto-enqueues audio-remux + video pretranscode jobs when container starts (previously required manual Start from UI)
-2. **Dedicated background DB** — pretranscode scheduler uses separate `sql.DB` handle (`bgDB`) to avoid goroutine starvation from HTTP handler status polling on shared `MaxOpenConns(1)` connection
-3. **GetStatusWith()** — status queries route through main DB (not bgDB), preventing status polling from starving the scheduler goroutine
-4. **EnqueueJob UPSERT** — changed from `INSERT OR IGNORE` to `ON CONFLICT DO UPDATE SET status='queued' WHERE status IN ('cancelled','failed')`. Root cause: CancelAll set jobs to "cancelled", then restart re-enqueue silently ignored them → queue always empty
-5. **TryActiveCount()** — non-blocking `TryLock` version of `ActiveCount()` to avoid mutex deadlock between transcoder and pretranscode scheduler
-6. **nice -n 19** — all pretranscode FFmpeg processes run at lowest CPU priority via `niceFFmpeg()` helper. NAS stays responsive.
-7. **Yield to realtime** — scheduler checks `TryActiveCount() > 0` and sleeps 5s, only blocks new job pickup (doesn't kill running FFmpeg)
+#### Plan S — Expo Mobile App (detailed design, 3 review rounds):
+1. **Broke down Plan S** from 9 vague phases → 18 detailed phases in `plans/plan-s-expo-mobile-app/` folder
+2. **Review round 1** (7 findings) — fixed: dev build vs Expo Go, API contracts (max_height not max_width, position not position_seconds), SecureStore for tokens, cleartext LAN, image URL helper, admin-only endpoints, unified search
+3. **Review round 2** (5 findings) — fixed: test criteria MMKV→SecureStore, auth guard hydration gate (hasHydrated), resume source of truth (playbackInfo.position only), missing deps in phase-09, PiP concrete implementation
+4. **Review round 3** (3 findings) — fixed: startsPictureInPictureAutomatically prop, stream URL response shape (api_key not token), app.json in Files to Modify
 
-#### Playback UI:
-1. **Progress bar buffer fix** — buffer indicator was floating in the middle of the bar during server-side seeking. Fixed: buffer bar always starts from 0%, width = `bufferedRange.end / duration`
+#### Bug Fix — Duplicate subtitle rendering (commit 50bff8f):
+- **Problem:** Primary subtitle rendered twice — once by native `<track>` (browser) + once by DualSubtitleOverlay (custom JS)
+- **Root cause:** `textTracks[i].mode = 'showing'` in WatchPage.tsx line 857 caused browser to render subtitle natively alongside custom overlay
+- **Fix:** Changed `'showing'` → `'hidden'` — cues still available for iOS native fullscreen fallback, but browser doesn't render visually
+- **File:** `webapp/src/pages/WatchPage.tsx` line 857
 
-#### FullTranscode seeking fix (from previous context):
-- Restricted HLS session reload to `TranscodeAudio` only
-- FullTranscode seeks clamped to `hlsSeekableEndRef.current` instead of triggering new transcode (avoids VAAPI slot timeout)
+### Commits:
+- `50bff8f` — Fix(playback): prevent double subtitle rendering on WatchPage
 
-### Files changed:
-- `backend/internal/database/database.go` — `_busy_timeout=5000` added to SQLite DSN
-- `backend/internal/database/migrate/028_audio_pretranscode.go` — audio-remux profile migration
-- `backend/internal/database/migrate/registry.go` — register migration 028
-- `backend/cmd/server/main.go` — separate bgDB for pretranscode, pretranscodeStatusRepo on main DB
-- `backend/internal/service/pretranscode.go` — auto-enqueue, pickAudioRemuxJob, EnqueueAudioRemux, processJob audio-remux/universal-transcode, niceFFmpeg, TryActiveCount interface, GetStatusWith
-- `backend/internal/handler/pretranscode.go` — statusRepo param, GetStatus uses GetStatusWith with main DB repos
-- `backend/internal/handler/stream.go` — start offset / seeking support
-- `backend/internal/handler/stream_test.go` — start offset tests
-- `backend/internal/repository/pretranscode.go` — EnqueueJob UPSERT, PickNextJob excludes copy, PickNextJobForProfile, QueueStats excludes copy, GetAudioRemuxProfile, ListNonAACMediaFiles
-- `backend/internal/transcoder/transcoder.go` — TryActiveCount() with TryLock, startOffset support
-- `backend/internal/transcoder/transcoder_test.go` — offset tests
-- `backend/internal/playback/engine.go` — HLS seeking startOffset
-- `backend/internal/playback/profile.go` — profile changes
-- `backend/internal/service/stream.go` — startOffset forwarding
-- `backend/internal/service/library.go` — pretranscode integration
-- `webapp/src/pages/WatchPage.tsx` — buffer bar fix, FullTranscode seek clamping, UI improvements (seek 5s, bigger buttons, iOS fullscreen)
-- `webapp/src/components/DualSubtitleOverlay.tsx` — subtitle changes
-- `Dockerfile` — pretranscode dir support
+### Plan S Architecture Summary:
+```
+Phase 01-06: Monorepo Setup — pnpm workspaces + @velox/shared package
+  - Extract: types (633 LOC), API client (222 LOC), store factories, hooks (1,608 LOC), libs
+  - PlatformAdapter interface: storage/secureStorage/getDeviceName/getApiBaseUrl
+  - Key decisions: SecureStore for tokens, MMKV for prefs, factory pattern for stores
+
+Phase 07-08: Webapp Migration — re-export from shared + regression test
+
+Phase 09-18: Expo Mobile App
+  - Dev build (CNG, not Expo Go) — react-native-mmkv needs native code
+  - expo-build-properties plugin for usesCleartextTraffic (LAN HTTP)
+  - Auth: SecureStore + hydration gate (hasHydrated) to prevent flash-to-login
+  - Player: ExoPlayer Direct Play, playbackInfo.position as resume truth
+  - Subtitles: selected_subtitle_id in PlaybackInfoRequest
+  - PiP: expo-video allowsPictureInPicture + startsPictureInPictureAutomatically
+```
 
 ### NAS Docker Compose (canonical config):
 Located at `/volume5/docker/velox/docker-compose.yml`:
@@ -87,23 +84,18 @@ ssh thawnghoNas "cd /volume5/docker/velox && /usr/local/bin/docker compose up -d
 ```
 ⚠️ NEVER use `docker restart` — it does NOT load new images!
 
-### Pretranscode status:
-- Audio-remux: 67 non-AAC files auto-enqueued (priority 100, runs first)
-- Video pretranscode: 656 jobs auto-enqueued when enabled
-- VAAPI h264_vaapi encode working (group_add 937 required)
-- nice -n 19 keeps NAS responsive during encoding
-- Scheduler yields to realtime transcode when users watching
-
 ### Pending:
-1. Plan M: Search, Filter & Folder Browser
+1. Plan M: Search, Filter & Folder Browser (designed, not coded)
 2. Plan N: i18n remaining pages
-3. Frontend "Network error" UX — retry button when transcode slots busy
-4. VAAPI sometimes fails on certain files → auto-fallback to libx264 (working, but slower)
+3. Plan S: Expo Mobile App (18 phases designed, ready to build)
+4. WatchPage.tsx still 1836 lines / 598KB chunk (monitoring item)
 
 ### Important notes for next session:
 - NAS deploy via `docker compose up -d --force-recreate` (NOT docker restart)
 - SSH alias: `thawnghoNas` (user: thawngminh, key: id_ed25519)
 - Docker path on NAS: `/usr/local/bin/docker`
-- group_add 937 is critical for VAAPI — without it, HW encode fails silently and falls back to software
+- group_add 937 is critical for VAAPI — without it, HW encode fails silently
 - Pretranscode uses dedicated bgDB to avoid SQLite connection starvation
-- Admin playback setting is "direct_play" — forces direct play with audio transcode fallback
+- Admin password: admin123 (not admin)
+- All barrel re-exports maintain backward compatibility — no import migration needed
+- Subtitle bug fix: track.mode 'hidden' not 'showing' (commit 50bff8f)

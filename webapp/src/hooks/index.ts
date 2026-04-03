@@ -1,47 +1,15 @@
-// TanStack Query Hooks - Auth
-export {
-  useMe,
-  useLogin,
-  useLogout,
-  useRefreshToken,
-  useChangePassword,
-  useSessions,
-  useRevokeSession,
-  useSetupStatus,
-  useSetup,
-  useProfile,
-  useUpdateProfile,
-  usePreferences,
-  useUpdatePreferences,
-  authKeys,
-  profileKeys,
-} from './stores/useAuth'
+// Re-export all shared hooks for backward compatibility
+// Media & Library hooks
+export * from './stores/useMedia'
 
-// TanStack Query Hooks - Media & Libraries
-export {
-  useLibraries,
-  useCreateLibrary,
-  useDeleteLibrary,
-  useScanLibrary,
-  useMediaList,
-  useMedia,
-  useMediaWithFiles,
-  useProgress,
-  useUpdateProgress,
-  useFavorites,
-  useToggleFavorite,
-  useRecentlyWatched,
-  libraryKeys,
-  mediaKeys,
-  userDataKeys,
-} from './stores/useMedia'
+// Settings hooks
+export * from './stores/useSettings'
 
-// TanStack Query Hooks - User Management (Admin)
-export {
-  useUsers,
-  useCreateUser,
-  useUpdateUser,
-  useDeleteUser,
-  useSetLibraryAccess,
-  userKeys,
-} from './stores/useUsers'
+// Auth hooks (includes web-specific useTokenRefresh, useRequireAuth)
+export * from './stores/useAuth'
+
+// Admin hooks
+export * from './stores/useAdmin'
+
+// User hooks
+export * from './stores/useUsers'
