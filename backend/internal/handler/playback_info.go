@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -122,7 +123,16 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	}
 
 	hasSubtitles := subtitleErr == nil && len(subtitles) > 0
-	effectiveAudioTrackID := resolveSelectedAudioTrackID(prefs.SelectedAudioTrack, audioTracks)
+	selectedAudioTrack, effectiveAudioTrackID, autoSelectedCompatibleAudio := resolvePlaybackAudioTrack(
+		prefs.SelectedAudioTrack,
+		defaultAudioLanguage,
+		audioTracks,
+		profile,
+	)
+	selectedAudioCodec := primaryFile.AudioCodec
+	if selectedAudioTrack != nil && selectedAudioTrack.Codec != "" {
+		selectedAudioCodec = selectedAudioTrack.Codec
+	}
 	selectedSubtitle := findSubtitleByID(subtitles, clientCaps.SelectedSubtitleID)
 	if selectedSubtitle == nil {
 		selectedSubtitle = findSubtitleByLanguage(subtitles, prefs.SelectedSubtitle)
@@ -154,7 +164,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		ID:           int(primaryFile.ID),
 		Path:         primaryFile.FilePath,
 		VideoCodec:   primaryFile.VideoCodec,
-		AudioCodec:   primaryFile.AudioCodec,
+		AudioCodec:   selectedAudioCodec,
 		Container:    primaryFile.Container,
 		Width:        primaryFile.Width,
 		Height:       primaryFile.Height,
@@ -166,13 +176,21 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 
 	// Make playback decision
 	decision := playback.Decide(mediaInfo, profile, prefs)
+	decision = adjustPlaybackDecisionForSelectedAudioTrack(
+		decision,
+		selectedAudioTrack,
+		effectiveAudioTrackID,
+		autoSelectedCompatibleAudio,
+	)
 
 	playbackMode, _ := h.configSvc.GetPlaybackMode(ctx)
 	decision = applyAdminPlaybackPolicy(playbackMode, decision, profile, mediaInfo)
 
 	// Check for pre-transcoded file (Plan P: instant playback)
-	// Use pretranscode when: (a) normal decision requires transcoding, OR
-	// (b) user explicitly selected a lower resolution via max_height
+	// Only use pretranscode when height EXACTLY matches what user requested,
+	// or when user didn't request a specific height (auto mode).
+	// This ensures selecting "1440p" gives real 1440p transcode, not 1080p pretranscode.
+	var selectedPtProfile *model.PretranscodeProfile
 	userRequestedLower := clientCaps.MaxHeight > 0 && clientCaps.MaxHeight < primaryFile.Height
 	if decision.Method != playback.MethodDirectPlay || userRequestedLower {
 		maxHeight := clientCaps.MaxHeight
@@ -181,22 +199,50 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		}
 		if ptFile, err := h.streamSvc.FindPretranscode(ctx, primaryFile.ID, maxHeight); err == nil && ptFile != nil {
 			ptProfile, _ := h.streamSvc.FindPretranscodeProfile(ctx, ptFile.ProfileID)
-			// Validate: file must exist on disk and its video codec must be browser-compatible.
-			// Audio-remux pretranscodes (video_codec='copy') preserve the original video codec,
-			// so HEVC sources stay HEVC — unusable by browsers that don't support it.
+
+			// Pretranscode is usable when:
+			// - Auto mode: user didn't request a specific height, so any quality is acceptable
+			// - Explicit height: pretranscode matches the requested height exactly
+			autoMode := clientCaps.MaxHeight <= 0
+			heightMatches := autoMode || (ptProfile != nil && ptProfile.Height == clientCaps.MaxHeight)
+
 			ptVideoCodec := primaryFile.VideoCodec
 			if ptProfile != nil && ptProfile.VideoCodec != "copy" {
 				ptVideoCodec = ptProfile.VideoCodec
 			}
-			ptUsable := fileExists(ptFile.FilePath) && profile.SupportsVideoCodec(playback.NormalizeCodec(ptVideoCodec))
+			ptUsable := heightMatches && fileExists(ptFile.FilePath) && profile.SupportsVideoCodec(playback.NormalizeCodec(ptVideoCodec))
+
+			// Pre-transcodes always carry the file's default audio track (0:a:0).
+			// Skip them when a compatible non-default track was selected for playback.
+			if effectiveAudioTrackID > 0 {
+				ptUsable = false
+				decision.Reason += " (pretranscode skipped: selected audio track is non-default)"
+			}
+
+			// Don't downgrade video quality for audio-only issues.
+			// If the original decision only needs audio transcode (video is compatible),
+			// only use pretranscode when it doesn't reduce resolution (e.g. 4K → 1080p).
+			audioOnlyIssue := decision.Method == playback.MethodTranscodeAudio
+			if audioOnlyIssue && ptProfile != nil && ptProfile.Height < primaryFile.Height {
+				ptUsable = false
+				decision.Reason += fmt.Sprintf(" (pretranscode %dp skipped: video compatible at %dp, only audio needs transcode)",
+					ptProfile.Height, primaryFile.Height)
+			}
+
+			if !ptUsable && !heightMatches && ptProfile != nil {
+				decision.Reason += fmt.Sprintf(" (pretranscode %dp skipped: requested %dp)",
+					ptProfile.Height, clientCaps.MaxHeight)
+			}
+
 			if ptUsable {
+				selectedPtProfile = ptProfile
 				decision = playback.PlaybackDecision{
 					Method:           playback.MethodPreTranscode,
 					VideoAction:      playback.VideoCopy,
 					AudioAction:      playback.AudioCopy,
 					SubtitleAction:   playback.SubtitleNone,
 					Container:        "mp4",
-					Reason:           "Pre-transcoded file available",
+					Reason:           fmt.Sprintf("Pre-transcoded file available (%dp)", ptProfile.Height),
 					PreTranscodePath: ptFile.FilePath,
 				}
 				if ptProfile != nil {
@@ -240,7 +286,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		VideoProfile:       primaryFile.VideoProfile,
 		VideoLevel:         primaryFile.VideoLevel,
 		VideoFPS:           primaryFile.VideoFPS,
-		AudioCodec:         primaryFile.AudioCodec,
+		AudioCodec:         selectedAudioCodec,
 		Container:          primaryFile.Container,
 		FileSize:           primaryFile.FileSize,
 		Bitrate:            primaryFile.Bitrate / 1000,
@@ -253,7 +299,16 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		AvailableQualities: availableQualities,
 	}
 
-	// Determine stream URL based on decision.
+	// Populate pretranscode details so the stats overlay shows actual playback info
+	if selectedPtProfile != nil {
+		resp.PtVideoCodec = selectedPtProfile.VideoCodec
+		resp.PtAudioCodec = selectedPtProfile.AudioCodec
+		resp.PtHeight = selectedPtProfile.Height
+		resp.PtVideoBitrate = selectedPtProfile.VideoBitrate
+		resp.PtAudioBitrate = selectedPtProfile.AudioBitrate
+	}
+
+	// Determine stream URLs based on decision.
 	// ?fid= is always included so stream handlers serve the exact file used for this decision.
 	// Other user selections (audio track, subtitle) are forwarded as query params.
 	baseURL := "/api/stream/" + strconv.FormatInt(mediaID, 10)
@@ -266,10 +321,38 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	if apiKey != "" {
 		baseQuery.Set("api_key", apiKey)
 	}
+
+	// direct_url: always points to original file (pm=direct) — client tries this first
+	directQuery := cloneValues(baseQuery)
+	directQuery.Set("pm", "direct")
+	resp.DirectURL = buildURLWithQuery(baseURL, directQuery)
+
+	// Build HLS query with all necessary params
+	hlsQuery := cloneValues(baseQuery)
+	if decision.VideoAction == playback.VideoCopy {
+		hlsQuery.Set("vcopy", "1")
+	}
+	if clientCaps.MaxHeight > 0 {
+		hlsQuery.Set("mh", strconv.Itoa(clientCaps.MaxHeight))
+	}
+	if subtitleStreamIndex >= 0 {
+		hlsQuery.Set("si", strconv.Itoa(subtitleStreamIndex))
+	}
+	if effectiveAudioTrackID > 0 {
+		hlsQuery.Set("at", strconv.Itoa(effectiveAudioTrackID))
+	}
+
 	switch decision.Method {
 	case playback.MethodPreTranscode:
-		// Pre-transcoded MP4 — serve via same direct play endpoint (pre-transcode check runs first)
-		resp.StreamURL = buildURLWithQuery(baseURL, cloneValues(baseQuery))
+		// Pre-transcoded file — serve via direct endpoint for browsers,
+		// or HLS for clients that don't support direct MP4 (e.g. mobile)
+		if !slices.Contains(clientCaps.Containers, "mp4") && slices.Contains(clientCaps.Containers, "hls") {
+			query := cloneValues(baseQuery)
+			query.Set("vcopy", "1")
+			resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", query)
+		} else {
+			resp.StreamURL = buildURLWithQuery(baseURL, cloneValues(baseQuery))
+		}
 	case playback.MethodDirectPlay, playback.MethodDirectStream:
 		query := cloneValues(baseQuery)
 		query.Set("pm", playbackModeQuery(decision.Method))
@@ -280,12 +363,11 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 			query.Set("sub", prefs.SelectedSubtitle)
 		}
 		resp.StreamURL = buildURLWithQuery(baseURL, query)
-	case playback.MethodTranscodeAudio, playback.MethodFullTranscode:
-		query := cloneValues(baseQuery)
-		if decision.VideoAction == playback.VideoCopy {
-			query.Set("vcopy", "1")
+		if effectiveAudioTrackID > 0 {
+			resp.DirectURL = resp.StreamURL
 		}
-		resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", query)
+	case playback.MethodTranscodeAudio, playback.MethodFullTranscode:
+		resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", hlsQuery)
 		// ABR pipeline encodes audio once (default track only) and has no subtitle filter.
 		// Only offer ABR when neither subtitle burn-in nor a non-default audio track is needed.
 		// Only serve ABR if already cached — don't start background generation here
@@ -296,19 +378,12 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 				resp.AbrURL = buildURLWithQuery(baseURL+"/hls/abr.m3u8", cloneValues(baseQuery))
 			}
 		}
-		if subtitleStreamIndex >= 0 {
-			query.Set("si", strconv.Itoa(subtitleStreamIndex))
-		}
-		if effectiveAudioTrackID > 0 {
-			query.Set("at", strconv.Itoa(effectiveAudioTrackID))
-		}
-		resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", query)
 		// On-demand pretranscode: remux HLS → MP4 for next time ⚡
 		if clientCaps.MaxHeight > 0 {
 			go h.streamSvc.RemuxToPretranscode(context.Background(), primaryFile.ID, mediaID, clientCaps.MaxHeight)
 		}
 	default:
-		resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", cloneValues(baseQuery))
+		resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", hlsQuery)
 	}
 
 	// Populate audio tracks
@@ -377,25 +452,16 @@ func applyAdminPlaybackPolicy(
 
 	// Force direct play: never transcode video, but allow audio transcode
 	// when the browser can't decode the audio codec (DTS, TrueHD, etc.).
-	// Browser HLS audio-only transcode uses video copy segments that seek
-	// unreliably on some sources, so HLS clients must fully transcode instead.
+	// Video copy + audio transcode: video stream passed through unchanged,
+	// only audio re-encoded. Fast and avoids full transcode CPU overhead.
+	// Matches Jellyfin/Emby behavior: audio mismatch never triggers video transcode.
 	decision.VideoAction = playback.VideoCopy
 	decision.SubtitleAction = playback.SubtitleCopy
 
 	if profile != nil && !profile.SupportsAudioCodec(mediaInfo.AudioCodec) {
-		if playback.RequiresFullTranscodeForAudioMismatch(profile) {
-			decision.Method = playback.MethodFullTranscode
-			decision.VideoAction = playback.VideoTranscode
-			decision.VideoCodec = playback.CodecH264
-			decision.Reason = "forced direct play + audio mismatch uses full transcode for reliable HLS seeking (admin policy)"
-		} else {
-			// Video copy + audio transcode: video stream passed through unchanged,
-			// only audio re-encoded. Fast and avoids full transcode CPU overhead.
-			decision.Method = playback.MethodTranscodeAudio
-			decision.VideoAction = playback.VideoCopy
-			decision.Reason = "forced direct play + audio transcode with video copy (admin policy)"
-		}
+		decision.Method = playback.MethodTranscodeAudio
 		decision.AudioAction = playback.AudioTranscode
+		decision.Reason = "forced direct play + audio transcode with video copy (admin policy)"
 	} else {
 		decision.Method = playback.MethodDirectPlay
 		decision.AudioAction = playback.AudioCopy

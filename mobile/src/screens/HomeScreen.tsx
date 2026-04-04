@@ -62,24 +62,26 @@ export function HomeScreen() {
     if (item.media_type === 'movie') {
       navigation.navigate('Media', { id: item.media_id })
     } else {
-      navigation.navigate('Series', { id: item.series_id || item.media_id })
+      // Navigate directly to video player, like web
+      navigation.navigate('Episode', { id: item.media_id, seriesId: item.series_id })
     }
   }
 
   const handleNextUpPress = (item: NextUpItem) => {
-    navigation.navigate('Series', { id: item.series_id })
+    // Navigate directly to video player, like web
+    navigation.navigate('Episode', { id: item.media_id, seriesId: item.series_id })
   }
 
   const handleMediaPress = (id: number, type: string | undefined) => {
     if (type === 'movie' || type === undefined) {
       navigation.navigate('Media', { id })
     } else {
-      navigation.navigate('Series', { id })
+      navigation.navigate('SeriesDetail', { id })
     }
   }
 
   const handleSeriesPress = (id: number) => {
-    navigation.navigate('Series', { id })
+    navigation.navigate('SeriesDetail', { id })
   }
 
   const isLoading =
@@ -200,6 +202,7 @@ export function HomeScreen() {
           <HorizontalMediaRow
             items={recentMovies}
             onItemPress={(item) => handleMediaPress(item.id, item.type)}
+            showBadge
           />
         </View>
       )}
@@ -214,6 +217,7 @@ export function HomeScreen() {
           <HorizontalMediaRow
             items={recentSeries}
             onItemPress={(item) => handleSeriesPress(item.id)}
+            showBadge
           />
         </View>
       )}

@@ -91,8 +91,10 @@ export function MediaCard({
     ? `S${continueWatching.season_number}E${continueWatching.episode_number} · ${continueWatching.series_title}`
     : continueWatching?.title || item.title
 
-  // Determine badge text
-  const badgeText = item.media_type === 'episode' || item.type === 'series' ? 'Series' : 'Movie'
+  // Determine badge text and color
+  const isSeries = item.media_type === 'episode' || item.type === 'series'
+  const badgeText = isSeries ? 'Series' : 'Movie'
+  const badgeColor = isSeries ? '#7c3aed' : '#2563eb'
 
   return (
     <TouchableOpacity
@@ -117,7 +119,7 @@ export function MediaCard({
 
       {/* Badge (top-left corner) */}
       {showBadge && (
-        <View style={styles.badge}>
+        <View style={[styles.badge, { backgroundColor: badgeColor }]}>
           <Text style={[styles.badgeText, { fontSize: scaledFont(10, layout.fontScale) }]}>{badgeText}</Text>
         </View>
       )}

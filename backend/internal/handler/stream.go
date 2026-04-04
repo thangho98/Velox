@@ -64,34 +64,6 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 		Bitrate:    mf.Bitrate / 1000,
 	}
 
-	// If a non-default audio track is selected (forwarded by GetPlaybackInfo via ?at=N),
-	// HLS is required. Preserve both ?fid and ?at in the redirect so HLSMaster uses
-	// the same file and the frontend knows which audio track was selected.
-	if at := r.URL.Query().Get("at"); at != "" {
-		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
-		return
-	}
-
-	// Check for pre-transcoded file first (Plan P: instant playback)
-	if ptFile, err := h.svc.FindPretranscode(r.Context(), mf.ID, 0); err == nil && ptFile != nil {
-		f, err := os.Open(ptFile.FilePath)
-		if err == nil {
-			defer f.Close()
-			stat, err := f.Stat()
-			if err == nil {
-				w.Header().Set("Cache-Control", "no-store")
-				http.ServeContent(w, r, stat.Name(), stat.ModTime(), f)
-				return
-			}
-		}
-		// Pre-transcode file missing/corrupt — redirect to HLS transcode instead of
-		// falling through to Direct Play (which may serve an incompatible original file).
-		log.Printf("stream: pretranscode file missing for media %d (%s), falling back to HLS", id, ptFile.FilePath)
-		w.Header().Set("Cache-Control", "no-store")
-		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
-		return
-	}
-
 	decision := playback.PlaybackDecision{Method: explicitPlaybackMethod(r.URL.Query().Get("pm"))}
 	if decision.Method == "" {
 		// Fallback for callers that hit /api/stream directly without going through
@@ -102,6 +74,49 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 			PreferDirectPlay:    true,
 		}
 		decision = playback.Decide(mediaInfo, profile, prefs)
+	}
+
+	// If a non-default audio track is selected (forwarded by GetPlaybackInfo via ?at=N),
+	// keep DirectStream lightweight when possible by remuxing the requested audio
+	// track; otherwise fall back to HLS.
+	if at := r.URL.Query().Get("at"); at != "" {
+		trackID, parseErr := strconv.ParseInt(at, 10, 64)
+		if parseErr == nil && (decision.Method == playback.MethodDirectPlay || decision.Method == playback.MethodDirectStream) {
+			track, trackErr := h.svc.GetAudioTrackForMediaFile(r.Context(), mf.ID, trackID)
+			if trackErr == nil {
+				w.Header().Set("Content-Type", "video/mp4")
+				if err := h.svc.RemuxSelectedAudioToWriter(mf.FilePath, track.StreamIndex, w); err != nil {
+					log.Printf("stream: selected-audio remux failed for media %d track %d (%s): %v", id, trackID, mf.FilePath, err)
+				}
+				return
+			}
+		}
+
+		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Check for pre-transcoded file (Plan P: instant playback).
+	// Only when no explicit playback method is set — explicit direct play always serves the original.
+	if r.URL.Query().Get("pm") == "" {
+		if ptFile, err := h.svc.FindPretranscode(r.Context(), mf.ID, 0); err == nil && ptFile != nil {
+			f, err := os.Open(ptFile.FilePath)
+			if err == nil {
+				defer f.Close()
+				stat, err := f.Stat()
+				if err == nil {
+					w.Header().Set("Cache-Control", "no-store")
+					http.ServeContent(w, r, stat.Name(), stat.ModTime(), f)
+					return
+				}
+			}
+			// Pre-transcode file missing/corrupt — redirect to HLS transcode instead of
+			// falling through to Direct Play (which may serve an incompatible original file).
+			log.Printf("stream: pretranscode file missing for media %d (%s), falling back to HLS", id, ptFile.FilePath)
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
+			return
+		}
 	}
 
 	switch decision.Method {
@@ -164,6 +179,12 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 
 	videoCopy := r.URL.Query().Get("vcopy") == "1"
 	startOffset := parseStartOffset(r.URL.Query().Get("start"))
+	maxHeight := 0
+	if mh := r.URL.Query().Get("mh"); mh != "" {
+		if n, err := strconv.Atoi(mh); err == nil {
+			maxHeight = n
+		}
+	}
 	playlistPath, err := h.svc.PrepareHLS(
 		r.Context(),
 		id,
@@ -171,6 +192,7 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 		subtitleStreamIndex,
 		videoCopy,
 		startOffset,
+		maxHeight,
 	)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "transcoding failed: "+err.Error())
@@ -240,11 +262,26 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update last activity so abandoned transcode sessions are killed after a timeout.
+	h.svc.TouchTranscodeActivity(id)
+
 	w.Header().Set("Content-Type", "video/mp2t")
 	// Allow browser to cache segments for 5 minutes to avoid re-downloading
 	// the same segment on seek/rebuffer. Segments are immutable once written.
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	http.ServeFile(w, r, path)
+}
+
+// StopTranscode kills active FFmpeg transcode processes for a media item.
+// Called by the client when leaving the watch page or switching media/quality.
+func (h *StreamHandler) StopTranscode(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	killed := h.svc.StopTranscode(id)
+	respondJSON(w, http.StatusOK, map[string]int{"killed": killed})
 }
 
 // isValidSegmentName validates that a segment filename is safe to serve.

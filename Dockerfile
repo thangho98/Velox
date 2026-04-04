@@ -6,11 +6,16 @@
 # ----- Stage 1: Frontend build -----
 FROM node:22-alpine AS frontend
 
-WORKDIR /build/webapp
-COPY webapp/package.json webapp/package-lock.json* ./
-RUN npm ci --ignore-scripts
-COPY webapp/ ./
-RUN npm run build
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /build
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY webapp/package.json webapp/
+COPY packages/shared/package.json packages/shared/
+RUN pnpm install --frozen-lockfile --ignore-scripts
+COPY packages/shared/ packages/shared/
+COPY webapp/ webapp/
+RUN cd webapp && pnpm run build
 
 
 # ----- Stage 2: Backend build -----

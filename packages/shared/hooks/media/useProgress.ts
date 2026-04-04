@@ -41,6 +41,7 @@ export function useProgress(mediaId: number) {
     queryKey: userDataKeys.progress(mediaId),
     queryFn: () => userDataApi.getProgress(mediaId),
     staleTime: 30 * 1000,
+    enabled: mediaId > 0,
   })
 }
 

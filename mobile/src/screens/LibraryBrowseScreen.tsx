@@ -63,7 +63,7 @@ export function LibraryBrowseScreen({ type }: LibraryBrowseScreenProps) {
     if (item.media_type === 'movie' || item.type === 'movie') {
       navigation.navigate('Media', { id: item.id })
     } else {
-      navigation.navigate('Series', { id: item.id })
+      navigation.navigate('SeriesDetail', { id: item.id })
     }
   }
 

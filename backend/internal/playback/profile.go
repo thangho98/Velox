@@ -111,9 +111,3 @@ func (p *DeviceProfile) CanPlayBitrate(bitrate int) bool {
 	}
 	return true
 }
-
-// RequiresFullTranscodeForAudioMismatch reports whether an audio-only HLS
-// fallback should be upgraded to a full transcode for reliable seeking.
-func RequiresFullTranscodeForAudioMismatch(profile *DeviceProfile) bool {
-	return profile != nil && profile.SupportsHLS
-}

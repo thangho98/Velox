@@ -264,7 +264,7 @@ func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inp
 	case "nvenc":
 		args = append(args, "-c:v", "h264_nvenc", "-preset", "p4", "-b:v", fmt.Sprintf("%dk", bitrate))
 	default:
-		args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "20")
+		args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p")
 	}
 
 	args = append(args, "-c:a", "aac", "-b:a", fmt.Sprintf("%dk", profile.AudioBitrate), "-ac", "2",
@@ -346,7 +346,7 @@ func (s *PretranscodeService) runFFmpeg(ctx context.Context, inputPath, outputPa
 	case "videotoolbox":
 		args = append(args, "-c:v", "h264_videotoolbox")
 	default:
-		args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "22")
+		args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "22", "-pix_fmt", "yuv420p")
 	}
 
 	// Bitrate (for HW encoders that don't support CRF)

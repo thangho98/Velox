@@ -135,26 +135,15 @@ func Decide(media MediaFileInfo, profile *DeviceProfile, prefs UserPreferences) 
 		decision.AudioAction = AudioTranscode
 		decision.AudioCodec = selectBestAudioCodec(profile)
 
-		// Upgrade method only if video isn't already being transcoded
+		// Upgrade to audio-only transcode when video is compatible but audio isn't.
+		// Uses video copy (-c:v copy) so FFmpeg only re-encodes audio — near-instant, minimal CPU.
+		// Seek precision suffers (depends on source keyframes) but is acceptable for most use cases.
+		// This matches Jellyfin/Emby behavior: audio mismatch never triggers full video transcode.
 		if !needsVideoTranscode {
 			if decision.Method == MethodDirectPlay || decision.Method == MethodDirectStream {
-				if RequiresFullTranscodeForAudioMismatch(profile) {
-					decision.Method = MethodFullTranscode
-					decision.VideoAction = VideoTranscode
-					decision.VideoCodec = selectBestVideoCodec(profile)
-					decision.EstimatedBitrate = estimateBitrate(media.Height)
-					decision.Reason = fmt.Sprintf(
-						"Audio codec %s not supported, using full transcode for reliable HLS seeking",
-						audioCodec,
-					)
-				} else {
-					// Use HLS with video copy + audio transcode.
-					// Video stream is passed through unchanged (-c:v copy) so FFmpeg only
-					// re-encodes the audio track — near-instant, no CPU-heavy video encode.
-					decision.Method = MethodTranscodeAudio
-					decision.VideoAction = VideoCopy
-					decision.Reason = fmt.Sprintf("Audio codec %s not supported, transcoding audio (video copy)", audioCodec)
-				}
+				decision.Method = MethodTranscodeAudio
+				decision.VideoAction = VideoCopy
+				decision.Reason = fmt.Sprintf("Audio codec %s not supported, transcoding audio (video copy)", audioCodec)
 			}
 		}
 	}

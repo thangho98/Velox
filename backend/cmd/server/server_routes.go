@@ -18,6 +18,7 @@ var authSkipPaths = []string{
 	"/api/auth/refresh",
 	"/api/auth/logout",
 	"/api/images/*",
+	"/api/media/*/trickplay/*",
 }
 
 func (app *serverApp) newHTTPServer() *http.Server {
@@ -237,6 +238,7 @@ func (app *serverApp) registerStreamRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stream/{id}/hls/master.m3u8", app.handlers.stream.HLSMaster)
 	mux.HandleFunc("GET /api/stream/{id}/hls/abr.m3u8", app.handlers.stream.HLSABRMaster)
 	mux.HandleFunc("GET /api/stream/{id}/hls/{segment}", app.handlers.stream.HLSSegment)
+	mux.HandleFunc("DELETE /api/stream/{id}/session", app.handlers.stream.StopTranscode)
 	mux.HandleFunc("GET /api/media/{id}/trickplay/manifest.vtt", app.handlers.trickplay.ServeVTT)
 	mux.HandleFunc("GET /api/media/{id}/trickplay/{sprite}", app.handlers.trickplay.ServeSprite)
 	mux.HandleFunc("GET /api/images/tmdb/{size}/{path...}", app.handlers.image.Serve)

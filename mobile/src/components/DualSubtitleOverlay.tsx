@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { View, Text, StyleSheet } from 'react-native'
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native'
 
 // ---------- Types ----------
 
@@ -148,6 +148,8 @@ export function DualSubtitleOverlay({
   offsetSeconds = 0,
   appearance = DEFAULT_APPEARANCE,
 }: DualSubtitleOverlayProps) {
+  const { width, height } = useWindowDimensions()
+  const isLandscape = width > height
   const primaryCues = useVTTCues(primaryUrl)
   const secondaryCues = useVTTCues(secondaryUrl)
   const adjustedTime = currentTime - offsetSeconds
@@ -167,7 +169,7 @@ export function DualSubtitleOverlay({
   const stripTags = (text: string) => text.replace(/<[^>]+>/g, '')
 
   return (
-    <View style={styles.container} pointerEvents="none">
+    <View style={[styles.container, { bottom: isLandscape ? '14%' : '22%' }]} pointerEvents="none">
       {/* Secondary subtitle (above primary, yellow, smaller) */}
       {secondaryText && (
         <View
@@ -232,7 +234,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 80, // Above bottom controls
+    bottom: '14%',
     alignItems: 'center',
     paddingHorizontal: 16,
     gap: 4,

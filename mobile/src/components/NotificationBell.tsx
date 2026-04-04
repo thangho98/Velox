@@ -60,7 +60,7 @@ export function NotificationBell() {
     if (n.data?.media_id) {
       navigation.navigate('Media', { id: n.data.media_id })
     } else if (n.data?.series_id) {
-      navigation.navigate('Series', { id: n.data.series_id })
+      navigation.navigate('SeriesDetail', { id: n.data.series_id })
     } else if (n.data?.library_id) {
       // Navigate to browse
     }
@@ -130,17 +130,19 @@ export function NotificationBell() {
 
   return (
     <>
-      <TouchableOpacity
-        style={[styles.bellButton, { width: bellSize, height: bellSize, borderRadius: bellSize / 2 }]}
-        onPress={() => setVisible(true)}
-      >
-        <Bell size={bellIconSize} color="#fff" />
+      <View style={styles.bellWrapper}>
+        <TouchableOpacity
+          style={styles.bellButton}
+          onPress={() => setVisible(true)}
+        >
+          <Bell size={18} color="#fff" />
+        </TouchableOpacity>
         {unreadCount && unreadCount > 0 ? (
-          <View style={[styles.badge, { minWidth: badgeSize, height: badgeSize, borderRadius: badgeSize / 2 }]}>
-            <Text style={[styles.badgeText, { fontSize: scaledFont(10, layout.fontScale) }]}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+          <View style={styles.badge} pointerEvents="none">
+            <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
           </View>
         ) : null}
-      </TouchableOpacity>
+      </View>
 
       <Modal
         visible={visible}
@@ -199,6 +201,10 @@ export function NotificationBell() {
 }
 
 const styles = StyleSheet.create({
+  bellWrapper: {
+    width: 36,
+    height: 36,
+  },
   bellButton: {
     width: 36,
     height: 36,
@@ -209,8 +215,8 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: -6,
+    right: -8,
     minWidth: 18,
     height: 18,
     borderRadius: 9,

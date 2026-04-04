@@ -24,16 +24,18 @@ const (
 type Generator struct {
 	outputDir  string
 	interval   int      // seconds between thumbnail frames
+	hwAccel    string   // hardware accelerator ("vaapi", "videotoolbox", "nvenc", etc.)
 	inProgress sync.Map // mediaID (int64) → struct{}; prevents duplicate concurrent generations
 }
 
 // New creates a Generator.
 // interval: seconds between thumbnail frames (default 10 if <= 0).
-func New(outputDir string, interval int) *Generator {
+// hwAccel: hardware accelerator to use for decoding (e.g., "vaapi", "" for software).
+func New(outputDir string, interval int, hwAccel string) *Generator {
 	if interval <= 0 {
 		interval = 10
 	}
-	return &Generator{outputDir: outputDir, interval: interval}
+	return &Generator{outputDir: outputDir, interval: interval, hwAccel: hwAccel}
 }
 
 // MediaDir returns the trickplay directory for a media item.
@@ -80,6 +82,7 @@ func (g *Generator) GenerateAsync(mediaID int64, inputPath string, durationSec i
 
 // Generate generates sprite sheets and VTT manifest for a media file.
 // Runs FFmpeg synchronously; intended to be called from a goroutine.
+// Falls back to software decode if hardware acceleration fails to produce output.
 func (g *Generator) Generate(mediaID int64, inputPath string, durationSec int) error {
 	dir := g.MediaDir(mediaID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -100,18 +103,69 @@ func (g *Generator) Generate(mediaID int64, inputPath string, durationSec int) e
 		g.interval, tileWidth, tileHeight, tileColumns, tileRows,
 	)
 
-	cmd := exec.Command("ffmpeg",
-		"-hide_banner", "-loglevel", "error",
-		"-i", inputPath,
-		"-vf", vfFilter,
-		"-q:v", "5", // JPEG quality: 1=best, 31=worst; 5 is a good balance
-		"-y",
-		spritePattern,
-	)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ffmpeg sprite generation: %w — %s", err, stderr.String())
+	var lastErr error
+	softwareFallback := false
+
+	// Try hardware-accelerated decode first (if configured), then fall back to software.
+	// Some HDR/DV profiles can't be decoded by VAAPI hardware.
+	tryGenerate := func(hwAccel string) error {
+		args := []string{"-hide_banner", "-loglevel", "error"}
+		switch hwAccel {
+		case "vaapi":
+			args = append(args, "-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128")
+		case "videotoolbox":
+			args = append(args, "-hwaccel", "videotoolbox")
+		case "nvenc":
+			args = append(args, "-hwaccel", "cuda")
+		case "qsv":
+			args = append(args, "-hwaccel", "qsv")
+		case "amf":
+			args = append(args, "-hwaccel", "amf")
+		}
+		args = append(args, "-i", inputPath, "-vf", vfFilter, "-q:v", "5", "-y", spritePattern)
+
+		cmd := exec.Command("ffmpeg", args...)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("ffmpeg sprite generation: %w — %s", err, stderr.String())
+		}
+		return nil
+	}
+
+	// Try with hardware acceleration first (if available)
+	if g.hwAccel != "" {
+		lastErr = tryGenerate(g.hwAccel)
+		if lastErr == nil {
+			// Verify at least one sprite was produced
+			if _, err := os.Stat(g.SpritePath(mediaID, 1)); err != nil {
+				log.Printf("trickplay: hwaccel %s produced no sprites for media %d, falling back to software",
+					g.hwAccel, mediaID)
+				lastErr = err
+				softwareFallback = true
+			}
+		} else {
+			log.Printf("trickplay: hwaccel %s failed for media %d: %v, trying software decode",
+				g.hwAccel, mediaID, lastErr)
+			softwareFallback = true
+		}
+	}
+
+	// Fall back to software decode if hw accel failed or produced no output
+	if softwareFallback || g.hwAccel == "" {
+		// Clean up any partial output from failed hwaccel attempt
+		if softwareFallback {
+			for i := 1; ; i++ {
+				if os.Remove(g.SpritePath(mediaID, i)) != nil {
+					break
+				}
+			}
+		}
+		lastErr = tryGenerate("")
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("software decode fallback: %w", lastErr)
 	}
 
 	// Verify at least one sprite was produced
@@ -124,8 +178,15 @@ func (g *Generator) Generate(mediaID int64, inputPath string, durationSec int) e
 		return fmt.Errorf("write vtt: %w", err)
 	}
 
-	log.Printf("trickplay: generated %d frames for media %d (%d sprites)",
-		totalFrames, mediaID, int(math.Ceil(float64(totalFrames)/float64(framesPerSprite))))
+	spriteCount := int(math.Ceil(float64(totalFrames) / float64(framesPerSprite)))
+	accelStr := ""
+	if g.hwAccel != "" && !softwareFallback {
+		accelStr = fmt.Sprintf(" (hw: %s)", g.hwAccel)
+	} else if softwareFallback {
+		accelStr = " (software fallback)"
+	}
+	log.Printf("trickplay: generated %d frames for media %d (%d sprites)%s",
+		totalFrames, mediaID, spriteCount, accelStr)
 	return nil
 }
 

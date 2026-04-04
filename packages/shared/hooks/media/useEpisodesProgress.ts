@@ -7,9 +7,11 @@ import { api } from '../../api'
 import type { UserData } from '../../types'
 
 const episodesProgressApi = {
-  // Batch fetch progress for multiple media IDs
+  // Batch fetch progress for multiple media IDs (returns null for unwatched)
   batchGetProgress: (mediaIds: number[]) =>
-    Promise.all(mediaIds.map((id) => api.get<UserData | null>(`/profile/progress/${id}`))),
+    Promise.all(mediaIds.map((id) =>
+      api.get<UserData | null>(`/profile/progress/${id}`).catch(() => null)
+    )),
 }
 
 export const episodesProgressKeys = {
@@ -18,11 +20,12 @@ export const episodesProgressKeys = {
 }
 
 export function useEpisodesProgress(mediaIds: number[]) {
+  const validIds = mediaIds.filter((id) => id > 0)
   return useQuery({
-    queryKey: episodesProgressKeys.batch(mediaIds),
-    queryFn: () => episodesProgressApi.batchGetProgress(mediaIds),
+    queryKey: episodesProgressKeys.batch(validIds),
+    queryFn: () => episodesProgressApi.batchGetProgress(validIds),
     staleTime: 30 * 1000,
     // Don't refetch if we already have data
-    enabled: mediaIds.length > 0,
+    enabled: validIds.length > 0,
   })
 }

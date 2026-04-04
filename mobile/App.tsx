@@ -64,7 +64,7 @@ export type RootStackParamList = {
   HomeTabs: undefined
   LibraryBrowse: { id: number; name: string }
   Media: { id: number }
-  Series: { id: number }
+  SeriesDetail: { id: number }
   Episode: { id: number; seriesId?: number; startFromBeginning?: boolean }
   Settings: undefined
   Profile: undefined
@@ -78,7 +78,7 @@ type HomeStackParamList = {
   HomeMain: undefined
   LibraryBrowse: { id: number; name: string }
   Media: { id: number }
-  Series: { id: number }
+  SeriesDetail: { id: number }
 }
 
 // Movies tab stack
@@ -90,7 +90,7 @@ type MoviesStackParamList = {
 // Series tab stack
 type SeriesStackParamList = {
   SeriesMain: undefined
-  Series: { id: number }
+  SeriesDetail: { id: number }
 }
 
 // Browse tab stack
@@ -98,14 +98,14 @@ type BrowseStackParamList = {
   BrowseMain: undefined
   LibraryBrowse: { id: number; name: string }
   Media: { id: number }
-  Series: { id: number }
+  SeriesDetail: { id: number }
 }
 
 // Favorites tab stack
 type FavoritesStackParamList = {
   FavoritesMain: undefined
   Media: { id: number }
-  Series: { id: number }
+  SeriesDetail: { id: number }
 }
 
 // Search stack (modal-like, accessible from header)
@@ -183,12 +183,22 @@ function HomeStackNavigator() {
       <HomeStack.Screen
         name="Media"
         component={MediaDetailScreen}
-        options={{ title: 'Media' }}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
       />
       <HomeStack.Screen
-        name="Series"
+        name="SeriesDetail"
         component={SeriesDetailScreen}
-        options={{ headerShown: false }}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
       />
     </HomeStack.Navigator>
   )
@@ -214,7 +224,12 @@ function MoviesStackNavigator() {
       <MoviesStack.Screen
         name="Media"
         component={MediaDetailScreen}
-        options={{ title: 'Media' }}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
       />
     </MoviesStack.Navigator>
   )
@@ -238,9 +253,14 @@ function SeriesStackNavigator() {
         })}
       />
       <SeriesStack.Screen
-        name="Series"
+        name="SeriesDetail"
         component={SeriesDetailScreen}
-        options={{ title: 'Series' }}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
       />
     </SeriesStack.Navigator>
   )
@@ -271,12 +291,22 @@ function BrowseStackNavigator() {
       <BrowseStack.Screen
         name="Media"
         component={MediaDetailScreen}
-        options={{ title: 'Media' }}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
       />
       <BrowseStack.Screen
-        name="Series"
+        name="SeriesDetail"
         component={SeriesDetailScreen}
-        options={{ headerShown: false }}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
       />
     </BrowseStack.Navigator>
   )
@@ -302,12 +332,22 @@ function FavoritesStackNavigator() {
       <FavoritesStack.Screen
         name="Media"
         component={MediaDetailScreen}
-        options={{ title: 'Media' }}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
       />
       <FavoritesStack.Screen
-        name="Series"
+        name="SeriesDetail"
         component={SeriesDetailScreen}
-        options={{ headerShown: false }}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
       />
     </FavoritesStack.Navigator>
   )
@@ -590,7 +630,7 @@ function HeaderButtons({ navigation }: { navigation: any }) {
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [isReady, setIsReady] = useState(false)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   useEffect(() => {
     // Load saved server URL, then check auth state
@@ -600,7 +640,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         const state = useAuthStore.getState()
         // Check if persist has rehydrated by looking for any persisted field
         if (state.accessToken !== undefined || state.refreshToken !== undefined) {
-          setIsAuthenticated(state.isAuthenticated)
           setIsReady(true)
           clearInterval(timer)
         }
@@ -608,8 +647,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
       // Timeout after 5 seconds - persist should have rehydrated by now
       setTimeout(() => {
-        const state = useAuthStore.getState()
-        setIsAuthenticated(state.isAuthenticated)
         setIsReady(true)
         clearInterval(timer)
       }, 5000)
@@ -627,9 +664,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated) {
     return (
       <LoginScreen
-        onLoginSuccess={() => {
-          setIsAuthenticated(true)
-        }}
+        onLoginSuccess={() => {}}
       />
     )
   }
@@ -680,6 +715,26 @@ function AppNavigator() {
         options={{ title: 'Admin' }}
       />
       <RootStack.Screen
+        name="Media"
+        component={MediaDetailScreen}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
+      />
+      <RootStack.Screen
+        name="SeriesDetail"
+        component={SeriesDetailScreen}
+        options={{
+          title: '',
+          headerTransparent: true,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
+      />
+      <RootStack.Screen
         name="Episode"
         component={VideoPlayerScreen}
         options={{ headerShown: false, animation: 'fade' }}
@@ -715,7 +770,8 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 10,
   },
   headerButton: {
     width: 36,

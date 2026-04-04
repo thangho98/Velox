@@ -12,8 +12,8 @@ import {
 import { Play, Info } from 'lucide-react-native'
 import { useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { useMediaList, useGenres } from '@velox/shared/hooks'
-import type { MediaListItem } from '@velox/shared/types'
+import { useSeriesList, useGenres } from '@velox/shared/hooks'
+import type { SeriesListItem } from '@velox/shared/types'
 import type { RootStackParamList } from '../../App'
 import { MediaCard } from '../components/MediaCard'
 import { FilterBottomSheet } from '../components/FilterBottomSheet'
@@ -45,7 +45,7 @@ export function SeriesScreen() {
   const [showYearSheet, setShowYearSheet] = useState(false)
 
   // Quick actions menu state
-  const [selectedItem, setSelectedItem] = useState<MediaListItem | null>(null)
+  const [selectedItem, setSelectedItem] = useState<SeriesListItem | null>(null)
   const [showQuickActions, setShowQuickActions] = useState(false)
 
   const quickActions = [
@@ -56,27 +56,22 @@ export function SeriesScreen() {
   const handleQuickAction = (actionId: string) => {
     if (!selectedItem) return
 
-    // Navigate to Series detail
-    const seriesId = selectedItem.series_id || selectedItem.id
-
     switch (actionId) {
       case 'play':
-        navigation.navigate('Episode', { id: seriesId })
+        navigation.navigate('Episode', { id: selectedItem.id })
         break
       case 'info':
-        navigation.navigate('Series', { id: seriesId })
+        navigation.navigate('SeriesDetail', { id: selectedItem.id })
         break
     }
   }
 
-  const handleItemLongPress = (item: MediaListItem) => {
+  const handleItemLongPress = (item: SeriesListItem) => {
     setSelectedItem(item)
     setShowQuickActions(true)
   }
 
-  // Series use 'episode' type for API
-  const { data: series, isLoading, refetch } = useMediaList({
-    type: 'episode',
+  const { data: series, isLoading, refetch } = useSeriesList({
     search: search || undefined,
     genre,
     year,
@@ -99,15 +94,8 @@ export function SeriesScreen() {
     setRefreshing(false)
   }
 
-  const handleMediaPress = (item: MediaListItem) => {
-    // Episodes navigate to Series detail
-    if (item.series_id) {
-      navigation.navigate('Series', { id: item.series_id })
-    } else if (item.media_type === 'episode' || item.type === 'series') {
-      navigation.navigate('Series', { id: item.id })
-    } else {
-      navigation.navigate('Media', { id: item.id })
-    }
+  const handleSeriesPress = (item: SeriesListItem) => {
+    navigation.navigate('SeriesDetail', { id: item.id })
   }
 
   const handleClearFilters = () => {
@@ -151,9 +139,9 @@ export function SeriesScreen() {
     if (!series) return { groupedSeries: [], letterIndex: {} }
 
     const index: Record<string, number> = {}
-    const groups: { letter: string; data: MediaListItem[] }[] = []
+    const groups: { letter: string; data: SeriesListItem[] }[] = []
     let currentLetter = ''
-    let currentGroup: MediaListItem[] = []
+    let currentGroup: SeriesListItem[] = []
 
     series.forEach((item, idx) => {
       const firstChar = (item.title || 'Unknown').charAt(0).toUpperCase()
@@ -180,24 +168,32 @@ export function SeriesScreen() {
 
   const handleLetterPress = (letter: string) => {
     setActiveLetter(letter)
-    const idx = letterIndex[letter]
-    if (idx !== undefined && flatListRef.current) {
-      flatListRef.current.scrollToIndex({ index: idx, animated: true })
+    if (series && flatListRef.current) {
+      const idx = series.findIndex((item) => {
+        const firstChar = (item.sort_title || item.title || '').charAt(0).toUpperCase()
+        const itemLetter = /[A-Z]/.test(firstChar) ? firstChar : '#'
+        return itemLetter === letter
+      })
+      if (idx >= 0) {
+        // numColumns FlatList: convert item index to row index
+        const rowIndex = Math.floor(idx / numColumns)
+        flatListRef.current.scrollToIndex({ index: rowIndex, animated: true, viewOffset: 0 })
+      }
     }
     setTimeout(() => setActiveLetter(null), 500)
   }
 
-  const renderLetterSection = ({ item: group }: { item: { letter: string; data: MediaListItem[] } }) => (
+  const renderLetterSection = ({ item: group }: { item: { letter: string; data: SeriesListItem[] } }) => (
     <View>
       <View style={[styles.letterHeader, { paddingHorizontal: layout.screenPadding }]}>
         <Text style={[styles.letterHeaderText, { fontSize: scaledFont(18, layout.fontScale) }]}>{group.letter}</Text>
       </View>
       <View style={[styles.letterRow, { paddingHorizontal: layout.cardGap / 2 }]}>
         {group.data.map((item) => (
-          <View key={item.id} style={[styles.gridItem, { maxWidth: `${100 / numColumns}%`, padding: layout.cardGap / 2 }]}>
+          <View key={item.id} style={[styles.gridItem, { width: `${100 / numColumns}%`, padding: layout.cardGap / 2 }]}>
             <MediaCard
-              item={item}
-              onPress={() => handleMediaPress(item)}
+              item={{ ...item, type: 'series' } as any}
+              onPress={() => handleSeriesPress(item)}
               onLongPress={() => handleItemLongPress(item)}
               size="medium"
               showBadge
@@ -259,17 +255,31 @@ export function SeriesScreen() {
         <View style={styles.gridWithIndex}>
           <FlatList
             ref={flatListRef}
-            data={groupedSeries}
-            keyExtractor={(item) => item.letter}
-            renderItem={renderLetterSection}
+            data={series}
+            keyExtractor={(item) => String(item.id)}
+            numColumns={numColumns}
+            key={numColumns}
             contentContainerStyle={[styles.gridContent, { padding: layout.cardGap / 2 }]}
+            columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#e50914"
-              />
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#e50914" />
             }
+            renderItem={({ item }) => (
+              <View style={[styles.gridItem, { width: `${100 / numColumns}%`, padding: layout.cardGap / 2 }]}>
+                <MediaCard
+                  item={{ ...item, type: 'series' } as any}
+                  onPress={() => handleSeriesPress(item)}
+                  onLongPress={() => handleItemLongPress(item)}
+                  size="medium"
+                  showBadge
+                  showRating
+                  columns={numColumns}
+                  containerWidth={layout.width}
+                  gap={layout.cardGap}
+                  padding={layout.screenPadding}
+                />
+              </View>
+            )}
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptyText}>
@@ -278,29 +288,33 @@ export function SeriesScreen() {
               </View>
             }
           />
-
-          {/* A-Z Sidebar */}
-          {sort === 'title' && groupedSeries.length > 0 && (
-            <ScrollView
-              style={styles.alphabetSidebar}
-              contentContainerStyle={styles.alphabetContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {ALPHABET.map((letter) => (
-                <TouchableOpacity
-                  key={letter}
-                  style={[styles.alphabetLetter, activeLetter === letter && styles.alphabetLetterActive]}
-                  onPress={() => handleLetterPress(letter)}
-                >
-                  <Text style={[styles.alphabetText, activeLetter === letter && styles.alphabetTextActive]}>
-                    {letter}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
         </View>
       )}
+
+      {/* A-Z Sidebar — fixed overlay, vertically centered on screen */}
+      {sort === 'title' && (series?.length ?? 0) > 0 && (() => {
+        const activeLetters = new Set<string>()
+        series?.forEach((item) => {
+          const first = (item.sort_title || item.title || '').charAt(0).toUpperCase()
+          activeLetters.add(/[A-Z]/.test(first) ? first : '#')
+        })
+        const letters = ALPHABET.filter((l) => activeLetters.has(l))
+        return (
+          <View style={styles.alphabetSidebar} pointerEvents="box-none">
+            {letters.map((letter) => (
+              <TouchableOpacity
+                key={letter}
+                style={[styles.alphabetLetter, activeLetter === letter && styles.alphabetLetterActive]}
+                onPress={() => handleLetterPress(letter)}
+              >
+                <Text style={[styles.alphabetText, activeLetter === letter && styles.alphabetTextActive]}>
+                  {letter}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )
+      })()}
 
       {/* Genre Filter Bottom Sheet */}
       <FilterBottomSheet
@@ -431,8 +445,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   gridItem: {
-    flex: 1,
-    // maxWidth and padding set dynamically via inline style
+    // width and padding set dynamically via inline style
   },
   empty: {
     flex: 1,
@@ -445,7 +458,6 @@ const styles = StyleSheet.create({
   },
   // A-Z Index styles
   gridWithIndex: {
-    flexDirection: 'row',
     flex: 1,
   },
   letterHeader: {
@@ -464,29 +476,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   alphabetSidebar: {
-    width: 24,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    paddingVertical: 8,
-  },
-  alphabetContent: {
-    alignItems: 'center',
-  },
-  alphabetLetter: {
-    width: 24,
-    height: 18,
+    position: 'absolute',
+    right: 16,
+    top: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    width: 28,
+    zIndex: 10,
+  },
+  alphabetLetter: {
+    width: 28,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 14,
+    marginVertical: 2,
   },
   alphabetLetterActive: {
     backgroundColor: '#e50914',
-    borderRadius: 4,
   },
   alphabetText: {
-    color: '#666',
-    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 10,
     fontWeight: '600',
   },
   alphabetTextActive: {
     color: '#fff',
+    fontWeight: '700',
   },
 })

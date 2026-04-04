@@ -7,7 +7,9 @@ import (
 	"github.com/thawng/velox/internal/playback"
 )
 
-func TestApplyAdminPlaybackPolicyUsesFullTranscodeForBrowserAudioMismatch(t *testing.T) {
+func TestApplyAdminPlaybackPolicyUsesTranscodeAudioForBrowserAudioMismatch(t *testing.T) {
+	// Jellyfin-style: audio-only transcode even on browser/HLS when video is compatible.
+	// Does NOT force full transcode just because of audio codec mismatch.
 	profile := &playback.DeviceProfile{
 		Name:                 "Chrome",
 		SupportedVideoCodecs: []string{playback.CodecH264},
@@ -30,16 +32,16 @@ func TestApplyAdminPlaybackPolicyUsesFullTranscodeForBrowserAudioMismatch(t *tes
 		Bitrate:    8000,
 	})
 
-	if got.Method != playback.MethodFullTranscode {
-		t.Fatalf("Method = %q, want %q", got.Method, playback.MethodFullTranscode)
+	if got.Method != playback.MethodTranscodeAudio {
+		t.Fatalf("Method = %q, want %q", got.Method, playback.MethodTranscodeAudio)
 	}
-	if got.VideoAction != playback.VideoTranscode {
-		t.Fatalf("VideoAction = %q, want %q", got.VideoAction, playback.VideoTranscode)
+	if got.VideoAction != playback.VideoCopy {
+		t.Fatalf("VideoAction = %q, want %q", got.VideoAction, playback.VideoCopy)
 	}
 	if got.AudioAction != playback.AudioTranscode {
 		t.Fatalf("AudioAction = %q, want %q", got.AudioAction, playback.AudioTranscode)
 	}
-	if !strings.Contains(got.Reason, "reliable HLS seeking") {
-		t.Fatalf("Reason = %q, want reliable seek hint", got.Reason)
+	if !strings.Contains(got.Reason, "audio transcode") {
+		t.Fatalf("Reason = %q, want audio transcode hint", got.Reason)
 	}
 }

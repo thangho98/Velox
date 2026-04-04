@@ -13,12 +13,14 @@ function MethodBadge({ method }: { method: string }) {
   const colors: Record<string, string> = {
     DirectPlay: 'bg-green-500/20 text-green-400',
     DirectStream: 'bg-blue-500/20 text-blue-400',
+    PreTranscode: 'bg-cyan-500/20 text-cyan-400',
     TranscodeAudio: 'bg-yellow-500/20 text-yellow-400',
     FullTranscode: 'bg-red-500/20 text-red-400',
   }
   const labels: Record<string, string> = {
     DirectPlay: 'Direct Play',
     DirectStream: 'Direct Stream',
+    PreTranscode: 'PreTranscode',
     TranscodeAudio: 'Transcode Audio',
     FullTranscode: 'Full Transcode',
   }
@@ -43,6 +45,23 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
 
   const isTranscoding =
     playbackInfo.method === 'FullTranscode' || playbackInfo.method === 'TranscodeAudio'
+  const isPreTranscode = playbackInfo.method === 'PreTranscode'
+
+  // Use pretranscode details when available, otherwise original file info
+  const videoCodec =
+    isPreTranscode && playbackInfo.pt_video_codec
+      ? playbackInfo.pt_video_codec
+      : playbackInfo.video_codec
+  const videoHeight =
+    isPreTranscode && playbackInfo.pt_height ? playbackInfo.pt_height : playbackInfo.height
+  const videoWidth =
+    isPreTranscode && playbackInfo.pt_height
+      ? Math.round((playbackInfo.width / playbackInfo.height) * playbackInfo.pt_height)
+      : playbackInfo.width
+  const videoBitrate =
+    isPreTranscode && playbackInfo.pt_video_bitrate
+      ? playbackInfo.pt_video_bitrate
+      : playbackInfo.bitrate
 
   // Read dropped frames from videoRef via effect to avoid accessing refs during render
   const [droppedFrames, setDroppedFrames] = useState(0)
@@ -85,6 +104,10 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
               <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-400">
                 Transcoding
               </span>
+            ) : isPreTranscode ? (
+              <span className="rounded bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-400">
+                PreTranscode
+              </span>
             ) : (
               <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-green-400">
                 Direct
@@ -92,14 +115,13 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
             )}
           </div>
           <p className="font-mono text-xs leading-relaxed text-white/80">
-            {playbackInfo.video_codec?.toUpperCase() || '—'}{' '}
-            {playbackInfo.height > 0 && `${playbackInfo.width}×${playbackInfo.height}`}
-            {playbackInfo.video_profile && ` ${playbackInfo.video_profile}`}
-            {playbackInfo.video_level > 0 && ` L${playbackInfo.video_level}`}
+            {videoCodec?.toUpperCase() || '—'} {videoHeight > 0 && `${videoWidth}×${videoHeight}`}
+            {!isPreTranscode && playbackInfo.video_profile && ` ${playbackInfo.video_profile}`}
+            {!isPreTranscode && playbackInfo.video_level > 0 && ` L${playbackInfo.video_level}`}
           </p>
           <p className="font-mono text-xs leading-relaxed text-white/60">
-            {playbackInfo.bitrate > 0 &&
-              `${playbackInfo.bitrate >= 1000 ? `${(playbackInfo.bitrate / 1000).toFixed(1)} Mbps` : `${playbackInfo.bitrate} Kbps`}`}
+            {videoBitrate > 0 &&
+              `${videoBitrate >= 1000 ? `${(videoBitrate / 1000).toFixed(1)} Mbps` : `${videoBitrate} Kbps`}`}
             {playbackInfo.video_fps > 0 &&
               ` · ${Number.isInteger(playbackInfo.video_fps) ? playbackInfo.video_fps : playbackInfo.video_fps.toFixed(2)} fps`}
           </p>
@@ -119,6 +141,10 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
               {isTranscoding ? (
                 <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-yellow-400">
                   Transcoding
+                </span>
+              ) : isPreTranscode ? (
+                <span className="rounded bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-400">
+                  PreTranscode
                 </span>
               ) : (
                 <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-green-400">
@@ -144,13 +170,18 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
         <div className="px-4 py-3">
           <p className="mb-2 text-sm font-bold text-white">Stream</p>
           <p className="font-mono text-xs leading-relaxed text-white/80">
-            {playbackInfo.method === 'DirectPlay' ? 'HTTP Range' : 'HLS'}
+            {playbackInfo.method === 'DirectPlay'
+              ? 'HTTP Range'
+              : isPreTranscode
+                ? 'HTTP Range (PreTranscode)'
+                : 'HLS'}
             {' · '}
-            {playbackInfo.container?.toUpperCase() || '—'}
-            {playbackInfo.file_size > 0 &&
+            {isPreTranscode ? 'MP4' : playbackInfo.container?.toUpperCase() || '—'}
+            {!isPreTranscode &&
+              playbackInfo.file_size > 0 &&
               ` · ${(playbackInfo.file_size / (1024 * 1024 * 1024)).toFixed(1)} GB`}
           </p>
-          {playbackInfo.estimated_bitrate > 0 && isTranscoding && (
+          {playbackInfo.estimated_bitrate > 0 && (isTranscoding || isPreTranscode) && (
             <p className="font-mono text-xs leading-relaxed text-white/60">
               Estimated:{' '}
               {playbackInfo.estimated_bitrate >= 1000
@@ -158,16 +189,6 @@ export const WatchPlaybackStatsOverlay = memo(function WatchPlaybackStatsOverlay
                 : `${playbackInfo.estimated_bitrate} Kbps`}
             </p>
           )}
-        </div>
-
-        <div className="border-t border-white/10 px-4 py-2.5">
-          <button
-            onClick={onClose}
-            className="flex items-center gap-1.5 text-xs text-white/60 transition-colors hover:text-white"
-          >
-            <LuActivity size={13} />
-            Close
-          </button>
         </div>
       </div>
     </div>

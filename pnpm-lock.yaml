@@ -44,6 +44,9 @@ importers:
       expo:
         specifier: ~55.0.9
         version: 55.0.9(@babel/core@7.29.0)(@expo/dom-webview@55.0.3)(react-dom@19.2.4(react@19.2.0))(react-native@0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
+      expo-blur:
+        specifier: ^55.0.12
+        version: 55.0.12(expo@55.0.9)(react-native@0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)
       expo-build-properties:
         specifier: ~55.0.10
         version: 55.0.10(expo@55.0.9)
@@ -53,6 +56,9 @@ importers:
       expo-linear-gradient:
         specifier: ^55.0.11
         version: 55.0.11(expo@55.0.9)(react-native@0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)
+      expo-screen-orientation:
+        specifier: ^55.0.11
+        version: 55.0.11(expo@55.0.9)(react-native@0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))
       expo-secure-store:
         specifier: ~55.0.9
         version: 55.0.9(expo@55.0.9)
@@ -2034,6 +2040,13 @@ packages:
       react: '*'
       react-native: '*'
 
+  expo-blur@55.0.12:
+    resolution: {integrity: sha512-uxPpNduXlUGFT5G4uqKor9/VVvFAUU7AsfNmEsv7ENRCVH0PVOd5QiQ/U+rHTPxZalu/CJtprz3ZiCfF1riMRw==}
+    peerDependencies:
+      expo: '*'
+      react: '*'
+      react-native: '*'
+
   expo-build-properties@55.0.10:
     resolution: {integrity: sha512-9+JCQuIQaEi27XDIFTR2Y4vok0FidWux2UKrKWD5E38/0fozbZcVUzS14FgMF1F0lalmXMgebH/vjRpbYWJIMA==}
     peerDependencies:
@@ -2107,6 +2120,12 @@ packages:
     resolution: {integrity: sha512-Qwr3qCCZd/aMtenUo6KmPaFy/uFeNz0rLfRxv0tNsWFF27XS2wjDwb87A7lD2ii8iJhjYEHVetRvFkcDxCw8Lw==}
     peerDependencies:
       react: '*'
+      react-native: '*'
+
+  expo-screen-orientation@55.0.11:
+    resolution: {integrity: sha512-9P65qEjZlhiBctrJpXxVHUh25AE0uqnC38oT9eazHQcDdPkM6aJTjGLRJPa1hSrxVF3vvsIca0z7ZDdycMAhAQ==}
+    peerDependencies:
+      expo: '*'
       react-native: '*'
 
   expo-secure-store@55.0.9:
@@ -5938,6 +5957,12 @@ snapshots:
       - supports-color
       - typescript
 
+  expo-blur@55.0.12(expo@55.0.9)(react-native@0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0):
+    dependencies:
+      expo: 55.0.9(@babel/core@7.29.0)(@expo/dom-webview@55.0.3)(react-dom@19.2.4(react@19.2.0))(react-native@0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
+      react: 19.2.0
+      react-native: 0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0)
+
   expo-build-properties@55.0.10(expo@55.0.9):
     dependencies:
       '@expo/schema-utils': 55.0.2
@@ -6034,6 +6059,11 @@ snapshots:
     dependencies:
       invariant: 2.2.4
       react: 19.2.0
+      react-native: 0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0)
+
+  expo-screen-orientation@55.0.11(expo@55.0.9)(react-native@0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0)):
+    dependencies:
+      expo: 55.0.9(@babel/core@7.29.0)(@expo/dom-webview@55.0.3)(react-dom@19.2.4(react@19.2.0))(react-native@0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       react-native: 0.83.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0)
 
   expo-secure-store@55.0.9(expo@55.0.9):

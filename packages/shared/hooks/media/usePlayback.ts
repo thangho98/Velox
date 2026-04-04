@@ -33,10 +33,25 @@ export function useStreamUrls(mediaId: number, request: PlaybackInfoRequest = {}
     queryKey: streamingKeys.playbackInfo(mediaId, request),
     queryFn: () => streamingApi.getPlaybackInfo(mediaId, request),
     select: (info: PlaybackInfo): StreamUrls => {
-      const isHLS = info.method === 'TranscodeAudio' || info.method === 'FullTranscode'
+      const isHLS = info.stream_url.includes('/hls/')
+      // Always build an HLS fallback URL so the client can fall back from direct play.
+      // When backend already chose HLS, use that. Otherwise derive from the stream URL.
+      let hlsUrl: string | undefined
+      if (isHLS) {
+        hlsUrl = info.stream_url
+      } else {
+        // Build HLS URL: /api/stream/{id}/hls/master.m3u8 + same query params (minus pm=)
+        const [path, qs] = info.stream_url.split('?')
+        const params = new URLSearchParams(qs || '')
+        params.delete('pm')
+        if (request.max_height && request.max_height > 0) {
+          params.set('mh', String(request.max_height))
+        }
+        hlsUrl = path + '/hls/master.m3u8' + (params.toString() ? '?' + params.toString() : '')
+      }
       return {
-        direct: info.stream_url,
-        hls: isHLS ? info.stream_url : undefined,
+        direct: info.direct_url || info.stream_url,
+        hls: hlsUrl,
         abr: info.abr_url || undefined,
         primary_file_id: info.primary_file_id,
       }
@@ -94,7 +109,7 @@ export function usePlaybackInfo(mediaId: number, request: PlaybackInfoRequest = 
 export function useStreamUrl(mediaId: number) {
   return useMutation({
     mutationFn: () =>
-      api.post<{ direct_url: string; hls_url: string; token: string; expires_in: number }>(
+      api.post<{ direct_url: string; hls_url: string; token: string; api_key: string; expires_in: number }>(
         `/stream/${mediaId}/url`,
         {},
       ),

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import {
   View,
   ScrollView,
@@ -13,11 +13,13 @@ import {
   StatusBar,
   Platform,
   Pressable,
+  Dimensions,
 } from 'react-native'
-import { Tv, Play, Film, Check, Link, Pencil, Lock, ChevronLeft } from 'lucide-react-native'
+import { LinearGradient } from 'expo-linear-gradient'
+import { Tv, Play, Film, Check, Link, Pencil, Lock, ChevronLeft, MoreVertical } from 'lucide-react-native'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { useSeriesDetail, useSeasons, useEpisodes } from '@velox/shared/hooks'
+import { useSeriesDetail, useSeasons, useEpisodes, useContinueWatching, useNextUp } from '@velox/shared/hooks'
 import {
   useEditSeriesMetadata,
   useEditEpisodeMetadata,
@@ -40,7 +42,9 @@ import type {
 } from '@velox/shared/types'
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>
-type SeriesRouteProp = RouteProp<RootStackParamList, 'Series'>
+type SeriesRouteProp = RouteProp<RootStackParamList, 'SeriesDetail'>
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
 export function SeriesDetailScreen() {
   const navigation = useNavigation<NavigationProp>()
@@ -50,11 +54,28 @@ export function SeriesDetailScreen() {
   const { data: series, isLoading: loadingSeries } = useSeriesDetail(id)
   const { data: seasons, isLoading: loadingSeasons } = useSeasons(id)
   const { youtubeKey } = useSeriesTrailers(id)
+  const { data: continueWatchingData } = useContinueWatching({ limit: 100 })
+  const { data: nextUpData } = useNextUp({ limit: 100 })
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null)
   const [showFullOverview, setShowFullOverview] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [showMetadataEditor, setShowMetadataEditor] = useState(false)
   const [showTrailer, setShowTrailer] = useState(false)
+
+  // Put menu button in navigation header
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => setShowMenu(true)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={{ padding: 4 }}
+        >
+          <MoreVertical size={22} color="#fff" />
+        </TouchableOpacity>
+      ),
+    })
+  }, [navigation])
   const [episodeToEdit, setEpisodeToEdit] = useState<Episode | null>(null)
   const seasonScrollRef = useRef<ScrollView>(null)
 
@@ -94,11 +115,8 @@ export function SeriesDetailScreen() {
     }
   }, [sortedSeasons, selectedSeasonId])
 
-  // Responsive dimensions — web-like side-by-side layout
-  const posterWidth = layout.sideBySideDetail ? 170 : 110
-  const posterHeight = layout.sideBySideDetail ? 255 : 165
-  const episodeThumbWidth = layout.sideBySideDetail ? 180 : 130
-  const episodeThumbHeight = layout.sideBySideDetail ? 100 : 75
+  const posterWidth = layout.sideBySideDetail ? 220 : 200
+  const posterHeight = layout.sideBySideDetail ? 330 : 300
   const statusBarHeight = Platform.OS === 'ios' ? (StatusBar.currentHeight ?? 44) : (StatusBar.currentHeight ?? 24)
 
   const isLoading = loadingSeries || loadingSeasons
@@ -120,17 +138,34 @@ export function SeriesDetailScreen() {
   }
 
   const backdropUrl = series.backdrop_path ? seriesImage(series.backdrop_path, 'w1280') : null
-
   const posterUrl = series.poster_path ? seriesImage(series.poster_path, 'w500') : null
 
   const currentSeason = selectedSeasonId
     ? sortedSeasons.find((s) => s.id === selectedSeasonId)
     : sortedSeasons[0]
 
+  // Continue watching / next up logic (matching web)
+  const continueWatching = continueWatchingData ?? []
+  const nextUp = nextUpData ?? []
+  const resumeItem = continueWatching.find((item) => item.series_id === id)
+  const nextUpItem = nextUp.find((item) => item.series_id === id)
+  const playTargetMediaId = resumeItem?.media_id ?? nextUpItem?.media_id ?? episodes?.[0]?.media_id
+  const isResume = !!resumeItem
+  const playLabel = resumeItem ? 'Resume' : 'Play'
+  const playSubtitle = resumeItem
+    ? `Continue ${series.title} - ${resumeItem.title}`
+    : nextUpItem
+      ? nextUpItem.episode_title
+      : null
+
   const handlePlay = () => {
+    if (playTargetMediaId) {
+      navigation.navigate('Episode', { id: playTargetMediaId, seriesId: id })
+      return
+    }
     if (episodes && episodes.length > 0) {
       navigation.navigate('Episode', {
-        id: episodes[0].id,
+        id: episodes[0].media_id,
         seriesId: id,
       })
     }
@@ -138,7 +173,7 @@ export function SeriesDetailScreen() {
 
   const handleEpisodePress = (episode: Episode) => {
     navigation.navigate('Episode', {
-      id: episode.id,
+      id: episode.media_id,
       seriesId: id,
     })
   }
@@ -206,202 +241,161 @@ export function SeriesDetailScreen() {
     <View style={styles.container}>
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
 
-      {/* ── Full-screen Backdrop ── */}
+      {/* ── Fixed backdrop (doesn't scroll) ── */}
       {backdropUrl ? (
-        <Image source={{ uri: backdropUrl }} style={styles.fullBackdrop} resizeMode="cover" />
+        <Image source={{ uri: backdropUrl }} style={styles.fixedBackdrop} resizeMode="cover" />
       ) : (
-        <View style={[styles.fullBackdrop, styles.fullBackdropPlaceholder]} />
+        <View style={[styles.fixedBackdrop, styles.backdropPlaceholder]} />
       )}
+      <LinearGradient
+        colors={['transparent', 'rgba(20,20,20,0.3)', 'rgba(20,20,20,0.8)', '#141414']}
+        locations={[0, 0.3, 0.65, 1]}
+        style={styles.fixedBackdrop}
+      />
+      <LinearGradient
+        colors={['rgba(20,20,20,0.7)', 'rgba(20,20,20,0.4)', 'transparent']}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={styles.fixedBackdrop}
+      />
 
-      {/* ── Vertical gradient bands: top → bottom ── */}
-      <View style={styles.vGrad0} />
-      <View style={styles.vGrad1} />
-      <View style={styles.vGrad2} />
-      <View style={styles.vGrad3} />
-      <View style={styles.vGrad4} />
 
-      {/* ── Horizontal gradient bands: left → right ── */}
-      <View style={styles.hGrad0} />
-      <View style={styles.hGrad1} />
-      <View style={styles.hGrad2} />
-      <View style={styles.hGrad3} />
-
-      {/* ── Bottom solid fade ── */}
-      <View style={styles.bottomSolid} />
-
-      {/* ── Floating overlay header (rendered LAST → zIndex above all gradients) ── */}
-      <View style={[styles.overlayHeader, { paddingTop: statusBarHeight + 8 }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ChevronLeft size={26} color="#fff" />
-        </TouchableOpacity>
-        <Text style={[styles.overlayTitle, { fontSize: scaledFont(16, layout.fontScale) }]} numberOfLines={1}>
-          {series.title}
-        </Text>
-        <TouchableOpacity
-          style={styles.overlayMenuButton}
-          onPress={() => setShowMenu(true)}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.menuIcon}>⋮</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Floating overlay header ── */}
-      <View style={[styles.overlayHeader, { paddingTop: statusBarHeight + 8 }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ChevronLeft size={26} color="#fff" />
-        </TouchableOpacity>
-        <Text style={[styles.overlayTitle, { fontSize: scaledFont(16, layout.fontScale) }]} numberOfLines={1}>
-          {series.title}
-        </Text>
-        <TouchableOpacity
-          style={styles.overlayMenuButton}
-          onPress={() => setShowMenu(true)}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.menuIcon}>⋮</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Scrollable content ── */}
       <ScrollView
-        style={styles.scrollContent}
-        contentContainerStyle={[
-          styles.scrollContentContainer,
-          { paddingBottom: layout.screenPadding * 2 },
-        ]}
+        style={styles.scroll}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Poster + meta floating over hero bottom */}
-        <View style={styles.heroMeta}>
-          {/* Poster */}
-          <View style={styles.posterWrapper}>
-            {posterUrl ? (
-              <Image
-                source={{ uri: posterUrl }}
-                style={[styles.poster, { width: posterWidth, height: posterHeight }]}
-                resizeMode="cover"
-              />
-            ) : (
-              <View
-                style={[
-                  styles.poster,
-                  styles.posterPlaceholder,
-                  { width: posterWidth, height: posterHeight },
-                ]}
-              >
-                <Text style={styles.posterText}>{series.title?.charAt(0)}</Text>
+        {/* ══════════════════════════════════════════════════════════════════
+           HERO — poster + info over fixed backdrop
+           ══════════════════════════════════════════════════════════════════ */}
+        {/* Spacer so poster sits in upper portion of backdrop */}
+        <View style={{ height: layout.height * 0.15 }} />
+
+        <View style={[styles.heroSection, { paddingHorizontal: layout.screenPadding }]}>
+          {/* Poster centered (matching web + MediaDetailScreen) */}
+          <View style={styles.posterCenter}>
+            <View style={styles.posterShadow}>
+              {posterUrl ? (
+                <Image
+                  source={{ uri: posterUrl }}
+                  style={[styles.poster, { width: posterWidth, height: posterHeight }]}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.poster, styles.posterPlaceholder, { width: posterWidth, height: posterHeight }]}>
+                  <Film size={48} color="#444" />
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Title */}
+          <Text
+            style={[styles.title, { fontSize: scaledFont(28, layout.fontScale) }]}
+            numberOfLines={2}
+          >
+            {series.title}
+          </Text>
+
+          {/* Meta row: Year · Status · Network · Edit */}
+          <View style={styles.metaRow}>
+            {series.first_air_date && (
+              <Text style={[styles.metaText, { fontSize: scaledFont(13, layout.fontScale) }]}>
+                {series.first_air_date.split('-')[0]}
+              </Text>
+            )}
+            {series.status && (
+              <View style={styles.statusBadge}>
+                <Text style={[styles.statusText, { fontSize: scaledFont(11, layout.fontScale) }]}>
+                  {series.status}
+                </Text>
+              </View>
+            )}
+            {series.network && (
+              <View style={styles.networkRow}>
+                <Tv size={scaledFont(12, layout.fontScale)} color="#999" />
+                <Text style={[styles.metaText, { fontSize: scaledFont(12, layout.fontScale) }]}>
+                  {series.network}
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.editBadge}
+              onPress={handleEditMetadata}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Pencil size={11} color="#ccc" />
+              <Text style={styles.editBadgeText}>Edit</Text>
+            </TouchableOpacity>
+            {series.metadata_locked && (
+              <View style={styles.lockBadge}>
+                <Lock size={11} color="#fbbf24" />
               </View>
             )}
           </View>
 
-          {/* Info column — title + meta + actions to the right of poster */}
-          <View style={styles.heroMetaInfo}>
-            {/* Title row */}
-            <View style={styles.titleRow}>
+          {/* Overview */}
+          {series.overview && (
+            <TouchableOpacity onPress={() => setShowFullOverview(!showFullOverview)} activeOpacity={0.7}>
               <Text
-                style={[styles.title, { fontSize: scaledFont(28, layout.fontScale) }]}
-                numberOfLines={2}
-              >
-                {series.title}
-              </Text>
-              {series.metadata_locked && (
-                <View style={styles.lockBadge}>
-                  <Lock size={scaledFont(11, layout.fontScale)} color="#fff" />
-                </View>
-              )}
-            </View>
-
-            {/* Year · Status · Network inline */}
-            <View style={styles.metaRow}>
-              {series.first_air_date && (
-                <Text style={[styles.year, { fontSize: scaledFont(13, layout.fontScale) }]}>
-                  {series.first_air_date.split('-')[0]}
-                </Text>
-              )}
-              {series.status && (
-                <View style={styles.statusBadge}>
-                  <Text style={[styles.statusText, { fontSize: scaledFont(10, layout.fontScale) }]}>
-                    {series.status}
-                  </Text>
-                </View>
-              )}
-              {series.network && (
-                <View style={styles.networkRow}>
-                  <Tv size={scaledFont(11, layout.fontScale)} color="#888" />
-                  <Text style={[styles.networkText, { fontSize: scaledFont(12, layout.fontScale) }]}>
-                    {series.network}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* Play + Trailer buttons */}
-            <View style={styles.actionRow}>
-              <TouchableOpacity style={styles.playButton} onPress={handlePlay}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Play size={scaledFont(16, layout.fontScale)} color="#fff" />
-                  <Text style={[styles.playButtonText, { fontSize: scaledFont(14, layout.fontScale) }]}>
-                    Play
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              {youtubeKey && (
-                <TouchableOpacity style={styles.trailerButton} onPress={() => setShowTrailer(true)}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <Film size={scaledFont(13, layout.fontScale)} color="#fff" />
-                    <Text
-                      style={[styles.trailerButtonText, { fontSize: scaledFont(12, layout.fontScale) }]}
-                    >
-                      Trailer
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </View>
-
-        {/* Overview */}
-        {series.overview && (
-          <TouchableOpacity onPress={() => setShowFullOverview(!showFullOverview)}>
-            <Text
-              style={[
-                styles.overview,
-                {
+                style={[styles.overview, {
                   fontSize: scaledFont(13, layout.fontScale),
                   lineHeight: scaledFont(20, layout.fontScale),
-                },
-              ]}
-              numberOfLines={showFullOverview ? undefined : 2}
-            >
-              {series.overview}
-            </Text>
-            {!showFullOverview && series.overview.length > 80 && (
-              <Text style={[styles.readMore, { fontSize: scaledFont(13, layout.fontScale) }]}>
-                Read more
+                }]}
+                numberOfLines={showFullOverview ? undefined : 3}
+              >
+                {series.overview}
               </Text>
-            )}
-          </TouchableOpacity>
-        )}
+              {!showFullOverview && series.overview.length > 120 && (
+                <Text style={[styles.readMore, { fontSize: scaledFont(12, layout.fontScale) }]}>
+                  Read more
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
 
-        {/* Seasons */}
+          {/* Play/Resume button */}
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.playButton} onPress={handlePlay} activeOpacity={0.8}>
+              <Play size={scaledFont(16, layout.fontScale)} color="#fff" fill="#fff" />
+              <Text style={[styles.playButtonText, { fontSize: scaledFont(14, layout.fontScale) }]}>
+                {playLabel}
+              </Text>
+            </TouchableOpacity>
+
+            {youtubeKey && (
+              <TouchableOpacity style={styles.trailerButton} onPress={() => setShowTrailer(true)} activeOpacity={0.8}>
+                <Film size={scaledFont(14, layout.fontScale)} color="#fff" />
+                <Text style={[styles.trailerButtonText, { fontSize: scaledFont(13, layout.fontScale) }]}>
+                  Trailer
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {playSubtitle && (
+            <Text style={[styles.playSubtitle, { fontSize: scaledFont(12, layout.fontScale) }]}>
+              {playSubtitle}
+            </Text>
+          )}
+        </View>
+
+        {/* ══════════════════════════════════════════════════════════════════
+           EPISODES SECTION
+           ══════════════════════════════════════════════════════════════════ */}
         {sortedSeasons.length > 0 && (
-          <View style={styles.section}>
+          <View style={{ paddingHorizontal: layout.screenPadding }}>
+            <Text style={[styles.sectionTitle, { fontSize: scaledFont(22, layout.fontScale) }]}>
+              Episodes
+            </Text>
+
+            {/* Season tabs */}
             <ScrollView
               ref={seasonScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.seasonTabs}
-              contentContainerStyle={{ gap: 8, paddingRight: layout.screenPadding }}
+              contentContainerStyle={{ gap: 8 }}
             >
               {sortedSeasons.map((season) => (
                 <TouchableOpacity
@@ -411,6 +405,7 @@ export function SeriesDetailScreen() {
                     currentSeason?.id === season.id && styles.seasonTabActive,
                   ]}
                   onPress={() => setSelectedSeasonId(season.id)}
+                  activeOpacity={0.7}
                 >
                   <Text
                     style={[
@@ -425,9 +420,9 @@ export function SeriesDetailScreen() {
               ))}
             </ScrollView>
 
-            {/* Episode List */}
+            {/* Episode list */}
             {loadingEpisodes ? (
-              <ActivityIndicator size="small" color="#e50914" style={styles.episodeLoader} />
+              <ActivityIndicator size="small" color="#e50914" style={{ marginVertical: 24 }} />
             ) : episodes && episodes.length > 0 ? (
               <View style={styles.episodeList}>
                 {episodes.map((episode) => {
@@ -437,122 +432,114 @@ export function SeriesDetailScreen() {
                       ? Math.min((episodeProgress.position / episode.duration) * 100, 100)
                       : 0
                   const isCompleted = episodeProgress?.completed === true
+                  const hasProgress = !!episodeProgress && episodeProgress.position > 0 && !isCompleted && (episode.duration ?? 0) > 0
+                  const thumbWidth = layout.sideBySideDetail ? 160 : 120
+                  const thumbHeight = thumbWidth * 0.625 // 16:10 ratio
+
                   return (
                     <Pressable
                       key={episode.id}
                       style={({ pressed }) => [
-                        styles.episodeItem,
-                        pressed && styles.episodeItemPressed,
+                        styles.episodeCard,
+                        pressed && styles.episodeCardPressed,
                       ]}
                       onPress={() => handleEpisodePress(episode)}
                     >
-                      {/* Still */}
-                      <View
-                        style={[
-                          styles.episodeThumbContainer,
-                          { width: episodeThumbWidth, height: episodeThumbHeight },
-                        ]}
-                      >
+                      {/* Thumbnail */}
+                      <View style={[styles.thumbContainer, { width: thumbWidth, height: thumbHeight }]}>
                         {episode.still_path ? (
                           <Image
-                            source={{ uri: mediaImage(episode.still_path, 'w400') || '' }}
-                            style={[
-                              styles.episodeThumb,
-                              { width: episodeThumbWidth, height: episodeThumbHeight },
-                            ]}
+                            source={{ uri: mediaImage(episode.still_path, 'w300') || '' }}
+                            style={[styles.thumbImage, { width: thumbWidth, height: thumbHeight }]}
                             resizeMode="cover"
                           />
                         ) : (
-                          <View
-                            style={[
-                              styles.episodeThumb,
-                              styles.episodeThumbPlaceholder,
-                              { width: episodeThumbWidth, height: episodeThumbHeight },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.episodeThumbText,
-                                { fontSize: scaledFont(22, layout.fontScale) },
-                              ]}
-                            >
-                              {episode.episode_number}
-                            </Text>
+                          <View style={[styles.thumbImage, styles.thumbPlaceholder, { width: thumbWidth, height: thumbHeight }]}>
+                            <Film size={24} color="#555" />
                           </View>
                         )}
-                        {episodeProgress && episodeProgress.position > 0 && !isCompleted && (
-                          <View style={styles.episodeProgressOverlay}>
-                            <View style={styles.episodeProgressBar}>
-                              <View
-                                style={[
-                                  styles.episodeProgressFill,
-                                  { width: `${progressPercent}%` },
-                                ]}
-                              />
-                            </View>
+                        {/* Play overlay */}
+                        <View style={styles.thumbPlayOverlay}>
+                          <View style={styles.thumbPlayCircle}>
+                            <Play size={14} color="#fff" fill="#fff" />
                           </View>
-                        )}
-                        {/* Play icon overlay */}
-                        <View style={styles.episodePlayIcon}>
-                          <Play size={16} color="#fff" />
                         </View>
+                        {/* Progress bar on thumbnail */}
+                        {hasProgress && (
+                          <View style={styles.thumbProgress}>
+                            <View style={[styles.thumbProgressFill, { width: `${progressPercent}%` }]} />
+                          </View>
+                        )}
                       </View>
 
-                      {/* Info */}
+                      {/* Episode info */}
                       <View style={styles.episodeInfo}>
-                        <Text
-                          style={[
-                            styles.episodeTitle,
-                            { fontSize: scaledFont(14, layout.fontScale) },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {episode.episode_number}. {episode.title}
-                        </Text>
-                        {episode.duration && (
+                        <View style={styles.episodeTitleRow}>
                           <Text
-                            style={[
-                              styles.episodeRuntime,
-                              { fontSize: scaledFont(12, layout.fontScale) },
-                            ]}
+                            style={[styles.episodeNumber, { fontSize: scaledFont(15, layout.fontScale) }]}
                           >
-                            {Math.floor(episode.duration / 60)}m
+                            {episode.episode_number}
                           </Text>
-                        )}
+                          <Text
+                            style={[styles.episodeTitle, { fontSize: scaledFont(14, layout.fontScale) }]}
+                            numberOfLines={1}
+                          >
+                            {episode.title}
+                          </Text>
+                          {isCompleted && (
+                            <Check size={16} color="#22c55e" />
+                          )}
+                        </View>
                         {episode.overview && (
                           <Text
-                            style={[
-                              styles.episodeOverview,
-                              {
-                                fontSize: scaledFont(12, layout.fontScale),
-                                lineHeight: scaledFont(18, layout.fontScale),
-                              },
-                            ]}
+                            style={[styles.episodeOverview, {
+                              fontSize: scaledFont(12, layout.fontScale),
+                              lineHeight: scaledFont(18, layout.fontScale),
+                            }]}
                             numberOfLines={2}
                           >
                             {episode.overview}
                           </Text>
                         )}
+                        {hasProgress && (
+                          <View style={styles.episodeProgressRow}>
+                            <View style={styles.episodeProgressTrack}>
+                              <View style={[styles.episodeProgressFill, { width: `${progressPercent}%` }]} />
+                            </View>
+                            <Text style={[styles.episodeProgressText, { fontSize: scaledFont(11, layout.fontScale) }]}>
+                              {Math.round(progressPercent)}%
+                            </Text>
+                          </View>
+                        )}
+                        {episode.duration && !hasProgress && (
+                          <Text style={[styles.episodeDuration, { fontSize: scaledFont(11, layout.fontScale) }]}>
+                            {formatDuration(episode.duration)}
+                          </Text>
+                        )}
                       </View>
 
-                      {isCompleted && (
-                        <View style={styles.watchedIndicator}>
-                          <Check size={14} color="#fff" />
-                        </View>
-                      )}
+                      {/* Three-dot menu */}
+                      <TouchableOpacity
+                        style={styles.episodeMenuBtn}
+                        onPress={() => setEpisodeToEdit(episode)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <MoreVertical size={18} color="#666" />
+                      </TouchableOpacity>
                     </Pressable>
                   )
                 })}
               </View>
             ) : (
-              <Text style={[styles.noEpisodes, { fontSize: scaledFont(14, layout.fontScale) }]}>
-                No episodes available
-              </Text>
+              <View style={styles.noEpisodesContainer}>
+                <Text style={[styles.noEpisodes, { fontSize: scaledFont(14, layout.fontScale) }]}>
+                  No episodes available
+                </Text>
+              </View>
             )}
           </View>
         )}
       </ScrollView>
-
 
       {/* Action Menu Modal */}
       <Modal
@@ -625,6 +612,13 @@ export function SeriesDetailScreen() {
   )
 }
 
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.floor((seconds % 3600) / 60)
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -641,353 +635,302 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  // ── Full-screen Backdrop ──────────────────────────────────────────────────────
-  fullBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 0,
-  },
-  fullBackdropPlaceholder: {
-    backgroundColor: '#1f1f1f',
-  },
-
-  // ── Vertical gradient bands: top → bottom (dark → transparent) ─────────────────
-  vGrad0: { position: 'absolute', top: 0, left: 0, right: 0, height: '20%', zIndex: 1, backgroundColor: 'rgba(20,20,20,0.95)' },
-  vGrad1: { position: 'absolute', top: '20%', left: 0, right: 0, height: '20%', zIndex: 1, backgroundColor: 'rgba(20,20,20,0.78)' },
-  vGrad2: { position: 'absolute', top: '40%', left: 0, right: 0, height: '20%', zIndex: 1, backgroundColor: 'rgba(20,20,20,0.55)' },
-  vGrad3: { position: 'absolute', top: '60%', left: 0, right: 0, height: '20%', zIndex: 1, backgroundColor: 'rgba(20,20,20,0.32)' },
-  vGrad4: { position: 'absolute', top: '80%', left: 0, right: 0, bottom: 0, zIndex: 1, backgroundColor: 'rgba(20,20,20,0.10)' },
-
-  // ── Horizontal gradient bands: left → right (dark → transparent) ─────────────────
-  hGrad0: { position: 'absolute', top: 0, left: 0, bottom: 0, width: '35%', zIndex: 2, backgroundColor: 'rgba(20,20,20,0.85)' },
-  hGrad1: { position: 'absolute', top: 0, bottom: 0, left: '25%', width: '25%', zIndex: 2, backgroundColor: 'rgba(20,20,20,0.50)' },
-  hGrad2: { position: 'absolute', top: 0, bottom: 0, left: '45%', width: '20%', zIndex: 2, backgroundColor: 'rgba(20,20,20,0.20)' },
-  hGrad3: { position: 'absolute', top: 0, bottom: 0, left: '60%', width: '15%', zIndex: 2, backgroundColor: 'rgba(20,20,20,0.05)' },
-
-  // ── Bottom solid fade ─────────────────────────────────────────────────────────
-  bottomSolid: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '25%', zIndex: 3, backgroundColor: '#141414' },
-
-  // ── Overlay Header ───────────────────────────────────────────────────────────
-  overlayHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    zIndex: 100,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  overlayTitle: {
+  // ── Scroll ────────────────────────────────────────────────────────────────
+  scroll: {
     flex: 1,
-    color: '#fff',
-    fontWeight: '600',
-    textAlign: 'center',
-    marginHorizontal: 8,
-    textShadowColor: 'rgba(0,0,0,0.9)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  overlayMenuButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 
-  // ── Scroll content ──────────────────────────────────────────────────────────
-  scrollContent: {
+  // ── Fixed backdrop (behind scroll) ─────────────────────────────────────
+  fixedBackdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    zIndex: 10,
+    height: SCREEN_WIDTH * 1.2,
   },
-  scrollContentContainer: {
-    flexGrow: 1,
+  backdropPlaceholder: {
+    backgroundColor: '#1a1a1a',
   },
 
-  // ── Hero meta (poster + info side-by-side) ────────────────────────────────
-  heroMeta: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    alignItems: 'flex-end',
-    paddingTop: 80, // Space for overlay header
-    gap: 14,
+  // ── Hero section ──────────────────────────────────────────────────────────
+  heroSection: {
+    marginBottom: 24,
   },
-  posterWrapper: {
+  posterCenter: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  posterShadow: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.65,
-    shadowRadius: 14,
-    elevation: 14,
-    flexShrink: 0,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.7,
+    shadowRadius: 16,
+    elevation: 16,
   },
   poster: {
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: '#1f1f1f',
   },
   posterPlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  posterText: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#444',
-  },
-  heroMetaInfo: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    paddingBottom: 2,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginBottom: 6,
-  },
+
   title: {
-    fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
-    flex: 1,
-    textShadowColor: 'rgba(0,0,0,0.9)',
+    marginBottom: 8,
+    textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
-  },
-  lockBadge: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 4,
+    textShadowRadius: 8,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  year: {
-    fontSize: 13,
-    color: '#bbb',
+  metaText: {
+    color: '#aaa',
   },
   statusBadge: {
-    backgroundColor: 'rgba(128, 90, 213, 0.25)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: 'rgba(168,85,247,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 4,
   },
   statusText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#c4a0ff',
+    fontWeight: '600',
+    color: '#c084fc',
   },
   networkRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
   },
-  networkText: {
-    fontSize: 12,
-    color: '#888',
+  editBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  editBadgeText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#ccc',
+  },
+  lockBadge: {
+    backgroundColor: 'rgba(251,191,36,0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 12,
   },
   playButton: {
     backgroundColor: '#e50914',
     borderRadius: 6,
     paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 22,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   playButtonText: {
     color: '#fff',
     fontWeight: '700',
   },
   trailerButton: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderRadius: 6,
     paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.15)',
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
   trailerButtonText: {
     color: '#fff',
     fontWeight: '600',
   },
+
+  // ── Overview ──────────────────────────────────────────────────────────────
   overview: {
-    fontSize: 13,
-    color: '#bbb',
-    lineHeight: 20,
-    paddingHorizontal: 16,
-    marginBottom: 20,
+    color: '#ccc',
+    marginBottom: 14,
   },
   readMore: {
-    fontSize: 13,
     color: '#e50914',
-    marginTop: 4,
-    paddingHorizontal: 16,
+    marginTop: -10,
+    marginBottom: 14,
+    fontWeight: '500',
+  },
+  playSubtitle: {
+    color: '#999',
+    marginTop: 6,
   },
 
-  // ── Sections ─────────────────────────────────────────────────────────────────
-  section: {
-    marginBottom: 24,
+  // ── Episodes section ──────────────────────────────────────────────────────
+  sectionTitle: {
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 16,
   },
   seasonTabs: {
     marginBottom: 16,
-    paddingHorizontal: 16,
   },
   seasonTab: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   seasonTabActive: {
     backgroundColor: '#e50914',
-    borderColor: '#e50914',
   },
   seasonTabText: {
-    fontSize: 13,
     color: '#888',
+    fontWeight: '500',
   },
   seasonTabTextActive: {
     color: '#fff',
     fontWeight: '600',
   },
-  episodeLoader: {
-    marginVertical: 20,
-  },
-  noEpisodes: {
-    color: '#666',
-    fontSize: 14,
-    textAlign: 'center',
-    marginVertical: 20,
-  },
 
-  // ── Episode cards ────────────────────────────────────────────────────────────
+  // ── Episode cards ─────────────────────────────────────────────────────────
   episodeList: {
     gap: 10,
-    paddingHorizontal: 16,
   },
-  episodeItem: {
+  episodeCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: 'rgba(30,30,30,0.9)',
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    padding: 10,
+    gap: 12,
+  },
+  episodeCardPressed: {
+    backgroundColor: 'rgba(50,50,50,0.9)',
+  },
+  thumbContainer: {
+    borderRadius: 8,
     overflow: 'hidden',
-  },
-  episodeItemPressed: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  episodeThumbContainer: {
     position: 'relative',
   },
-  episodeThumb: {
-    backgroundColor: '#2a2a2a',
+  thumbImage: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
   },
-  episodeThumbPlaceholder: {
+  thumbPlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  episodeThumbText: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#444',
+  thumbPlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  episodeProgressOverlay: {
+  thumbPlayCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(229,9,20,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  thumbProgress: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  episodeProgressBar: {
+  thumbProgressFill: {
     height: '100%',
-    backgroundColor: 'rgba(229,9,20,0.9)',
+    backgroundColor: '#e50914',
+    borderRadius: 1.5,
+  },
+
+  episodeInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  episodeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  episodeNumber: {
+    fontWeight: 'bold',
+    color: '#666',
+  },
+  episodeTitle: {
+    fontWeight: '600',
+    color: '#fff',
+    flex: 1,
+  },
+  episodeOverview: {
+    color: '#888',
+    marginTop: 2,
+  },
+  episodeProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+    maxWidth: 200,
+  },
+  episodeProgressTrack: {
+    flex: 1,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   episodeProgressFill: {
     height: '100%',
+    borderRadius: 1.5,
     backgroundColor: '#e50914',
   },
-  episodePlayIcon: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginTop: -12,
-    marginLeft: -12,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  episodeInfo: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  episodeTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 3,
-  },
-  episodeRuntime: {
-    fontSize: 12,
-    color: '#777',
-    marginBottom: 3,
-  },
-  episodeOverview: {
-    fontSize: 12,
+  episodeProgressText: {
     color: '#666',
-    lineHeight: 17,
   },
-  watchedIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(26,92,26,0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
+  episodeDuration: {
+    color: '#666',
+    marginTop: 4,
+  },
+  episodeMenuBtn: {
+    padding: 8,
+    alignSelf: 'center',
   },
 
-  // ── Menu ──────────────────────────────────────────────────────────────────────
-  menuIcon: {
-    fontSize: 20,
-    color: '#fff',
+  noEpisodesContainer: {
+    height: 100,
+    borderRadius: 10,
+    backgroundColor: 'rgba(30,30,30,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
+  noEpisodes: {
+    color: '#666',
+  },
+
+  // ── Menu ──────────────────────────────────────────────────────────────────
   menuOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',

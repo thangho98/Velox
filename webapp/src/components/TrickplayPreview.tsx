@@ -44,73 +44,66 @@ export function TrickplayPreview({
   }
 
   // Parse VTT content
-  const parseVtt = useCallback(
-    (vttText: string, baseUrl: string, token: string | null): VttCue[] => {
-      const lines = vttText.split('\n')
-      const parsed: VttCue[] = []
-      let i = 0
+  const parseVtt = useCallback((vttText: string, baseUrl: string): VttCue[] => {
+    const lines = vttText.split('\n')
+    const parsed: VttCue[] = []
+    let i = 0
 
-      // Skip WEBVTT header
-      while (i < lines.length && !lines[i].includes('-->')) {
-        i++
-      }
+    // Skip WEBVTT header
+    while (i < lines.length && !lines[i].includes('-->')) {
+      i++
+    }
 
-      while (i < lines.length) {
-        const line = lines[i].trim()
+    while (i < lines.length) {
+      const line = lines[i].trim()
 
-        // Look for timestamp line
-        if (line.includes('-->')) {
-          const timeMatch = line.match(
-            /(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/,
-          )
-          if (timeMatch && i + 1 < lines.length) {
-            const startTime = parseTime(timeMatch[1])
-            const endTime = parseTime(timeMatch[2])
-            const imageLine = lines[i + 1].trim()
+      // Look for timestamp line
+      if (line.includes('-->')) {
+        const timeMatch = line.match(
+          /(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/,
+        )
+        if (timeMatch && i + 1 < lines.length) {
+          const startTime = parseTime(timeMatch[1])
+          const endTime = parseTime(timeMatch[2])
+          const imageLine = lines[i + 1].trim()
 
-            // Parse image reference: sprite_001.jpg#xywh=0,0,320,180
-            const imgMatch = imageLine.match(/([^#]+)#xywh=(\d+),(\d+),(\d+),(\d+)/)
-            if (imgMatch) {
-              const spriteFile = imgMatch[1]
-              const x = parseInt(imgMatch[2], 10)
-              const y = parseInt(imgMatch[3], 10)
-              const width = parseInt(imgMatch[4], 10)
-              const height = parseInt(imgMatch[5], 10)
+          // Parse image reference: sprite_001.jpg#xywh=0,0,320,180
+          const imgMatch = imageLine.match(/([^#]+)#xywh=(\d+),(\d+),(\d+),(\d+)/)
+          if (imgMatch) {
+            const spriteFile = imgMatch[1]
+            const x = parseInt(imgMatch[2], 10)
+            const y = parseInt(imgMatch[3], 10)
+            const width = parseInt(imgMatch[4], 10)
+            const height = parseInt(imgMatch[5], 10)
 
-              // Construct full URL: backend may return absolute (/api/...) or bare filename.
-              const rawImageUrl =
-                spriteFile.startsWith('http') || spriteFile.startsWith('/')
-                  ? spriteFile
-                  : `${baseUrl}/${spriteFile}`
-              // Append auth token so <img> requests are authorized.
-              const imageUrl = token
-                ? rawImageUrl +
-                  (rawImageUrl.includes('?') ? '&' : '?') +
-                  'token=' +
-                  encodeURIComponent(token)
-                : rawImageUrl
+            // Construct full URL: backend may return absolute (/api/...) or bare filename.
+            const rawImageUrl =
+              spriteFile.startsWith('http') || spriteFile.startsWith('/')
+                ? spriteFile
+                : `${baseUrl}/${spriteFile}`
+            // imageUrl is now authenticated via the authSkipPaths middleware,
+            // so no token needs to be appended to sprite URLs.
+            const imageUrl = rawImageUrl
 
-              parsed.push({
-                startTime,
-                endTime,
-                imageUrl,
-                x,
-                y,
-                width,
-                height,
-              })
-            }
-            i += 2
-            continue
+            parsed.push({
+              startTime,
+              endTime,
+              imageUrl,
+              x,
+              y,
+              width,
+              height,
+            })
           }
+          i += 2
+          continue
         }
-        i++
       }
+      i++
+    }
 
-      return parsed
-    },
-    [],
-  )
+    return parsed
+  }, [])
 
   // Fetch VTT manifest, polling if backend returns 202 (still generating).
   useEffect(() => {
@@ -137,7 +130,7 @@ export function TrickplayPreview({
 
         if (response.ok) {
           const vttText = await response.text()
-          const parsed = parseVtt(vttText, baseUrl, accessToken)
+          const parsed = parseVtt(vttText, baseUrl)
           setCues(parsed)
           loadedRef.current = true
 
@@ -167,7 +160,7 @@ export function TrickplayPreview({
       cancelled = true
       if (retryTimer) clearTimeout(retryTimer)
     }
-  }, [mediaId, parseVtt, accessToken])
+  }, [mediaId, parseVtt])
 
   // Find current cue based on hover time
   useEffect(() => {

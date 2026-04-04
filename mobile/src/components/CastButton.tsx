@@ -21,9 +21,7 @@ interface CastButtonProps {
 export function CastButton({ style, size = 18 }: CastButtonProps) {
   const { available, connected, casting, showCastPicker } = useChromecast()
 
-  if (!available && !connected) return null
-
-  const iconColor = casting ? '#4a9eff' : connected ? '#fff' : '#888'
+  const iconColor = casting ? '#4a9eff' : connected ? '#fff' : 'rgba(255,255,255,0.5)'
 
   return (
     <TouchableOpacity

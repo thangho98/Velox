@@ -245,6 +245,7 @@ func (app *serverApp) initServices() error {
 		repos.subtitle,
 		repos.audioTrack,
 		repos.marker,
+		app.trickplayGen,
 	)
 
 	app.services.metadata, app.tmdbClient = app.initMetadataService(app.services.pipeline)
@@ -344,8 +345,8 @@ func (app *serverApp) initTrickplayGenerator() error {
 		return fmt.Errorf("create trickplay dir: %w", err)
 	}
 
-	app.trickplayGen = trickplay.New(app.cfg.TrickplayPath, app.cfg.TrickplayInterval)
-	log.Printf("trickplay enabled (interval: %ds)", app.cfg.TrickplayInterval)
+	app.trickplayGen = trickplay.New(app.cfg.TrickplayPath, app.cfg.TrickplayInterval, app.hwAccel)
+	log.Printf("trickplay enabled (interval: %ds, hwaccel: %s)", app.cfg.TrickplayInterval, app.hwAccel)
 
 	return nil
 }

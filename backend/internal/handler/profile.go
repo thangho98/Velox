@@ -120,8 +120,8 @@ func (h *ProfileHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mediaID, err := parseID(r, "mediaId")
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid media id")
+	if err != nil || mediaID <= 0 {
+		respondJSON(w, http.StatusOK, nil) // No progress for invalid ID
 		return
 	}
 

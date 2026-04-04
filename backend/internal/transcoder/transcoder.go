@@ -1,6 +1,7 @@
 package transcoder
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -16,9 +17,16 @@ import (
 // transcodeJob tracks a background FFmpeg transcode.
 // Multiple HTTP requests waiting for the same transcode all share one job.
 type transcodeJob struct {
-	done chan struct{} // closed (not sent) when FFmpeg exits
-	err  error         // set before done is closed
+	done         chan struct{}      // closed (not sent) when FFmpeg exits
+	err          error              // set before done is closed
+	cancel       context.CancelFunc // cancels the FFmpeg context
+	mediaID      int64              // media this job belongs to
+	lastActivity time.Time          // last time a segment was requested
 }
+
+// staleSessionTimeout is how long a transcode session can go without any
+// segment requests before it is considered abandoned and killed.
+const staleSessionTimeout = 5 * time.Minute
 
 // Transcoder manages FFmpeg-based HLS transcoding and remuxing.
 type Transcoder struct {
@@ -27,6 +35,7 @@ type Transcoder struct {
 	semaphore chan struct{} // limits concurrent FFmpeg transcode jobs
 	mu        sync.Mutex
 	active    map[string]*transcodeJob // masterPath → in-progress job
+	stopCh    chan struct{}            // closed when the transcoder is closed
 }
 
 // New creates a Transcoder.
@@ -43,12 +52,88 @@ func New(outputDir string, hwAccel string, maxConcurrent int) *Transcoder {
 	if !hasSubtitlesFilter {
 		log.Println("WARN: FFmpeg missing 'subtitles' filter (libass not linked) — subtitle burn-in disabled, using client-side rendering")
 	}
-	return &Transcoder{
+	t := &Transcoder{
 		outputDir: outputDir,
 		hwAccel:   hwAccel,
 		semaphore: sem,
 		active:    make(map[string]*transcodeJob),
+		stopCh:    make(chan struct{}),
 	}
+	go t.cleanupStaleJobs()
+	return t
+}
+
+// Close stops the cleanup goroutine. It does not cancel active transcodes.
+func (t *Transcoder) Close() {
+	close(t.stopCh)
+}
+
+// TouchJob updates the last activity time for an active transcode job.
+// Called by the segment server when serving segments to detect abandoned sessions.
+func (t *Transcoder) TouchJob(masterPath string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if job, ok := t.active[masterPath]; ok {
+		job.lastActivity = time.Now()
+	}
+}
+
+// TouchJobByMediaID updates the last activity time for all active transcode jobs
+// for a given media ID. Called by the segment server when serving segments.
+func (t *Transcoder) TouchJobByMediaID(mediaID int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := time.Now()
+	for _, job := range t.active {
+		if job.mediaID == mediaID {
+			job.lastActivity = now
+		}
+	}
+}
+
+// cleanupStaleJobs periodically cancels transcode sessions that have not served
+// any segment within staleSessionTimeout. This handles the case where a client
+// disconnects without calling DELETE /stream/{id}/session.
+func (t *Transcoder) cleanupStaleJobs() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-t.stopCh:
+			return
+		case <-ticker.C:
+			t.cancelStaleJobs()
+		}
+	}
+}
+
+// cancelStaleJobs kills transcode jobs that have not had any activity since staleSessionTimeout.
+func (t *Transcoder) cancelStaleJobs() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := time.Now()
+	for path, job := range t.active {
+		if now.Sub(job.lastActivity) > staleSessionTimeout {
+			log.Printf("transcoder: killing stale transcode for media %d (%s), last activity %v ago", job.mediaID, path, now.Sub(job.lastActivity).Round(time.Second))
+			job.cancel()
+		}
+	}
+}
+
+// CancelTranscode kills all active FFmpeg processes for a given media ID.
+// Called when a user stops playback or switches media/quality.
+func (t *Transcoder) CancelTranscode(mediaID int64) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	killed := 0
+	for path, job := range t.active {
+		if job.mediaID == mediaID && job.cancel != nil {
+			log.Printf("transcoder: cancelling transcode for media %d (%s)", mediaID, path)
+			job.cancel()
+			killed++
+		}
+	}
+	return killed
 }
 
 // ActiveCount returns the number of in-progress realtime transcodes.
@@ -264,19 +349,37 @@ func (t *Transcoder) hasActiveJobInDir(dir string) bool {
 	return false
 }
 
-// RemuxToWriter remuxes a video file to fragmented MP4 and writes to w.
-// Used for DirectStream: container-only operation, no codec transcoding.
-func (t *Transcoder) RemuxToWriter(inputPath string, w io.Writer) error {
-	cmd := exec.Command("ffmpeg",
-		"-i", inputPath,
-		"-c", "copy",
+// RemuxSelectedAudioToWriter remuxes a video file to fragmented MP4 and writes to w.
+// If audioStreamIndex >= 0, it keeps the first video stream and the selected audio stream.
+// Otherwise it copies all default stream mappings.
+func (t *Transcoder) RemuxSelectedAudioToWriter(inputPath string, audioStreamIndex int, w io.Writer) error {
+	args := []string{"-i", inputPath}
+	if audioStreamIndex >= 0 {
+		args = append(args,
+			"-map", "0:v:0",
+			"-map", fmt.Sprintf("0:%d", audioStreamIndex),
+			"-c:v", "copy",
+			"-c:a", "copy",
+		)
+	} else {
+		args = append(args, "-c", "copy")
+	}
+	args = append(args,
 		"-f", "mp4",
 		"-movflags", "frag_keyframe+empty_moov",
 		"pipe:1",
 	)
+
+	cmd := exec.Command("ffmpeg", args...)
 	cmd.Stdout = w
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// RemuxToWriter remuxes a video file to fragmented MP4 and writes to w.
+// Used for DirectStream: container-only operation, no codec transcoding.
+func (t *Transcoder) RemuxToWriter(inputPath string, w io.Writer) error {
+	return t.RemuxSelectedAudioToWriter(inputPath, -1, w)
 }
 
 // Clean removes transcoded files for a media item.

@@ -58,6 +58,17 @@ func (s *StreamService) FindPretranscodeProfile(ctx context.Context, profileID i
 	return s.pretranscodeSvc.GetProfile(ctx, profileID)
 }
 
+// StopTranscode kills active FFmpeg transcode processes for a media item.
+func (s *StreamService) StopTranscode(mediaID int64) int {
+	return s.transcoder.CancelTranscode(mediaID)
+}
+
+// TouchTranscodeActivity updates the last activity time for all active transcode
+// jobs for a media item. Called when serving segments to detect abandoned sessions.
+func (s *StreamService) TouchTranscodeActivity(mediaID int64) {
+	s.transcoder.TouchJobByMediaID(mediaID)
+}
+
 // RemuxToPretranscode copies existing HLS transcode output into pretranscode MP4.
 // Called after realtime transcode — "transcode once, instant forever".
 func (s *StreamService) RemuxToPretranscode(ctx context.Context, mediaFileID int64, mediaID int64, height int) {
@@ -96,7 +107,7 @@ func (s *StreamService) FindAllPretranscodesWithProfiles(ctx context.Context, me
 // subtitleStreamIndex: if >= 0, burn-in that subtitle stream into the video.
 // videoCopy: if true, copy the video stream unchanged (only transcode audio).
 // startOffset: if > 0, begin the HLS session at that global timeline position.
-func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64) (string, error) {
+func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64, maxHeight int) (string, error) {
 	var mf *model.MediaFile
 	var err error
 	if fileID > 0 {
@@ -125,11 +136,11 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID in
 	// Pass mf.ID so the cache key is (mediaID, fileID, subtitleStreamIndex) — avoids
 	// version collisions when multiple file versions exist for the same media.
 	if len(audioTracks) > 1 {
-		if err := s.transcoder.GenerateHLSWithAudio(mediaID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy, startOffset); err != nil {
+		if err := s.transcoder.GenerateHLSWithAudio(mediaID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
 			return "", err
 		}
 	} else {
-		if err := s.transcoder.GenerateHLS(mediaID, mf.FilePath, mf.ID, subtitleStreamIndex, videoCopy, startOffset); err != nil {
+		if err := s.transcoder.GenerateHLS(mediaID, mf.FilePath, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
 			return "", err
 		}
 	}
@@ -163,6 +174,21 @@ func (s *StreamService) GetPrimaryFile(ctx context.Context, mediaID, fileID int6
 		return nil, ErrNotFound
 	}
 	return mf, err
+}
+
+// GetAudioTrackForMediaFile returns an audio track if it belongs to the given media file.
+func (s *StreamService) GetAudioTrackForMediaFile(ctx context.Context, mediaFileID, trackID int64) (*model.AudioTrack, error) {
+	track, err := s.audioTrackRepo.GetByID(ctx, trackID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if track.MediaFileID != mediaFileID {
+		return nil, ErrNotFound
+	}
+	return track, nil
 }
 
 // PrepareABRHLS triggers multi-quality adaptive bitrate HLS transcoding and
@@ -204,4 +230,9 @@ func (s *StreamService) StartABRBackground(userID, mediaID, fileID int64, inputP
 // Used for DirectStream: container-only remux, no codec transcoding.
 func (s *StreamService) RemuxToWriter(inputPath string, w io.Writer) error {
 	return s.transcoder.RemuxToWriter(inputPath, w)
+}
+
+// RemuxSelectedAudioToWriter remuxes the file while selecting a specific audio stream.
+func (s *StreamService) RemuxSelectedAudioToWriter(inputPath string, audioStreamIndex int, w io.Writer) error {
+	return s.transcoder.RemuxSelectedAudioToWriter(inputPath, audioStreamIndex, w)
 }

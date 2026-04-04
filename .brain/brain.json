@@ -1,7 +1,7 @@
 {
   "meta": {
     "schema_version": "1.1.0",
-    "updated_at": "2026-04-01",
+    "updated_at": "2026-04-04",
     "plan_status": {
       "A": "✅ Done — Core Domain & Ingestion (all 5 phases 100%)",
       "B": "✅ Done — Auth & Sessions",
@@ -19,7 +19,7 @@
       "P": "✅ Done — Pre-transcode / Offline Encoding (5 phases all complete, Docker verified)",
       "Q": "✅ Done — Refactor God Files (backend: 5 god files split + audit P1-P4/P6 fixes)",
       "R": "✅ Done — Refactor Frontend (SettingsPage→17 sections, useMedia→9 modules, useSettings→4+factory, types→7 modules, WatchPage hooks extracted, React 19 patterns)",
-      "S": "🟡 Designed — Expo Mobile App (18 phases, 3 review rounds, ready to build)"
+      "S": "🟡 In Progress — Expo Mobile App (video playback ✅, series detail ✅, subtitles ✅, skip intro/up next ✅, app icon ✅, YouTube-style gestures ✅, player controls polish ✅, series/movies screens ✅, remaining: movie detail, settings, search)"
     }
   },
   "project": {

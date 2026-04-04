@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/thawng/velox/internal/model"
@@ -129,6 +130,135 @@ func filterPlayableSubtitles(subtitles []model.Subtitle, burnInSupported bool) [
 		filtered = append(filtered, sub)
 	}
 	return filtered
+}
+
+func findAudioTrackByID(audioTracks []model.AudioTrack, trackID int) *model.AudioTrack {
+	if trackID <= 0 {
+		return nil
+	}
+	for i := range audioTracks {
+		if int(audioTracks[i].ID) == trackID {
+			return &audioTracks[i]
+		}
+	}
+	return nil
+}
+
+func defaultAudioTrack(audioTracks []model.AudioTrack) *model.AudioTrack {
+	if len(audioTracks) == 0 {
+		return nil
+	}
+	for i := range audioTracks {
+		if audioTracks[i].IsDefault {
+			return &audioTracks[i]
+		}
+	}
+	return &audioTracks[0]
+}
+
+func audioTrackPlayable(track model.AudioTrack, profile *playback.DeviceProfile) bool {
+	if profile == nil {
+		return true
+	}
+	return profile.SupportsAudioCodec(playback.NormalizeCodec(track.Codec))
+}
+
+func findCompatibleAudioTrack(
+	audioTracks []model.AudioTrack,
+	profile *playback.DeviceProfile,
+	preferredLanguage string,
+	fallbackLanguage string,
+) *model.AudioTrack {
+	for _, language := range []string{preferredLanguage, fallbackLanguage} {
+		if language == "" {
+			continue
+		}
+		for i := range audioTracks {
+			if !languageMatches(audioTracks[i].Language, language) {
+				continue
+			}
+			if !audioTrackPlayable(audioTracks[i], profile) {
+				continue
+			}
+			return &audioTracks[i]
+		}
+	}
+
+	for i := range audioTracks {
+		if audioTrackPlayable(audioTracks[i], profile) {
+			return &audioTracks[i]
+		}
+	}
+
+	return nil
+}
+
+func resolvePlaybackAudioTrack(
+	requestedID int,
+	preferredLanguage string,
+	audioTracks []model.AudioTrack,
+	profile *playback.DeviceProfile,
+) (*model.AudioTrack, int, bool) {
+	requested := findAudioTrackByID(audioTracks, requestedID)
+	if requested != nil {
+		if requested.IsDefault {
+			return requested, 0, false
+		}
+		return requested, int(requested.ID), false
+	}
+
+	base := defaultAudioTrack(audioTracks)
+	if base == nil {
+		return nil, 0, false
+	}
+	if audioTrackPlayable(*base, profile) {
+		return base, 0, false
+	}
+
+	compatible := findCompatibleAudioTrack(audioTracks, profile, preferredLanguage, base.Language)
+	if compatible == nil {
+		return base, 0, false
+	}
+
+	effectiveID := 0
+	if !compatible.IsDefault {
+		effectiveID = int(compatible.ID)
+	}
+	return compatible, effectiveID, compatible.ID != base.ID
+}
+
+func adjustPlaybackDecisionForSelectedAudioTrack(
+	decision playback.PlaybackDecision,
+	selectedTrack *model.AudioTrack,
+	effectiveAudioTrackID int,
+	autoSelected bool,
+) playback.PlaybackDecision {
+	if selectedTrack == nil || effectiveAudioTrackID <= 0 {
+		return decision
+	}
+
+	label := selectedTrack.Title
+	if label == "" {
+		label = selectedTrack.Language
+	}
+	if label == "" {
+		label = fmt.Sprintf("track %d", selectedTrack.ID)
+	}
+
+	if decision.Method == playback.MethodDirectPlay {
+		decision.Method = playback.MethodDirectStream
+		decision.Container = playback.ContainerMP4
+	}
+
+	if decision.Method == playback.MethodDirectStream {
+		if autoSelected {
+			decision.Reason += fmt.Sprintf(" + auto-selected compatible audio track %s", label)
+		} else {
+			decision.Reason += fmt.Sprintf(" + selected audio track %s requires remuxed direct stream", label)
+		}
+	}
+
+	return decision
 }
 
 func playbackModeQuery(method playback.PlaybackMethod) string {

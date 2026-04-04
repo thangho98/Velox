@@ -11,7 +11,16 @@ import {
   Share,
   Alert,
 } from 'react-native'
-import { Play, Check, Circle, Link, Pencil, Lock, Search, Languages } from 'lucide-react-native'
+import { LinearGradient } from 'expo-linear-gradient'
+import {
+  Play,
+  Check,
+  Link,
+  Pencil,
+  Lock,
+  Star,
+  Heart,
+} from 'lucide-react-native'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import {
@@ -30,13 +39,10 @@ import {
 import { useTrailers } from '@velox/shared/hooks/media/useCinema'
 import { mediaImage } from '@velox/shared/lib'
 import { getServerUrl } from '../platform/mobile-adapter'
-import { PlayOptionsBottomSheet } from '../components/PlayOptionsBottomSheet'
 import { MetadataEditor } from '../components/MetadataEditor'
 import { YouTubePlayer } from '../components/YouTubePlayer'
 import { Toast } from '../components/Toast'
-import { SubtitleSearchModal } from '../components/SubtitleSearchModal'
-import { SubtitleTranslate } from '../components/SubtitleTranslate'
-import { useResponsiveLayout, scaledFont, scaledSpacing } from '../lib/responsive'
+import { useResponsiveLayout, scaledFont } from '../lib/responsive'
 import type { RootStackParamList } from '../../App'
 import type { MetadataEditRequest } from '@velox/shared/types'
 
@@ -55,7 +61,7 @@ export function MediaDetailScreen() {
   const toggleFavorite = useToggleFavorite()
   const { youtubeKey } = useTrailers(id)
   const { data: subtitles = [] } = useSubtitles(id)
-  const { subtitleLanguage, setSubtitleLanguage } = usePlayerStore()
+  const { subtitleLanguage, subtitleTrackId, setSubtitleLanguage } = usePlayerStore()
 
   // Metadata editing
   const [showMetadataEditor, setShowMetadataEditor] = useState(false)
@@ -65,20 +71,13 @@ export function MediaDetailScreen() {
   const [isFavorited, setIsFavorited] = useState(false)
   const [isWatched, setIsWatched] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
-  const [showPlayOptions, setShowPlayOptions] = useState(false)
   const [showTrailer, setShowTrailer] = useState(false)
   const [showSubtitleSelector, setShowSubtitleSelector] = useState(false)
-  const [showSubtitleSearch, setShowSubtitleSearch] = useState(false)
-  const [showSubtitleTranslate, setShowSubtitleTranslate] = useState(false)
-  const [playOptions, setPlayOptions] = useState<{
-    startFromBeginning?: boolean
-  }>({})
 
   // Responsive dimensions
-  const posterWidth = layout.sideBySideDetail ? 200 : 150
-  const posterHeight = layout.sideBySideDetail ? 300 : 225
-  const backdropHeight = layout.sideBySideDetail ? layout.height * 0.4 : layout.height * 0.5
-  const actionButtonSize = layout.largeControls ? 60 : 50
+  const posterWidth = layout.sideBySideDetail ? 200 : 200
+  const posterHeight = layout.sideBySideDetail ? 300 : 300
+  const backdropHeight = layout.height
 
   const isLoading = loadingMedia || loadingFiles
 
@@ -100,46 +99,31 @@ export function MediaDetailScreen() {
 
   const backdropUrl = media.backdrop_path ? mediaImage(media.backdrop_path, 'w1280') : null
   const posterUrl = media.poster_path ? mediaImage(media.poster_path, 'w500') : null
-
   const year = media.release_date ? media.release_date.split('-')[0] : null
 
-  // Calculate "Ends at" time
-  const endsAt = progress?.position
-    ? new Date(progress.position * 1000).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : null
+  // Get primary file for technical specs and duration
+  const primaryFile = mediaFiles?.files?.find((f) => f.is_primary) || mediaFiles?.files?.[0]
+  const durationSeconds = primaryFile?.duration || (media.duration ? media.duration : 0)
+
+  // Calculate "Ends at" time (matching web logic)
+  const remainingSeconds = durationSeconds > 0 ? durationSeconds - (progress?.position || 0) : 0
+  const endsAt =
+    remainingSeconds > 0
+      ? new Date(Date.now() + remainingSeconds * 1000).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      : null
 
   // Calculate progress percentage
   const progressPercent =
-    progress && media.duration && media.duration > 0
-      ? (progress.position / media.duration) * 100
+    progress && durationSeconds > 0
+      ? Math.min(100, (progress.position / durationSeconds) * 100)
       : 0
-
-  // Format runtime
-  const runtimeFormatted = media.duration
-    ? `${Math.floor(media.duration / 60)}h ${media.duration % 60}m`
-    : null
-
   const hasProgress = progressPercent > 0
 
   const handlePlay = () => {
-    setPlayOptions({})
-    setShowPlayOptions(true)
-  }
-
-  const handlePlayFromBeginning = () => {
-    setPlayOptions({ startFromBeginning: true })
-    setShowPlayOptions(true)
-  }
-
-  const handlePlayWithOptions = () => {
-    navigation.navigate('Episode', {
-      id,
-      seriesId: 0,
-      startFromBeginning: playOptions.startFromBeginning,
-    })
+    navigation.navigate('Episode', { id, seriesId: 0 })
   }
 
   const handleToggleFavorite = () => {
@@ -192,83 +176,32 @@ export function MediaDetailScreen() {
     setShowMetadataEditor(true)
   }
 
-  // Get primary file for technical specs
-  const primaryFile = mediaFiles?.files?.find((f) => f.is_primary) || mediaFiles?.files?.[0]
-
-  // ── Shared info content (used in both layouts) ────────────────────────────
-
-  const renderInfoContent = () => (
-    <>
-      <Text style={[styles.title, { fontSize: scaledFont(24, layout.fontScale) }]}>
-        {media.title}
-      </Text>
-
-      {/* Metadata line */}
-      <View style={styles.metadataLine}>
-        {year && (
-          <Text style={[styles.year, { fontSize: scaledFont(14, layout.fontScale) }]}>{year}</Text>
-        )}
-        {year && runtimeFormatted && (
-          <Text style={[styles.separator, { fontSize: scaledFont(14, layout.fontScale) }]}>
-            ·
-          </Text>
-        )}
-        {runtimeFormatted && (
-          <Text style={[styles.runtime, { fontSize: scaledFont(14, layout.fontScale) }]}>
-            {runtimeFormatted}
-          </Text>
-        )}
-        {endsAt && (
-          <>
-            <Text style={[styles.separator, { fontSize: scaledFont(14, layout.fontScale) }]}>
-              ·
-            </Text>
-            <Text style={[styles.endsAt, { fontSize: scaledFont(14, layout.fontScale) }]}>
-              Ends at {endsAt}
-            </Text>
-          </>
-        )}
-      </View>
-
-      {/* Ratings badges */}
-      <View style={styles.ratingsRow}>
-        {media.rating && media.rating > 0 && (
-          <View style={[styles.ratingBadge, styles.ratingBadgeTmdb]}>
-            <Text
-              style={[styles.ratingBadgeText, { fontSize: scaledFont(12, layout.fontScale) }]}
-            >
-              TMDB {media.rating.toFixed(1)}
-            </Text>
-          </View>
-        )}
-        {media.imdb_rating && media.imdb_rating > 0 && (
-          <View style={[styles.ratingBadge, styles.ratingBadgeImdb]}>
-            <Text
-              style={[styles.ratingBadgeText, { fontSize: scaledFont(12, layout.fontScale) }]}
-            >
-              IMDb {media.imdb_rating.toFixed(1)}
-            </Text>
-          </View>
-        )}
-      </View>
-    </>
-  )
-
   return (
-    <ScrollView style={styles.container}>
-      {/* Backdrop with gradient */}
-      <View style={[styles.backdropContainer, { height: backdropHeight }]}>
+    <View style={styles.container}>
+      {/* Fixed backdrop — stays behind scroll */}
+      <View style={styles.fixedBackdrop}>
         {backdropUrl ? (
-          <Image
-            source={{ uri: backdropUrl }}
-            style={styles.backdrop}
-            resizeMode="cover"
-          />
+          <Image source={{ uri: backdropUrl }} style={styles.backdrop} resizeMode="cover" />
         ) : (
           <View style={[styles.backdrop, styles.backdropPlaceholder]} />
         )}
-        {/* Gradient overlay */}
-        <View style={styles.gradientOverlay} />
+        {/* Heavy overlay matching web (from-netflix-black via-netflix-black/80 to-netflix-black/30) */}
+        <LinearGradient
+          colors={[
+            'rgba(20,20,20,0.45)',
+            'rgba(20,20,20,0.65)',
+            'rgba(20,20,20,0.88)',
+            '#141414',
+          ]}
+          locations={[0, 0.25, 0.55, 0.8]}
+          style={StyleSheet.absoluteFillObject}
+        />
+        {/* Top vignette */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.7)', 'transparent']}
+          locations={[0, 0.5]}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '25%' }}
+        />
 
         {/* Lock badge */}
         {media.metadata_locked && (
@@ -279,13 +212,21 @@ export function MediaDetailScreen() {
         )}
       </View>
 
-      {/* Content */}
-      <View style={[styles.content, { padding: layout.screenPadding, paddingTop: 0 }]}>
-        {/* Poster and Info Row */}
+      {/* Scrollable content over backdrop */}
+      <ScrollView
+        style={styles.scrollView}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Spacer — poster sits in upper portion of backdrop (like web py-24) */}
+        <View style={{ height: layout.height * 0.15 }} />
+
+        {/* Content */}
+        <View style={[styles.contentArea, { paddingHorizontal: layout.screenPadding }]}>
         {layout.sideBySideDetail ? (
-          // Tablet landscape / TV: poster left, info right
-          <View style={styles.headerSideBySide}>
-            <View style={styles.posterContainer}>
+          // ── Tablet: poster left, info right ──
+          <View style={styles.sideBySideRow}>
+            <View style={styles.posterShadow}>
               {posterUrl ? (
                 <Image
                   source={{ uri: posterUrl }}
@@ -300,100 +241,25 @@ export function MediaDetailScreen() {
                     { width: posterWidth, height: posterHeight },
                   ]}
                 >
-                  <Text style={styles.posterText}>{media.title?.charAt(0)}</Text>
+                  <Text style={styles.posterInitial}>{media.title?.charAt(0)}</Text>
                 </View>
               )}
             </View>
 
-            <View style={styles.infoSideBySide}>
-              {renderInfoContent()}
-
-              {/* Action Buttons inline in side-by-side mode */}
-              <View style={[styles.actionsRow, { marginTop: 16 }]}>
-                <View style={styles.playButtonContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.playButton,
-                      { paddingVertical: scaledSpacing(14, layout.fontScale) },
-                    ]}
-                    onPress={handlePlay}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Play size={scaledFont(18, layout.fontScale)} color="#fff" />
-                      <Text
-                        style={[
-                          styles.playButtonText,
-                          { fontSize: scaledFont(17, layout.fontScale) },
-                        ]}
-                      >
-                        {hasProgress ? 'Resume' : 'Play'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  {hasProgress && (
-                    <TouchableOpacity
-                      style={styles.fromBeginningButton}
-                      onPress={handlePlayFromBeginning}
-                    >
-                      <Text
-                        style={[
-                          styles.fromBeginningText,
-                          { fontSize: scaledFont(13, layout.fontScale) },
-                        ]}
-                      >
-                        From Beginning
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                <TouchableOpacity
-                  style={[
-                    styles.actionButton,
-                    { width: actionButtonSize, height: actionButtonSize, borderRadius: actionButtonSize / 2 },
-                    isWatched && styles.actionButtonActive,
-                  ]}
-                  onPress={handleToggleWatched}
-                >
-                  {isWatched ? (
-                    <Check size={scaledFont(22, layout.fontScale)} color="#fff" />
-                  ) : (
-                    <Circle size={scaledFont(22, layout.fontScale)} color="#fff" />
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.actionButton,
-                    { width: actionButtonSize, height: actionButtonSize, borderRadius: actionButtonSize / 2 },
-                    isFavorited && styles.actionButtonFavorite,
-                  ]}
-                  onPress={handleToggleFavorite}
-                >
-                  <Text style={[styles.actionIcon, { fontSize: scaledFont(22, layout.fontScale) }]}>
-                    {isFavorited ? '\u2665' : '\u2661'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.menuButton,
-                    { width: actionButtonSize, height: actionButtonSize, borderRadius: actionButtonSize / 2 },
-                  ]}
-                  onPress={() => setShowMenu(true)}
-                >
-                  <Text style={[styles.menuIcon, { fontSize: scaledFont(24, layout.fontScale) }]}>
-                    ⋮
-                  </Text>
-                </TouchableOpacity>
-              </View>
+            <View style={styles.sideBySideInfo}>
+              {renderTitle()}
+              {renderMetadata()}
+              {renderTechSpecs()}
+              {renderOverview()}
+              {renderActions()}
             </View>
           </View>
         ) : (
-          // Phone: stacked layout (existing code)
+          // ── Phone: centered layout (matching web) ──
           <>
-            <View style={styles.header}>
-              <View style={styles.posterContainer}>
+            {/* Poster centered */}
+            <View style={styles.posterCenter}>
+              <View style={styles.posterShadow}>
                 {posterUrl ? (
                   <Image
                     source={{ uri: posterUrl }}
@@ -408,53 +274,17 @@ export function MediaDetailScreen() {
                       { width: posterWidth, height: posterHeight },
                     ]}
                   >
-                    <Text style={styles.posterText}>{media.title?.charAt(0)}</Text>
+                    <Text style={styles.posterInitial}>{media.title?.charAt(0)}</Text>
                   </View>
                 )}
               </View>
-
-              <View style={styles.info}>{renderInfoContent()}</View>
             </View>
 
-            {/* Action Buttons (phone layout) */}
-            <View style={styles.actionsRow}>
-              <View style={styles.playButtonContainer}>
-                <TouchableOpacity style={styles.playButton} onPress={handlePlay}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Play size={18} color="#fff" />
-                    <Text style={styles.playButtonText}>
-                      {hasProgress ? 'Resume' : 'Play'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-                {hasProgress && (
-                  <TouchableOpacity
-                    style={styles.fromBeginningButton}
-                    onPress={handlePlayFromBeginning}
-                  >
-                    <Text style={styles.fromBeginningText}>From Beginning</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <TouchableOpacity
-                style={[styles.actionButton, isWatched && styles.actionButtonActive]}
-                onPress={handleToggleWatched}
-              >
-                {isWatched ? <Check size={22} color="#fff" /> : <Circle size={22} color="#fff" />}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.actionButton, isFavorited && styles.actionButtonFavorite]}
-                onPress={handleToggleFavorite}
-              >
-                <Text style={styles.actionIcon}>{isFavorited ? '\u2665' : '\u2661'}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.menuButton} onPress={() => setShowMenu(true)}>
-                <Text style={styles.menuIcon}>⋮</Text>
-              </TouchableOpacity>
-            </View>
+            {renderTitle()}
+            {renderMetadata()}
+            {renderTechSpecs()}
+            {renderOverview()}
+            {renderActions()}
           </>
         )}
 
@@ -490,86 +320,8 @@ export function MediaDetailScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Subtitle management section */}
-        <View style={styles.subtitleSection}>
-          {subtitles.length > 0 && (
-            <TouchableOpacity
-              style={styles.subtitleButton}
-              onPress={() => setShowSubtitleSelector(true)}
-            >
-              <View style={styles.subtitleButtonContent}>
-                <Text
-                  style={[
-                    styles.subtitleButtonIcon,
-                    { fontSize: scaledFont(14, layout.fontScale) },
-                  ]}
-                >
-                  CC
-                </Text>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.subtitleButtonText,
-                      { fontSize: scaledFont(14, layout.fontScale) },
-                    ]}
-                  >
-                    Subtitles
-                  </Text>
-                  <Text
-                    style={[
-                      styles.subtitleButtonValue,
-                      { fontSize: scaledFont(12, layout.fontScale) },
-                    ]}
-                  >
-                    {subtitleLanguage
-                      ? LANG_NAMES[subtitleLanguage] || subtitleLanguage
-                      : 'Off'}
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          )}
-
-          <View style={styles.subtitleActions}>
-            <TouchableOpacity
-              style={styles.subtitleActionButton}
-              onPress={() => setShowSubtitleSearch(true)}
-            >
-              <Search size={scaledFont(16, layout.fontScale)} color="rgba(255, 255, 255, 0.6)" />
-              <Text
-                style={[
-                  styles.subtitleActionText,
-                  { fontSize: scaledFont(13, layout.fontScale) },
-                ]}
-              >
-                Search Subtitles
-              </Text>
-            </TouchableOpacity>
-
-            {subtitles.filter((s) => !s.is_image).length > 0 && (
-              <TouchableOpacity
-                style={styles.subtitleActionButton}
-                onPress={() => setShowSubtitleTranslate(true)}
-              >
-                <Languages
-                  size={scaledFont(16, layout.fontScale)}
-                  color="rgba(255, 255, 255, 0.6)"
-                />
-                <Text
-                  style={[
-                    styles.subtitleActionText,
-                    { fontSize: scaledFont(13, layout.fontScale) },
-                  ]}
-                >
-                  Translate
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
         {/* Progress bar */}
-        {progressPercent > 0 && (
+        {hasProgress && (
           <View style={styles.progressSection}>
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
@@ -577,142 +329,18 @@ export function MediaDetailScreen() {
             <Text
               style={[styles.progressText, { fontSize: scaledFont(12, layout.fontScale) }]}
             >
-              {Math.floor((progress?.position || 0) / 60)}m watched
+              {progress?.completed
+                ? 'Watched'
+                : `${formatDuration(Math.max(0, remainingSeconds))} remaining`}
             </Text>
           </View>
         )}
 
-        {/* Overview */}
-        {media.overview && (
-          <View style={styles.section}>
-            <Text
-              style={[styles.sectionTitle, { fontSize: scaledFont(18, layout.fontScale) }]}
-            >
-              Overview
-            </Text>
-            <Text
-              style={[
-                styles.overview,
-                {
-                  fontSize: scaledFont(14, layout.fontScale),
-                  lineHeight: scaledFont(22, layout.fontScale),
-                },
-              ]}
-            >
-              {media.overview}
-            </Text>
-          </View>
-        )}
-
-        {/* Technical Specs */}
-        {primaryFile && (
-          <View style={styles.section}>
-            <Text
-              style={[styles.sectionTitle, { fontSize: scaledFont(18, layout.fontScale) }]}
-            >
-              Technical Info
-            </Text>
-            <View style={styles.specsGrid}>
-              {primaryFile.width && primaryFile.height && (
-                <View style={styles.specItem}>
-                  <Text
-                    style={[styles.specLabel, { fontSize: scaledFont(12, layout.fontScale) }]}
-                  >
-                    Resolution
-                  </Text>
-                  <Text
-                    style={[styles.specValue, { fontSize: scaledFont(14, layout.fontScale) }]}
-                  >
-                    {primaryFile.width}x{primaryFile.height}
-                  </Text>
-                </View>
-              )}
-              {primaryFile.video_codec && (
-                <View style={styles.specItem}>
-                  <Text
-                    style={[styles.specLabel, { fontSize: scaledFont(12, layout.fontScale) }]}
-                  >
-                    Video
-                  </Text>
-                  <Text
-                    style={[styles.specValue, { fontSize: scaledFont(14, layout.fontScale) }]}
-                  >
-                    {primaryFile.video_codec}
-                  </Text>
-                </View>
-              )}
-              {primaryFile.audio_codec && (
-                <View style={styles.specItem}>
-                  <Text
-                    style={[styles.specLabel, { fontSize: scaledFont(12, layout.fontScale) }]}
-                  >
-                    Audio
-                  </Text>
-                  <Text
-                    style={[styles.specValue, { fontSize: scaledFont(14, layout.fontScale) }]}
-                  >
-                    {primaryFile.audio_codec}
-                  </Text>
-                </View>
-              )}
-              {primaryFile.container && (
-                <View style={styles.specItem}>
-                  <Text
-                    style={[styles.specLabel, { fontSize: scaledFont(12, layout.fontScale) }]}
-                  >
-                    Container
-                  </Text>
-                  <Text
-                    style={[styles.specValue, { fontSize: scaledFont(14, layout.fontScale) }]}
-                  >
-                    {primaryFile.container}
-                  </Text>
-                </View>
-              )}
-              {primaryFile.file_size && primaryFile.file_size > 0 && (
-                <View style={styles.specItem}>
-                  <Text
-                    style={[styles.specLabel, { fontSize: scaledFont(12, layout.fontScale) }]}
-                  >
-                    Size
-                  </Text>
-                  <Text
-                    style={[styles.specValue, { fontSize: scaledFont(14, layout.fontScale) }]}
-                  >
-                    {formatFileSize(primaryFile.file_size)}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Media Files */}
-        {mediaFiles?.files && mediaFiles.files.length > 0 && (
-          <View style={styles.section}>
-            <Text
-              style={[styles.sectionTitle, { fontSize: scaledFont(18, layout.fontScale) }]}
-            >
-              Files
-            </Text>
-            {mediaFiles.files.map((file) => (
-              <View key={file.id} style={styles.fileItem}>
-                <Text
-                  style={[styles.fileName, { fontSize: scaledFont(14, layout.fontScale) }]}
-                >
-                  {file.file_path.split('/').pop()}
-                </Text>
-                <Text
-                  style={[styles.fileInfo, { fontSize: scaledFont(12, layout.fontScale) }]}
-                >
-                  {file.width}x{file.height} · {formatFileSize(file.file_size)} ·{' '}
-                  {file.container}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
+        {/* Bottom spacing */}
+        <View style={{ height: 40 }} />
       </View>
+
+      {/* ── Modals ── */}
 
       {/* Action Menu Modal */}
       <Modal
@@ -740,7 +368,7 @@ export function MediaDetailScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuItem} onPress={handleRefreshMetadata}>
-              <Text style={styles.menuItemIcon}>🔄</Text>
+              <Text style={styles.menuItemIcon}>{'\u{1F504}'}</Text>
               <Text style={styles.menuItemText}>Refresh Metadata</Text>
             </TouchableOpacity>
 
@@ -750,14 +378,6 @@ export function MediaDetailScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-
-      {/* Play Options Bottom Sheet */}
-      <PlayOptionsBottomSheet
-        visible={showPlayOptions}
-        title={media.title || 'Movie'}
-        onPlay={handlePlayWithOptions}
-        onClose={() => setShowPlayOptions(false)}
-      />
 
       {/* Metadata Editor */}
       {showMetadataEditor && media && (
@@ -804,29 +424,26 @@ export function MediaDetailScreen() {
 
             {subtitles
               .filter((s) => !s.is_image)
-              .map((subtitle) => (
-                <TouchableOpacity
-                  key={subtitle.id}
-                  style={[
-                    styles.menuItem,
-                    subtitleLanguage === subtitle.language && styles.menuItemActive,
-                  ]}
-                  onPress={() => {
-                    setSubtitleLanguage(subtitle.language, subtitle.id)
-                    setShowSubtitleSelector(false)
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.menuItemText,
-                      subtitleLanguage === subtitle.language && styles.menuItemTextActive,
-                    ]}
+              .map((subtitle) => {
+                const isActive = subtitleTrackId === subtitle.id
+                return (
+                  <TouchableOpacity
+                    key={subtitle.id}
+                    style={[styles.menuItem, isActive && styles.menuItemActive]}
+                    onPress={() => {
+                      setSubtitleLanguage(subtitle.language, subtitle.id)
+                      setShowSubtitleSelector(false)
+                    }}
                   >
-                    {LANG_NAMES[subtitle.language] || subtitle.language} (
-                    {subtitle.format.toUpperCase()})
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[styles.menuItemText, isActive && styles.menuItemTextActive]}
+                    >
+                      {subtitle.label ||
+                        `${LANG_NAMES[subtitle.language] || subtitle.language} (${subtitle.format.toUpperCase()})`}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
 
             <TouchableOpacity
               style={styles.menuItem}
@@ -845,36 +462,194 @@ export function MediaDetailScreen() {
         onClose={() => setShowTrailer(false)}
       />
 
-      {/* Subtitle Search Modal */}
-      <SubtitleSearchModal
-        mediaId={id}
-        defaultLang={subtitleLanguage}
-        visible={showSubtitleSearch}
-        onClose={() => setShowSubtitleSearch(false)}
-        onSubtitleDownloaded={() => {
-          // Subtitles list will auto-refresh via query invalidation
-        }}
-      />
-
-      {/* Subtitle Translate Modal */}
-      <SubtitleTranslate
-        subtitles={subtitles}
-        visible={showSubtitleTranslate}
-        onClose={() => setShowSubtitleTranslate(false)}
-        onTranslated={() => {
-          // Subtitles list will auto-refresh via query invalidation
-        }}
-      />
-    </ScrollView>
+      </ScrollView>
+    </View>
   )
+
+  // ── Render helpers (inline, use closure) ──
+
+  function renderTitle() {
+    return (
+      <Text
+        style={[styles.title, { fontSize: scaledFont(28, layout.fontScale) }]}
+      >
+        {media!.title}
+      </Text>
+    )
+  }
+
+  function renderMetadata() {
+    const items: string[] = []
+    if (year) items.push(year)
+    if (durationSeconds > 0) items.push(formatDuration(durationSeconds))
+
+    return (
+      <View style={styles.metadataRow}>
+        {items.map((item, i) => (
+          <View key={i} style={styles.metadataItemRow}>
+            {i > 0 && <Text style={styles.metadataSep}>{' \u00b7 '}</Text>}
+            <Text style={[styles.metadataText, { fontSize: scaledFont(14, layout.fontScale) }]}>
+              {item}
+            </Text>
+          </View>
+        ))}
+        {endsAt && (
+          <View style={styles.metadataItemRow}>
+            {items.length > 0 && <Text style={styles.metadataSep}>{' \u00b7 '}</Text>}
+            <Text
+              style={[
+                styles.metadataText,
+                styles.endsAtText,
+                { fontSize: scaledFont(14, layout.fontScale) },
+              ]}
+            >
+              {'Ends at '}
+              {endsAt}
+            </Text>
+          </View>
+        )}
+        {media!.rating != null && media!.rating > 0 && (
+          <View style={styles.metadataItemRow}>
+            <Text style={styles.metadataSep}>{' '}</Text>
+            <Star size={14} color="#eab308" fill="#eab308" />
+            <Text
+              style={[
+                styles.metadataText,
+                { fontSize: scaledFont(14, layout.fontScale), marginLeft: 3 },
+              ]}
+            >
+              {media!.rating.toFixed(1)}
+            </Text>
+          </View>
+        )}
+      </View>
+    )
+  }
+
+  function renderTechSpecs() {
+    if (!primaryFile) return null
+    const specs: Array<{ label: string; value: string }> = []
+
+    if (primaryFile.video_codec) {
+      const res = primaryFile.height > 0 ? `${primaryFile.height}p ` : ''
+      specs.push({ label: 'Video', value: `${res}${primaryFile.video_codec.toUpperCase()}` })
+    }
+    if (primaryFile.audio_codec) {
+      specs.push({ label: 'Audio', value: primaryFile.audio_codec.toUpperCase() })
+    }
+    if (primaryFile.container) {
+      specs.push({ label: 'Container', value: primaryFile.container.toUpperCase() })
+    }
+    if (primaryFile.file_size && primaryFile.file_size > 0) {
+      specs.push({ label: 'Size', value: formatFileSize(primaryFile.file_size) })
+    }
+
+    if (specs.length === 0) return null
+
+    return (
+      <View style={styles.techSpecsRow}>
+        {specs.map((spec, i) => (
+          <View key={i} style={styles.techSpecItem}>
+            <Text style={styles.techSpecLabel}>{spec.label}</Text>
+            <Text style={styles.techSpecValue}>{' '}{spec.value}</Text>
+          </View>
+        ))}
+      </View>
+    )
+  }
+
+  function renderOverview() {
+    if (!media!.overview) return null
+    return (
+      <Text
+        style={[
+          styles.overview,
+          {
+            fontSize: scaledFont(14, layout.fontScale),
+            lineHeight: scaledFont(22, layout.fontScale),
+          },
+        ]}
+      >
+        {media!.overview}
+      </Text>
+    )
+  }
+
+  function renderActions() {
+    return (
+      <View style={styles.actionsRow}>
+        {/* Small Play button (matching web) */}
+        <TouchableOpacity style={styles.playButton} onPress={handlePlay}>
+          <Play size={16} color="#fff" fill="#fff" />
+          <Text style={styles.playButtonText}>
+            {hasProgress ? 'Resume' : 'Play'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Icon actions */}
+        <TouchableOpacity
+          style={[styles.iconButton, isWatched && styles.actionButtonActive]}
+          onPress={handleToggleWatched}
+        >
+          <Check size={20} color={isWatched ? '#fff' : '#aaa'} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.iconButton, isFavorited && styles.actionButtonFavorite]}
+          onPress={handleToggleFavorite}
+        >
+          <Heart
+            size={20}
+            color={isFavorited ? '#ec4899' : '#aaa'}
+            fill={isFavorited ? '#ec4899' : 'none'}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.iconButton} onPress={() => setShowMenu(true)}>
+          <Text style={styles.menuDots}>{'\u22EE'}</Text>
+        </TouchableOpacity>
+
+        {/* Inline subtitle selector (matching web) */}
+        {subtitles.length > 0 && (
+          <View style={styles.inlineSubtitleRow}>
+            <Text style={styles.inlineSubtitleLabel}>Subtitles</Text>
+            <TouchableOpacity
+              style={styles.inlineSubtitlePicker}
+              onPress={() => setShowSubtitleSelector(true)}
+            >
+              <Text style={styles.inlineSubtitleValue} numberOfLines={1}>
+                {(() => {
+                  if (!subtitleLanguage) return 'Off'
+                  const active = subtitles.find((s) => s.id === subtitleTrackId)
+                  return active?.label || LANG_NAMES[subtitleLanguage] || subtitleLanguage
+                })()}
+              </Text>
+              <Text style={styles.inlineSubtitleArrow}>{'\u25BE'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    )
+  }
+}
+
+// ── Helpers ──
+
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.floor((seconds % 3600) / 60)
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
 }
 
 function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+  const gb = bytes / (1024 * 1024 * 1024)
+  if (gb >= 1) return `${gb.toFixed(2)} GB`
+  const mb = bytes / (1024 * 1024)
+  return `${mb.toFixed(1)} MB`
 }
+
+// ── Styles ──
 
 const styles = StyleSheet.create({
   container: {
@@ -891,6 +666,20 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 16,
   },
+
+  // Fixed backdrop (behind scroll)
+  fixedBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  scrollView: {
+    flex: 1,
+  },
+
+  // Backdrop
   backdropContainer: {
     position: 'relative',
   },
@@ -900,14 +689,6 @@ const styles = StyleSheet.create({
   },
   backdropPlaceholder: {
     backgroundColor: '#1f1f1f',
-  },
-  gradientOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '70%',
-    backgroundColor: 'transparent',
   },
   lockBadge: {
     position: 'absolute',
@@ -926,27 +707,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  content: {
-    marginTop: -80,
+
+  // Content area
+  contentArea: {
     paddingTop: 0,
   },
-  // Phone: stacked layout
-  header: {
-    flexDirection: 'row',
+
+  // Poster
+  posterCenter: {
+    alignItems: 'center',
     marginBottom: 20,
   },
-  // Tablet: side-by-side layout
-  headerSideBySide: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    gap: 20,
-  },
-  posterContainer: {
+  posterShadow: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
   },
   poster: {
     borderRadius: 10,
@@ -956,149 +733,159 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  posterText: {
+  posterInitial: {
     fontSize: 56,
     fontWeight: 'bold',
     color: '#444',
   },
-  info: {
+
+  // Side-by-side (tablet)
+  sideBySideRow: {
+    flexDirection: 'row',
+    gap: 24,
+    marginBottom: 20,
+  },
+  sideBySideInfo: {
     flex: 1,
-    marginLeft: 16,
     justifyContent: 'flex-end',
     paddingBottom: 8,
   },
-  infoSideBySide: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    paddingBottom: 8,
-  },
+
+  // Title
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 8,
   },
-  metadataLine: {
+  textCenter: {
+    textAlign: 'center',
+  },
+
+  // Metadata line (year · duration · ends at · rating)
+  metadataRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
     flexWrap: 'wrap',
+    marginBottom: 10,
+    gap: 2,
   },
-  year: {
-    fontSize: 14,
-    color: '#aaa',
-  },
-  separator: {
-    fontSize: 14,
-    color: '#666',
-    marginHorizontal: 6,
-  },
-  runtime: {
-    fontSize: 14,
-    color: '#aaa',
-  },
-  endsAt: {
-    fontSize: 14,
-    color: '#e50914',
-  },
-  ratingsRow: {
+  metadataItemRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+  },
+  metadataText: {
+    fontSize: 14,
+    color: '#aaa',
+  },
+  metadataSep: {
+    fontSize: 14,
+    color: '#555',
+  },
+  endsAtText: {
+    color: '#aaa',
+  },
+
+  // Tech specs inline (Video · Audio · Container · Size)
+  techSpecsRow: {
+    flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 16,
   },
-  ratingBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+  techSpecItem: {
+    flexDirection: 'row',
   },
-  ratingBadgeTmdb: {
-    backgroundColor: '#01b4e4',
+  techSpecLabel: {
+    fontSize: 13,
+    color: '#666',
   },
-  ratingBadgeImdb: {
-    backgroundColor: '#f5c518',
+  techSpecValue: {
+    fontSize: 13,
+    color: '#ccc',
+    fontWeight: '500',
   },
-  ratingBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#000',
+
+  // Overview
+  overview: {
+    fontSize: 14,
+    color: '#ccc',
+    lineHeight: 22,
+    marginBottom: 20,
   },
+
+  // Actions (compact row matching web)
   actionsRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 4,
+    flexWrap: 'wrap',
+    gap: 10,
     alignItems: 'center',
-  },
-  playButtonContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 8,
+    marginBottom: 16,
   },
   playButton: {
-    flex: 1,
-    backgroundColor: '#e50914',
-    borderRadius: 8,
-    paddingVertical: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#e50914',
+    borderRadius: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
   playButtonText: {
     color: '#fff',
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: '600',
   },
-  fromBeginningButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
-    backgroundColor: '#2a2a2a',
-    justifyContent: 'center',
-  },
-  fromBeginningText: {
-    color: '#aaa',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  actionButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#2a2a2a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#444',
+  iconButton: {
+    padding: 6,
   },
   actionButtonActive: {
-    backgroundColor: '#1a5c1a',
-    borderColor: '#2a8c2a',
+    opacity: 1,
   },
   actionButtonFavorite: {
-    backgroundColor: '#5c1a4a',
-    borderColor: '#e50914',
+    opacity: 1,
   },
-  actionIcon: {
+  menuDots: {
     fontSize: 22,
-    color: '#fff',
+    color: '#aaa',
   },
-  menuButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#2a2a2a',
-    justifyContent: 'center',
+  // Inline subtitle selector (matching web dropdown)
+  inlineSubtitleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#444',
+    gap: 8,
+    marginLeft: 4,
   },
-  menuIcon: {
-    fontSize: 24,
+  inlineSubtitleLabel: {
+    fontSize: 13,
+    color: '#888',
+  },
+  inlineSubtitlePicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  inlineSubtitleValue: {
+    fontSize: 13,
     color: '#fff',
+    maxWidth: 140,
   },
+  inlineSubtitleArrow: {
+    fontSize: 12,
+    color: '#888',
+  },
+
+  // Trailer
   trailerSection: {
     flexDirection: 'row',
     backgroundColor: '#1a1a1a',
     borderRadius: 12,
     overflow: 'hidden',
-    marginTop: 12,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
@@ -1112,7 +899,11 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   trailerPlayOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
@@ -1148,132 +939,29 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.35)',
     marginTop: 2,
   },
-  subtitleSection: {
-    marginTop: 16,
-    gap: 8,
-  },
-  subtitleButton: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  subtitleButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  subtitleButtonIcon: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#fff',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  subtitleButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  subtitleButtonValue: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.4)',
-    marginTop: 1,
-  },
-  subtitleActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  subtitleActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  subtitleActionText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.6)',
-  },
+
+  // Progress
   progressSection: {
-    marginTop: 16,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   progressBar: {
-    height: 4,
+    height: 3,
     backgroundColor: '#333',
     borderRadius: 2,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#e50914',
+    backgroundColor: '#22c55e',
     borderRadius: 2,
   },
   progressText: {
     fontSize: 12,
     color: '#888',
-    textAlign: 'center',
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 12,
-  },
-  overview: {
-    fontSize: 14,
-    color: '#ccc',
-    lineHeight: 22,
-  },
-  specsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-  },
-  specItem: {
-    minWidth: 100,
-  },
-  specLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  specValue: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '500',
-  },
-  fileItem: {
-    backgroundColor: '#1f1f1f',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-  },
-  fileName: {
-    fontSize: 14,
-    color: '#fff',
-    marginBottom: 4,
-  },
-  fileInfo: {
-    fontSize: 12,
-    color: '#888',
-  },
+
+  // Modals
   menuOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',

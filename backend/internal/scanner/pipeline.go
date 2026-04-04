@@ -46,6 +46,9 @@ type Pipeline struct {
 	markerRepo     *repository.MediaMarkerRepo // marker repository for skip intro/credits
 	metadataSvc    MetadataMatcher             // nil = skip metadata enrichment
 	subtitleDL     SubtitleAutoDownloader      // nil = skip subtitle auto-download
+	trickplayGen   interface {
+		GenerateAsync(mediaID int64, inputPath string, durationSec int)
+	}
 }
 
 // NewPipeline creates a new scan pipeline
@@ -61,6 +64,9 @@ func NewPipeline(
 	subtitleRepo *repository.SubtitleRepo,
 	audioTrackRepo *repository.AudioTrackRepo,
 	markerRepo *repository.MediaMarkerRepo, // NEW
+	trickplayGen interface {
+		GenerateAsync(mediaID int64, inputPath string, durationSec int)
+	},
 ) *Pipeline {
 	p := &Pipeline{
 		db:             db,
@@ -74,6 +80,7 @@ func NewPipeline(
 		subtitleRepo:   subtitleRepo,
 		audioTrackRepo: audioTrackRepo,
 		markerRepo:     markerRepo, // NEW
+		trickplayGen:   trickplayGen,
 	}
 	return p
 }
@@ -420,6 +427,12 @@ func (p *Pipeline) persist(scanCtx *ScanContext, path string, fingerprint string
 
 	if err := mediaFileRepo.Create(ctx, mediaFile); err != nil {
 		return fmt.Errorf("creating media file: %w", err)
+	}
+
+	// Trigger trickplay thumbnail generation in the background.
+	// Uses async goroutine so scan isn't blocked; generation runs after file is committed.
+	if p.trickplayGen != nil {
+		p.trickplayGen.GenerateAsync(mediaID, path, int(probe.Duration))
 	}
 
 	// Save audio tracks

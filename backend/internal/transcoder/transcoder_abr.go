@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ABRVariant describes a single quality level for adaptive bitrate HLS.
@@ -47,7 +48,7 @@ func (t *Transcoder) GenerateABRHLS(mediaID int64, inputPath string, sourceHeigh
 		t.mu.Unlock()
 		return nil
 	}
-	job := &transcodeJob{done: make(chan struct{})}
+	job := &transcodeJob{done: make(chan struct{}), lastActivity: time.Now()}
 	t.active[masterPath] = job
 	t.mu.Unlock()
 

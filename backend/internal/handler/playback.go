@@ -68,6 +68,7 @@ type PlaybackInfoResponse struct {
 	PrimaryFileID      int64               `json:"primary_file_id,omitempty"`
 	Method             string              `json:"method"`
 	StreamURL          string              `json:"stream_url"`
+	DirectURL          string              `json:"direct_url,omitempty"`
 	AbrURL             string              `json:"abr_url,omitempty"`
 	VideoCodec         string              `json:"video_codec"`
 	VideoProfile       string              `json:"video_profile,omitempty"`
@@ -84,6 +85,11 @@ type PlaybackInfoResponse struct {
 	SubtitleTracks     []SubtitleTrackInfo `json:"subtitle_tracks,omitempty"`
 	DecisionReason     string              `json:"decision_reason"`
 	EstimatedBitrate   int                 `json:"estimated_bitrate,omitempty"`
+	PtVideoCodec       string              `json:"pt_video_codec,omitempty"`
+	PtAudioCodec       string              `json:"pt_audio_codec,omitempty"`
+	PtHeight           int                 `json:"pt_height,omitempty"`
+	PtVideoBitrate     int                 `json:"pt_video_bitrate,omitempty"`
+	PtAudioBitrate     int                 `json:"pt_audio_bitrate,omitempty"`
 	Position           float64             `json:"position,omitempty"`
 	SkipSegments       []model.SkipSegment `json:"skip_segments,omitempty"`
 	AvailableQualities []QualityOption     `json:"available_qualities,omitempty"`

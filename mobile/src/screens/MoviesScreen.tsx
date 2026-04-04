@@ -99,7 +99,7 @@ export function MoviesScreen() {
     if (item.media_type === 'movie' || item.type === 'movie') {
       navigation.navigate('Media', { id: item.id })
     } else {
-      navigation.navigate('Series', { id: item.id })
+      navigation.navigate('SeriesDetail', { id: item.id })
     }
   }
 
@@ -173,9 +173,16 @@ export function MoviesScreen() {
 
   const handleLetterPress = (letter: string) => {
     setActiveLetter(letter)
-    const idx = letterIndex[letter]
-    if (idx !== undefined && flatListRef.current) {
-      flatListRef.current.scrollToIndex({ index: idx, animated: true })
+    if (movies && flatListRef.current) {
+      const idx = movies.findIndex((item) => {
+        const firstChar = (item.sort_title || item.title || '').charAt(0).toUpperCase()
+        const itemLetter = /[A-Z]/.test(firstChar) ? firstChar : '#'
+        return itemLetter === letter
+      })
+      if (idx >= 0) {
+        const rowIndex = Math.floor(idx / numColumns)
+        flatListRef.current.scrollToIndex({ index: rowIndex, animated: true, viewOffset: 0 })
+      }
     }
     setTimeout(() => setActiveLetter(null), 500)
   }
@@ -204,7 +211,7 @@ export function MoviesScreen() {
       </View>
       <View style={[styles.letterRow, { paddingHorizontal: layout.cardGap / 2 }]}>
         {group.data.map((movieItem) => (
-          <View key={movieItem.id} style={[styles.gridItem, { maxWidth: `${100 / numColumns}%`, padding: layout.cardGap / 2 }]}>
+          <View key={movieItem.id} style={[styles.gridItem, { width: `${100 / numColumns}%`, padding: layout.cardGap / 2 }]}>
             <MediaCard
               item={movieItem}
               onPress={() => handleMediaPress(movieItem)}
@@ -269,17 +276,31 @@ export function MoviesScreen() {
         <View style={styles.gridWithIndex}>
           <FlatList
             ref={flatListRef}
-            data={groupedMovies}
-            keyExtractor={(item) => item.letter}
-            renderItem={renderLetterSection}
+            data={movies}
+            keyExtractor={(item) => String(item.id)}
+            numColumns={numColumns}
+            key={numColumns}
             contentContainerStyle={[styles.gridContent, { padding: layout.cardGap / 2 }]}
+            columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#e50914"
-              />
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#e50914" />
             }
+            renderItem={({ item }) => (
+              <View style={[styles.gridItem, { width: `${100 / numColumns}%`, padding: layout.cardGap / 2 }]}>
+                <MediaCard
+                  item={item}
+                  onPress={() => handleMediaPress(item)}
+                  onLongPress={() => handleItemLongPress(item)}
+                  size="medium"
+                  showBadge
+                  showRating
+                  columns={numColumns}
+                  containerWidth={layout.width}
+                  gap={layout.cardGap}
+                  padding={layout.screenPadding}
+                />
+              </View>
+            )}
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptyText}>
@@ -288,29 +309,33 @@ export function MoviesScreen() {
               </View>
             }
           />
-
-          {/* A-Z Sidebar */}
-          {sort === 'title' && groupedMovies.length > 0 && (
-            <ScrollView
-              style={styles.alphabetSidebar}
-              contentContainerStyle={styles.alphabetContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {ALPHABET.map((letter) => (
-                <TouchableOpacity
-                  key={letter}
-                  style={[styles.alphabetLetter, activeLetter === letter && styles.alphabetLetterActive]}
-                  onPress={() => handleLetterPress(letter)}
-                >
-                  <Text style={[styles.alphabetText, activeLetter === letter && styles.alphabetTextActive]}>
-                    {letter}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
         </View>
       )}
+
+      {/* A-Z Sidebar — fixed overlay, vertically centered on screen */}
+      {sort === 'title' && (movies?.length ?? 0) > 0 && (() => {
+        const activeLetters = new Set<string>()
+        movies?.forEach((item) => {
+          const first = (item.sort_title || item.title || '').charAt(0).toUpperCase()
+          activeLetters.add(/[A-Z]/.test(first) ? first : '#')
+        })
+        const letters = ALPHABET.filter((l) => activeLetters.has(l))
+        return (
+          <View style={styles.alphabetSidebar} pointerEvents="box-none">
+            {letters.map((letter) => (
+              <TouchableOpacity
+                key={letter}
+                style={[styles.alphabetLetter, activeLetter === letter && styles.alphabetLetterActive]}
+                onPress={() => handleLetterPress(letter)}
+              >
+                <Text style={[styles.alphabetText, activeLetter === letter && styles.alphabetTextActive]}>
+                  {letter}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )
+      })()}
 
       {/* Genre Filter Bottom Sheet */}
       <FilterBottomSheet
@@ -441,8 +466,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   gridItem: {
-    flex: 1,
-    // maxWidth and padding set dynamically via inline style
+    // width and padding set dynamically via inline style
   },
   empty: {
     flex: 1,
@@ -455,7 +479,6 @@ const styles = StyleSheet.create({
   },
   // A-Z Index styles
   gridWithIndex: {
-    flexDirection: 'row',
     flex: 1,
   },
   letterHeader: {
@@ -474,29 +497,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   alphabetSidebar: {
-    width: 24,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    paddingVertical: 8,
-  },
-  alphabetContent: {
-    alignItems: 'center',
-  },
-  alphabetLetter: {
-    width: 24,
-    height: 18,
+    position: 'absolute',
+    right: 16,
+    top: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    width: 28,
+    zIndex: 10,
+  },
+  alphabetLetter: {
+    width: 28,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 14,
+    marginVertical: 2,
   },
   alphabetLetterActive: {
     backgroundColor: '#e50914',
-    borderRadius: 4,
   },
   alphabetText: {
-    color: '#666',
-    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 10,
     fontWeight: '600',
   },
   alphabetTextActive: {
     color: '#fff',
+    fontWeight: '700',
   },
 })

@@ -17,12 +17,14 @@ interface HorizontalMediaRowProps {
   items: MediaListItem[]
   onItemPress?: (item: MediaListItem) => void
   cardSize?: 'small' | 'medium' | 'large'
+  showBadge?: boolean
 }
 
 export function HorizontalMediaRow({
   items,
   onItemPress,
   cardSize = 'medium',
+  showBadge = false,
 }: HorizontalMediaRowProps) {
   const layout = useResponsiveLayout()
   const arrowSize = layout.largeControls ? 24 : 18
@@ -95,6 +97,7 @@ export function HorizontalMediaRow({
             item={item}
             onPress={() => onItemPress?.(item)}
             size={cardSize}
+            showBadge={showBadge}
             columns={layout.gridColumns}
             containerWidth={layout.width}
             gap={layout.cardGap}

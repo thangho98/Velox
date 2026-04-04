@@ -44,7 +44,7 @@ export function SearchScreen() {
   }
 
   const handleSeriesPress = (item: SeriesListItem) => {
-    navigation.navigate('Series', { id: item.id })
+    navigation.navigate('SeriesDetail', { id: item.id })
   }
 
   const handleSubmitSearch = () => {

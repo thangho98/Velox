@@ -53,3 +53,7 @@ mobile/android/
 mobile/ios/
 mobile/.expo/
 mobile/dist/
+mobile/modules/
+
+# === pnpm ===
+pnpm-lock.yaml

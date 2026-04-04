@@ -90,6 +90,7 @@ export interface PlaybackInfo {
   primary_file_id: number
   method: string
   stream_url: string
+  direct_url?: string
   abr_url?: string
   video_codec: string
   video_profile: string
@@ -106,6 +107,11 @@ export interface PlaybackInfo {
   subtitle_tracks: PlaybackSubtitleTrack[]
   decision_reason: string
   estimated_bitrate: number
+  pt_video_codec?: string
+  pt_audio_codec?: string
+  pt_height?: number
+  pt_video_bitrate?: number
+  pt_audio_bitrate?: number
   position: number
   skip_segments?: SkipSegment[]
   available_qualities?: QualityOption[]

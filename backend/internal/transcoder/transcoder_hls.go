@@ -2,6 +2,7 @@ package transcoder
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -29,7 +30,7 @@ type AudioVariant struct {
 // so the complete playlist is available and seeking works instantly.
 // For full transcode, returns as soon as the first segment is ready.
 // Skips if already cached. Deduplicates concurrent requests for the same media.
-func (t *Transcoder) GenerateHLS(mediaID int64, inputPath string, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64) error {
+func (t *Transcoder) GenerateHLS(mediaID int64, inputPath string, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64, maxHeight int) error {
 	dir := t.HLSDir(mediaID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -43,54 +44,26 @@ func (t *Transcoder) GenerateHLS(mediaID int64, inputPath string, fileID int64, 
 
 	if videoCopy {
 		if startOffset > 0 {
-			// Seek-triggered video copy: return as soon as the first segment is
-			// ready so the player can start playback immediately.  Subsequent
-			// segments are served via WaitForSegment as FFmpeg produces them.
 			return t.startHLSBackground(
-				masterPath,
-				firstSeg,
-				inputPath,
-				dir,
-				prefix,
-				subtitleStreamIndex,
-				hdr,
-				"",
-				videoCopy,
-				startOffset,
+				mediaID, masterPath, firstSeg, inputPath, dir, prefix,
+				subtitleStreamIndex, hdr, "", videoCopy, startOffset, maxHeight,
 			)
 		}
-		// Initial load (no offset): wait for the full transcode so the
-		// complete playlist is available and seeking works to any position.
 		return t.startHLSAndWaitComplete(
-			masterPath,
-			firstSeg,
-			inputPath,
-			dir,
-			prefix,
-			subtitleStreamIndex,
-			hdr,
-			videoCopy,
-			startOffset,
+			mediaID, masterPath, firstSeg, inputPath, dir, prefix,
+			subtitleStreamIndex, hdr, videoCopy, startOffset, maxHeight,
 		)
 	}
 	return t.startHLSBackground(
-		masterPath,
-		firstSeg,
-		inputPath,
-		dir,
-		prefix,
-		subtitleStreamIndex,
-		hdr,
-		t.hwAccel,
-		videoCopy,
-		startOffset,
+		mediaID, masterPath, firstSeg, inputPath, dir, prefix,
+		subtitleStreamIndex, hdr, t.hwAccel, videoCopy, startOffset, maxHeight,
 	)
 }
 
 // runHLSFFmpeg runs FFmpeg for single-quality HLS with the given encoder.
 // videoCopy=true: copies the video stream unchanged (-c:v copy), transcodes audio only.
 // hwAccel="" forces software encoding regardless of t.hwAccel.
-func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr bool, hwAccel string, videoCopy bool, startOffset float64) error {
+func (t *Transcoder) runHLSFFmpeg(ctx context.Context, inputPath, dir, prefix string, siIdx int, hdr bool, hwAccel string, videoCopy bool, startOffset float64, maxHeight int) error {
 	masterPath := filepath.Join(dir, prefix+"master.m3u8")
 	segPattern := filepath.Join(dir, prefix+"seg_%04d.ts")
 	startOffset = normalizeStartOffset(startOffset)
@@ -128,7 +101,29 @@ func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr 
 		if siIdx >= 0 {
 			args = append(args, buildImageSubtitleBurnInArgs(hwAccel, hdr, siIdx)...)
 		} else {
-			args = append(args, buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)...)
+			encArgs := buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)
+			// Insert scale filter for max_height (before any existing -vf).
+			// Use HW-aware scale filter to avoid mixing software/hardware filters.
+			if maxHeight > 0 {
+				scaleFilter := hwScaleFilter(hwAccel, maxHeight)
+				inserted := false
+				for i, arg := range encArgs {
+					if arg == "-vf" && i+1 < len(encArgs) {
+						// For VAAPI: replace the existing scale_vaapi with one that includes height
+						if hwAccel == "vaapi" {
+							encArgs[i+1] = strings.Replace(encArgs[i+1], "scale_vaapi=format=nv12", scaleFilter, 1)
+						} else {
+							encArgs[i+1] = scaleFilter + "," + encArgs[i+1]
+						}
+						inserted = true
+						break
+					}
+				}
+				if !inserted {
+					encArgs = append([]string{"-vf", scaleFilter}, encArgs...)
+				}
+			}
+			args = append(args, encArgs...)
 		}
 		args = append(args,
 			"-c:a", "aac", "-b:a", "128k", "-ac", "2",
@@ -142,10 +137,13 @@ func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr 
 	}
 
 	log.Printf("transcoder: ffmpeg %s", strings.Join(args, " "))
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("ffmpeg cancelled: %w", ctx.Err())
+		}
 		return fmt.Errorf("ffmpeg: %w — %s", err, stderr.String())
 	}
 	return nil
@@ -156,7 +154,7 @@ func (t *Transcoder) runHLSFFmpeg(inputPath, dir, prefix string, siIdx int, hdr 
 // semaphore slot, video segments start immediately without waiting for audio).
 // Falls back to simple HLS when <= 1 audio track.
 // videoCopy=true: copies the video stream unchanged, transcodes audio only.
-func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audioTracks []model.AudioTrack, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64) error {
+func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audioTracks []model.AudioTrack, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64, maxHeight int) error {
 	dir := t.HLSDir(mediaID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -167,7 +165,7 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 	masterPath := filepath.Join(dir, prefix+"master.m3u8")
 
 	if len(audioTracks) <= 1 {
-		return t.GenerateHLS(mediaID, inputPath, fileID, subtitleStreamIndex, videoCopy, startOffset)
+		return t.GenerateHLS(mediaID, inputPath, fileID, subtitleStreamIndex, videoCopy, startOffset, maxHeight)
 	}
 
 	// Check active map first (in-progress transcode).
@@ -183,7 +181,8 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 		t.mu.Unlock()
 		return nil
 	}
-	job := &transcodeJob{done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	job := &transcodeJob{done: make(chan struct{}), cancel: cancel, mediaID: mediaID, lastActivity: time.Now()}
 	t.active[masterPath] = job
 	t.mu.Unlock()
 
@@ -231,12 +230,14 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 	// Video copy is lightweight (no encoding) — skip semaphore to avoid
 	// blocking on heavy transcode jobs that hold all slots.
 	go func() {
+		defer cancel()
 		if !videoCopy {
 			release := t.acquireSlot()
 			defer release()
 		}
 
 		job.err = t.runMultiOutputHLS(
+			ctx,
 			inputPath,
 			dir,
 			prefix,
@@ -247,9 +248,10 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 			videoCopy,
 			startOffset,
 		)
-		if job.err != nil && t.hwAccel != "" && !videoCopy {
+		if job.err != nil && t.hwAccel != "" && !videoCopy && ctx.Err() == nil {
 			log.Printf("transcoder: HW encode failed for multi-audio (%v), retrying with software", job.err)
 			job.err = t.runMultiOutputHLS(
+				ctx,
 				inputPath,
 				dir,
 				prefix,
@@ -262,7 +264,9 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 			)
 		}
 
-		if job.err != nil {
+		if job.err != nil && ctx.Err() != nil {
+			log.Printf("transcoder: multi-audio transcode cancelled for media %d", mediaID)
+		} else if job.err != nil {
 			log.Printf("transcoder: background multi-audio transcode failed for %s: %v", masterPath, job.err)
 		}
 
@@ -278,7 +282,7 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, inputPath string, audio
 // runMultiOutputHLS runs a single FFmpeg process that produces video HLS + N audio
 // HLS outputs simultaneously. This avoids reading the input file N+1 times and
 // ensures video encoding starts immediately (no audio-blocking-video bottleneck).
-func (t *Transcoder) runMultiOutputHLS(inputPath, dir, prefix string, variants []AudioVariant, siIdx int, hdr bool, hwAccel string, videoCopy bool, startOffset float64) error {
+func (t *Transcoder) runMultiOutputHLS(ctx context.Context, inputPath, dir, prefix string, variants []AudioVariant, siIdx int, hdr bool, hwAccel string, videoCopy bool, startOffset float64) error {
 	args := []string{"-hide_banner", "-loglevel", "warning"}
 	startOffset = normalizeStartOffset(startOffset)
 	if videoCopy {
@@ -326,10 +330,13 @@ func (t *Transcoder) runMultiOutputHLS(inputPath, dir, prefix string, variants [
 	}
 
 	log.Printf("transcoder: ffmpeg %s", strings.Join(args, " "))
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("ffmpeg cancelled: %w", ctx.Err())
+		}
 		return fmt.Errorf("transcode multi-output HLS: %w — %s", err, stderr.String())
 	}
 	return nil
@@ -338,7 +345,7 @@ func (t *Transcoder) runMultiOutputHLS(inputPath, dir, prefix string, variants [
 // startHLSBackground launches FFmpeg for a single-stream HLS transcode in the
 // background. Returns as soon as the first .ts segment exists (or an error).
 // Deduplicates: a second call for the same masterPath joins the existing job.
-func (t *Transcoder) startHLSBackground(masterPath, firstSeg, inputPath, dir, prefix string, siIdx int, hdr bool, hwAccel string, videoCopy bool, startOffset float64) error {
+func (t *Transcoder) startHLSBackground(mediaID int64, masterPath, firstSeg, inputPath, dir, prefix string, siIdx int, hdr bool, hwAccel string, videoCopy bool, startOffset float64, maxHeight int) error {
 	// Check active map first (in-progress transcode).
 	t.mu.Lock()
 	if job, ok := t.active[masterPath]; ok {
@@ -350,12 +357,14 @@ func (t *Transcoder) startHLSBackground(masterPath, firstSeg, inputPath, dir, pr
 		t.mu.Unlock()
 		return nil
 	}
-	// Start new background transcode.
-	job := &transcodeJob{done: make(chan struct{})}
+	// Start new background transcode with cancellation support.
+	ctx, cancel := context.WithCancel(context.Background())
+	job := &transcodeJob{done: make(chan struct{}), cancel: cancel, mediaID: mediaID, lastActivity: time.Now()}
 	t.active[masterPath] = job
 	t.mu.Unlock()
 
 	go func() {
+		defer cancel()
 		// Video copy is lightweight (no encoding) — skip semaphore to avoid
 		// blocking on heavy transcode jobs that hold all slots.
 		if !videoCopy {
@@ -372,14 +381,16 @@ func (t *Transcoder) startHLSBackground(masterPath, firstSeg, inputPath, dir, pr
 			defer release()
 		}
 
-		err := t.runHLSFFmpeg(inputPath, dir, prefix, siIdx, hdr, hwAccel, videoCopy, startOffset)
+		err := t.runHLSFFmpeg(ctx, inputPath, dir, prefix, siIdx, hdr, hwAccel, videoCopy, startOffset, maxHeight)
 		// Only retry with software encoder when HW encoding was attempted (not for video copy).
-		if err != nil && hwAccel != "" && !videoCopy {
+		if err != nil && hwAccel != "" && !videoCopy && ctx.Err() == nil {
 			log.Printf("transcoder: HW encode failed (%v), retrying with software", err)
-			err = t.runHLSFFmpeg(inputPath, dir, prefix, siIdx, hdr, "", videoCopy, startOffset)
+			err = t.runHLSFFmpeg(ctx, inputPath, dir, prefix, siIdx, hdr, "", videoCopy, startOffset, maxHeight)
 		}
 
-		if err != nil {
+		if err != nil && ctx.Err() != nil {
+			log.Printf("transcoder: transcode cancelled for media %d (%s)", mediaID, masterPath)
+		} else if err != nil {
 			log.Printf("transcoder: background transcode failed for %s: %v", masterPath, err)
 		}
 
@@ -399,7 +410,7 @@ func (t *Transcoder) startHLSBackground(masterPath, firstSeg, inputPath, dir, pr
 // transcode to finish instead of returning after the first segment.
 // Used for video copy mode where the transcode is fast (~30-90s) and we want
 // the complete playlist available immediately so seeking works to any position.
-func (t *Transcoder) startHLSAndWaitComplete(masterPath, firstSeg, inputPath, dir, prefix string, siIdx int, hdr bool, videoCopy bool, startOffset float64) error {
+func (t *Transcoder) startHLSAndWaitComplete(mediaID int64, masterPath, firstSeg, inputPath, dir, prefix string, siIdx int, hdr bool, videoCopy bool, startOffset float64, maxHeight int) error {
 	t.mu.Lock()
 	if job, ok := t.active[masterPath]; ok {
 		t.mu.Unlock()
@@ -411,13 +422,15 @@ func (t *Transcoder) startHLSAndWaitComplete(masterPath, firstSeg, inputPath, di
 		t.mu.Unlock()
 		return nil
 	}
-	job := &transcodeJob{done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	job := &transcodeJob{done: make(chan struct{}), cancel: cancel, mediaID: mediaID, lastActivity: time.Now()}
 	t.active[masterPath] = job
 	t.mu.Unlock()
+	defer cancel()
 
 	// Run synchronously — video copy is lightweight (no video encoding)
 	// and skips the semaphore, so it won't block other transcodes.
-	err := t.runHLSFFmpeg(inputPath, dir, prefix, siIdx, hdr, "", videoCopy, startOffset)
+	err := t.runHLSFFmpeg(ctx, inputPath, dir, prefix, siIdx, hdr, "", videoCopy, startOffset, maxHeight)
 	if err != nil {
 		log.Printf("transcoder: video copy transcode failed for %s: %v", masterPath, err)
 	}

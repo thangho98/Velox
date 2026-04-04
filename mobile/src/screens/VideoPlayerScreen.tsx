@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   View,
   Text,
@@ -9,23 +9,22 @@ import {
   Pressable,
   ScrollView,
   Modal,
+  Animated as RNAnimated,
 } from 'react-native'
-import { Volume2, Sun, X, ChevronLeft, Settings, Pause, Play, Lock, RotateCcw, RotateCw, SkipForward, Music, Maximize2, Minimize2, Captions } from 'lucide-react-native'
+import { Volume2, Sun, X, ChevronLeft, ChevronRight, Settings, Pause, Play, Lock, RotateCcw, RotateCw, SkipForward, Music, Maximize2, Minimize2, Captions } from 'lucide-react-native'
+import * as ScreenOrientation from 'expo-screen-orientation'
 import { CastButton } from '../components/CastButton'
 import { useChromecast } from '../hooks/useChromecast'
 import { useResponsiveLayout, scaledFont } from '../lib/responsive'
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native'
-import { useVideoPlayer, VideoView } from 'expo-video'
-import type { VideoPlayerStatus } from 'expo-video'
+import { useVeloxPlayer, VeloxPlayerView } from '../../modules/velox-player'
+import type { VideoPlayerStatus } from '../../modules/velox-player'
+
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler'
 
-// SubtitleTrack type (from expo-video)
-type SubtitleTrack = {
-  id?: string
-  language: string
-  label: string
-}
-import { useStreamUrl, useEpisodes, usePlaybackInfo, useMedia } from '@velox/shared/hooks'
+import type { SubtitleTrack } from '../../modules/velox-player'
+import { useStreamUrls, useEpisodes, usePlaybackInfo, useMediaWithFiles } from '@velox/shared/hooks'
+import { useTranslateSubtitle, useSubtitleSearch, useDownloadSubtitle } from '@velox/shared/hooks/media/useSubtitleOps'
 import { useProgress, useUpdateProgress } from '@velox/shared/hooks/media/useProgress'
 import { useCinemaSettings } from '@velox/shared/hooks/settings'
 import type { CinemaItem } from '@velox/shared/hooks/media/useCinema'
@@ -45,7 +44,7 @@ type VideoRouteProp = RouteProp<RootStackParamList, 'Episode'> | RouteProp<RootS
 type AspectRatio = 'contain' | 'cover' | 'fill'
 
 // Repeat mode type
-type RepeatMode = 'off' | 'one' | 'all'
+type RepeatMode = 'none' | 'one' | 'all'
 
 const CONTROLS_HIDE_TIMEOUT = 3000
 const STATE_POLL_INTERVAL = 500
@@ -55,9 +54,367 @@ function getWallClock(): string {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-interface QualityOption {
-  label: string
-  height: number
+import type { QualityOption } from '@velox/shared/types/playback'
+
+function SeekFeedbackOverlay({ side, amount }: { side: 'left' | 'right'; amount: number }) {
+  const anim1 = useRef(new RNAnimated.Value(0)).current
+  const anim2 = useRef(new RNAnimated.Value(0)).current
+  const anim3 = useRef(new RNAnimated.Value(0)).current
+
+  useEffect(() => {
+    // Staggered arrow animation — direction matches seek direction
+    const anims = side === 'right' ? [anim1, anim2, anim3] : [anim3, anim2, anim1]
+    anims.forEach((a) => a.setValue(0))
+    RNAnimated.stagger(100, anims.map((a) =>
+      RNAnimated.sequence([
+        RNAnimated.timing(a, { toValue: 1, duration: 250, useNativeDriver: true }),
+        RNAnimated.timing(a, { toValue: 0.3, duration: 250, useNativeDriver: true }),
+      ]),
+    )).start()
+  }, [amount, side]) // Re-animate on each tap
+
+  const Arrow = side === 'right' ? ChevronRight : ChevronLeft
+
+  return (
+    <View style={[
+      seekStyles.container,
+      side === 'left' ? { left: 80 } : { right: 80 },
+    ]}>
+      <View style={seekStyles.arrowRow}>
+        <RNAnimated.View style={{ opacity: anim1 }}>
+          <Arrow size={24} color="#fff" />
+        </RNAnimated.View>
+        <RNAnimated.View style={{ opacity: anim2, marginLeft: -10 }}>
+          <Arrow size={24} color="#fff" />
+        </RNAnimated.View>
+        <RNAnimated.View style={{ opacity: anim3, marginLeft: -10 }}>
+          <Arrow size={24} color="#fff" />
+        </RNAnimated.View>
+      </View>
+      <Text style={seekStyles.text}>{side === 'left' ? '-' : '+'}{amount}s</Text>
+    </View>
+  )
+}
+
+const seekStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  arrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  text: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+})
+
+const TRANSLATE_LANGS = [
+  { code: 'vi', label: 'Vietnamese' },
+  { code: 'en', label: 'English' },
+  { code: 'fr', label: 'French' },
+  { code: 'de', label: 'German' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'ja', label: 'Japanese' },
+  { code: 'ko', label: 'Korean' },
+  { code: 'zh', label: 'Chinese' },
+  { code: 'pt', label: 'Portuguese' },
+  { code: 'ru', label: 'Russian' },
+  { code: 'th', label: 'Thai' },
+]
+
+function SubtitleTranslateSection({ subtitles, onTranslated }: {
+  subtitles: { id: number; label: string; language: string; format: string }[]
+  onTranslated: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [sourceId, setSourceId] = useState<number | null>(null)
+  const [targetLang, setTargetLang] = useState<string | null>(null)
+  const translateMutation = useTranslateSubtitle()
+
+  if (!open) {
+    return (
+      <TouchableOpacity style={stl.subBottomRow} onPress={() => setOpen(true)}>
+        <Text style={stl.subBottomIcon}>✦</Text>
+        <Text style={stl.subBottomText}>Translate Subtitle</Text>
+      </TouchableOpacity>
+    )
+  }
+
+  const effectiveSourceId = sourceId ?? subtitles[0]?.id
+  return (
+    <View style={stl.translateSection}>
+      <Text style={stl.translateLabel}>Translate subtitle</Text>
+
+      {subtitles.length > 1 && (
+        <View style={stl.translatePickerRow}>
+          {subtitles.map((s) => (
+            <TouchableOpacity
+              key={s.id}
+              style={[stl.translateChip, effectiveSourceId === s.id && stl.translateChipActive]}
+              onPress={() => setSourceId(s.id)}
+            >
+              <Text style={[stl.translateChipText, effectiveSourceId === s.id && { color: '#fff' }]} numberOfLines={1}>
+                {s.label || s.language} ({s.format})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+        {TRANSLATE_LANGS.map((l) => (
+          <TouchableOpacity
+            key={l.code}
+            style={[stl.translateChip, targetLang === l.code && stl.translateChipActive]}
+            onPress={() => setTargetLang(l.code)}
+          >
+            <Text style={[stl.translateChipText, targetLang === l.code && { color: '#fff' }]}>{l.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <View style={stl.translateActions}>
+        <TouchableOpacity
+          style={[stl.translateBtn, !targetLang && { opacity: 0.5 }]}
+          disabled={!targetLang || translateMutation.isPending}
+          onPress={() => {
+            if (!effectiveSourceId || !targetLang) return
+            translateMutation.mutate(
+              { subtitleId: effectiveSourceId, targetLanguage: targetLang },
+              { onSuccess: () => { onTranslated(); setOpen(false); setTargetLang(null) } },
+            )
+          }}
+        >
+          <Text style={stl.translateBtnText}>
+            {translateMutation.isPending ? 'Translating...' : 'Translate'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={stl.translateCancelBtn} onPress={() => setOpen(false)}>
+          <Text style={stl.translateCancelText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+
+      {translateMutation.isError && (
+        <Text style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>
+          {(translateMutation.error as Error)?.message || 'Translation failed'}
+        </Text>
+      )}
+    </View>
+  )
+}
+
+const SEARCH_LANGS = [
+  { code: 'en', name: 'English' },
+  { code: 'vi', name: 'Vietnamese' },
+  { code: 'fr', name: 'French' },
+  { code: 'de', name: 'German' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'ko', name: 'Korean' },
+  { code: 'zh', name: 'Chinese' },
+]
+
+function SubtitleSearchSection({ mediaId, defaultLang, onDownloaded }: {
+  mediaId: number
+  defaultLang: string | null
+  onDownloaded: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [lang, setLang] = useState(defaultLang || 'en')
+  const { data: results, isLoading } = useSubtitleSearch(mediaId, lang, open)
+  const downloadMutation = useDownloadSubtitle(mediaId)
+
+  if (!open) {
+    return (
+      <TouchableOpacity style={stl.subBottomRow} onPress={() => setOpen(true)}>
+        <Text style={stl.subBottomIcon}>⌕</Text>
+        <Text style={stl.subBottomText}>Search for Subtitles</Text>
+      </TouchableOpacity>
+    )
+  }
+
+  return (
+    <View style={stl.translateSection}>
+      <Text style={stl.translateLabel}>Search for Subtitles</Text>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+        {SEARCH_LANGS.map((l) => (
+          <TouchableOpacity
+            key={l.code}
+            style={[stl.translateChip, lang === l.code && stl.translateChipActive]}
+            onPress={() => setLang(l.code)}
+          >
+            <Text style={[stl.translateChipText, lang === l.code && { color: '#fff' }]}>{l.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {isLoading && <ActivityIndicator size="small" color="#e50914" style={{ marginVertical: 12 }} />}
+
+      {results && results.length > 0 && (
+        <ScrollView style={{ maxHeight: 200 }}>
+          {results.map((r, i) => (
+            <TouchableOpacity
+              key={i}
+              style={stl.searchResultRow}
+              onPress={() => {
+                downloadMutation.mutate(
+                  { provider: r.provider, external_id: r.external_id, language: r.language },
+                  { onSuccess: () => onDownloaded() },
+                )
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#fff', fontSize: 13 }} numberOfLines={1}>{r.title}</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>{r.provider} • {r.language} • {r.format}</Text>
+              </View>
+              {downloadMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16 }}>↓</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {results && results.length === 0 && !isLoading && (
+        <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, textAlign: 'center', paddingVertical: 12 }}>
+          No subtitles found
+        </Text>
+      )}
+
+      <TouchableOpacity style={[stl.translateCancelBtn, { marginTop: 8 }]} onPress={() => setOpen(false)}>
+        <Text style={stl.translateCancelText}>Close</Text>
+      </TouchableOpacity>
+    </View>
+  )
+}
+
+// Inline styles for translate/search sections
+const stl = StyleSheet.create({
+  subBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  subBottomIcon: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.5)',
+    width: 18,
+    textAlign: 'center',
+  },
+  subBottomText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  translateSection: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  translateLabel: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  translatePickerRow: {
+    gap: 6,
+  },
+  translateChip: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  translateChipActive: {
+    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  translateChipText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  translateActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  translateBtn: {
+    flex: 1,
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  translateBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  translateCancelBtn: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  translateCancelText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+})
+
+function SubRow({ name, fmt, selected, onPress }: {
+  name: string
+  fmt?: string
+  selected: boolean
+  onPress: () => void
+}) {
+  return (
+    <TouchableOpacity
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10 }}
+      onPress={onPress}
+    >
+      <Captions size={18} color={selected ? '#fff' : 'rgba(255,255,255,0.4)'} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 14, fontWeight: '500', color: selected ? '#fff' : 'rgba(255,255,255,0.7)' }} numberOfLines={1}>
+          {name}
+        </Text>
+        {fmt ? <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>{fmt}</Text> : null}
+      </View>
+      <Text style={{ width: 16, textAlign: 'center', fontSize: 14, color: '#fff' }}>{selected ? '✓' : ''}</Text>
+    </TouchableOpacity>
+  )
 }
 
 export function VideoPlayerScreen() {
@@ -130,18 +487,30 @@ export function VideoPlayerScreen() {
     setCinemaPhase('playing')
   }, [])
 
+  // Quality state (must be before playbackRequest)
+  const [maxQuality, setMaxQuality] = useState<number | 'auto'>('auto')
+
   // Stream URL state
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { mutateAsync: fetchStreamUrl, data: streamData } = useStreamUrl(mediaId)
+  // Mobile capabilities: ExoPlayer (Android) supports h264/hevc + aac/mp3/opus/ac3/eac3
+  // Cap at 1080p by default — 4K HEVC Main 10 can fail on many mobile devices
+  const playbackRequest = useMemo(() => ({
+    video_codecs: ['h264', 'hevc'],
+    audio_codecs: ['aac', 'mp3', 'opus', 'ac3', 'eac3'],
+    containers: ['mp4', 'hls'],
+    ...(maxQuality !== 'auto' ? { max_height: maxQuality } : { max_height: 1080 }),
+  }), [maxQuality])
+  const { data: streamUrls, isLoading: streamLoading, isError: streamError } = useStreamUrls(mediaId, playbackRequest)
   const { data: progress } = useProgress(mediaId)
   const updateProgress = useUpdateProgress()
 
-  // Media detail for title
-  const { data: mediaDetail } = useMedia(mediaId)
+  // Media detail for title + season/series info
+  const { data: mediaDetail } = useMediaWithFiles(mediaId)
+  const seasonId = mediaDetail?.season_id ?? 0
 
-  // Episode data for next episode
-  const { data: episodes } = useEpisodes(seriesId || 0, 0)
+  // Episode data for next episode (need correct seasonId)
+  const { data: episodes } = useEpisodes(seriesId || 0, seasonId)
 
   // Playback info (for subtitle tracks)
   const { data: playbackInfo } = usePlaybackInfo(mediaId)
@@ -155,11 +524,30 @@ export function VideoPlayerScreen() {
     return accessToken ? `${base}?token=${encodeURIComponent(accessToken)}` : base
   }
 
-  // Video source
-  const videoSource = streamData?.hls_url || streamData?.direct_url || null
+
+  // Video source — use server's URL directly (VeloxPlayer handles most codecs)
+  // Fallback: if direct play fails (H.264 10-bit etc), auto-retry with HLS
+  const fallbackRef = useRef<'direct' | 'hls'>('direct')
+  const loadingStartRef = useRef<number>(0)
+  const videoSource = useMemo(() => {
+    if (!streamUrls) return null
+    const serverUrl = getServerUrl() ?? ''
+    let url = streamUrls.hls || streamUrls.direct
+    if (!url) return null
+    // HLS fallback: convert direct URL to HLS transcode
+    if (fallbackRef.current === 'hls' && !url.includes('/hls/')) {
+      const mh = maxQuality !== 'auto' ? maxQuality : 1080
+      url = url.replace(/\/api\/stream\/(\d+)/, '/api/stream/$1/hls/master.m3u8')
+      url += (url.includes('?') ? '&' : '?') + `mh=${mh}`
+    }
+    const fullUrl = url.startsWith('http') ? url : `${serverUrl}${url}`
+    return accessToken
+      ? fullUrl + (fullUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(accessToken)
+      : fullUrl
+  }, [streamUrls, accessToken, maxQuality, fallbackRef.current])
 
   // Player state
-  const playerRef = useRef<ReturnType<typeof useVideoPlayer> | null>(null)
+  const playerRef = useRef<ReturnType<typeof useVeloxPlayer> | null>(null)
   const [playerStatus, setPlayerStatus] = useState<VideoPlayerStatus>('idle')
   const [isPlaying, setIsPlaying] = useState(false)
   const [isBuffering, setIsBuffering] = useState(false)
@@ -168,7 +556,7 @@ export function VideoPlayerScreen() {
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isLandscape, setIsLandscape] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false)
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
@@ -177,7 +565,14 @@ export function VideoPlayerScreen() {
   const [nextEpisodeCountdown, setNextEpisodeCountdown] = useState(15)
   const [isLocked, setIsLocked] = useState(false)
   const [showStats, setShowStats] = useState(false)
-  const [selectedSubtitle, setSelectedSubtitle] = useState<string | null>(null)
+  const storedSubLang = usePlayerStore((s) => s.subtitleLanguage)
+  const setStoredSubLang = usePlayerStore((s) => s.setSubtitleLanguage)
+  const [_selectedSubtitle, _setSelectedSubtitle] = useState<string | null>(storedSubLang)
+  const selectedSubtitle = _selectedSubtitle
+  const setSelectedSubtitle = useCallback((lang: string | null) => {
+    _setSelectedSubtitle(lang)
+    setStoredSubLang(lang)
+  }, [setStoredSubLang])
   const [availableSubtitles, setAvailableSubtitles] = useState<SubtitleTrack[]>([])
   const [availableAudioTracks, setAvailableAudioTracks] = useState<string[]>([])
   const [selectedAudioTrack, setSelectedAudioTrack] = useState<string | null>(null)
@@ -217,10 +612,10 @@ export function VideoPlayerScreen() {
 
   // Resolve primary & secondary subtitle VTT URLs from backend tracks
   const backendSubtitleTracks = playbackInfo?.subtitle_tracks ?? []
-  const selectedNativeSub = availableSubtitles.find((t) => t.id === selectedSubtitle)
-  const primaryBackendSub = selectedNativeSub
+  // selectedSubtitle stores the backend subtitle language directly
+  const primaryBackendSub = selectedSubtitle
     ? backendSubtitleTracks.find(
-        (t) => t.language === selectedNativeSub.language && !t.is_image,
+        (t) => languageMatches(t.language, selectedSubtitle) && !t.is_image,
       )
     : undefined
   const primarySubtitleVttUrl = subtitleServeUrl(primaryBackendSub)
@@ -232,32 +627,29 @@ export function VideoPlayerScreen() {
   const secondarySubtitleVttUrl = subtitleServeUrl(secondaryBackendSub)
 
   // Episode metadata
-  const currentEpisode = episodes?.find((ep) => ep.id === mediaId)
-  const mediaTitle = currentEpisode?.title || mediaDetail?.title || ''
+  const currentEpisode = episodes?.find((ep) => ep.media_id === mediaId)
+  const mediaTitle = currentEpisode?.title || mediaDetail?.media?.title || ''
 
-  // Skip markers (would come from backend - intro/outro timestamps)
-  // @ts-ignore - intro_end and outro_start from episode metadata if available
-  const introEnd = currentEpisode?.intro_end
-  // @ts-ignore
-  const outroStart = currentEpisode?.outro_start
+  // Skip markers from playback info (backend fingerprint detection)
+  const skipSegments = (playbackInfo as any)?.skip_segments ?? []
+  const introSegment = skipSegments.find((s: any) => s.type === 'intro')
+  const outroSegment = skipSegments.find((s: any) => s.type === 'credits')
+  const introEnd = introSegment?.end ?? null
+  const outroStart = outroSegment?.start ?? null
   const [showSkipIntro, setShowSkipIntro] = useState(false)
   const [showSkipOutro, setShowSkipOutro] = useState(false)
 
-  const videoViewRef = useRef<{ enterFullscreen: () => void; exitFullscreen: () => void } | null>(null)
+
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasSeekedRef = useRef(false)
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Quality options (for HLS streams)
-  const qualityOptions: QualityOption[] = [
-    { label: 'Auto', height: 0 },
-    { label: '1080p', height: 1080 },
-    { label: '720p', height: 720 },
-    { label: '480p', height: 480 },
-    { label: '360p', height: 360 },
-  ]
-  const [selectedQuality, setSelectedQuality] = useState('Auto')
+  // Quality options from server (dynamic, matches web)
+  const qualityOptions: QualityOption[] = playbackInfo?.available_qualities ?? []
+  const currentQualityLabel = maxQuality === 'auto'
+    ? 'Auto'
+    : (qualityOptions.find((q) => q.height === maxQuality)?.label ?? `${maxQuality}p`)
 
   // Speed options
   const speedOptions = [
@@ -279,11 +671,11 @@ export function VideoPlayerScreen() {
 
   // Repeat mode options
   const repeatModeOptions: { label: string; value: RepeatMode; icon: string }[] = [
-    { label: 'Off', value: 'off', icon: '🔁' },
+    { label: 'None', value: 'none', icon: '🔁' },
     { label: 'One', value: 'one', icon: '🔂' },
     { label: 'All', value: 'all', icon: '🔁' },
   ]
-  const [repeatMode, setRepeatMode] = useState<RepeatMode>('off')
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('none')
 
   // Subtitle delay offset (stored per mediaId, in seconds)
   const [subtitleDelay, setSubtitleDelay] = useState(0)
@@ -291,93 +683,140 @@ export function VideoPlayerScreen() {
 
   // Aspect ratio modal
   const [showAspectRatioMenu, setShowAspectRatioMenu] = useState(false)
+  const [settingsView, setSettingsView] = useState<'main' | 'quality'>('main')
 
-  // Double tap detection
-  const lastTapRef = useRef<number>(0)
-  const tapXRef = useRef<number>(0)
+  // Double/multi tap detection (YouTube-style accumulating seek)
+  const seekAccumulatorRef = useRef<number>(0)
+  const seekResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [seekFeedback, setSeekFeedback] = useState<{ side: 'left' | 'right'; amount: number } | null>(null)
 
-  // Fetch stream URL
+  // No auto-select needed — subtitle language is initialized from player store preference
+  // User explicitly selects via subtitle picker, same as web
+
+  // Sync loading/error state from stream query
   useEffect(() => {
-    const loadStream = async () => {
+    if (streamLoading) {
       setIsLoading(true)
       setError(null)
-      try {
-        await fetchStreamUrl()
-        setIsLoading(false)
-      } catch (e) {
-        setError('Failed to load video')
-        setIsLoading(false)
-      }
+    } else if (streamError) {
+      setError('Failed to load video')
+      setIsLoading(false)
+    } else if (streamUrls) {
+      setIsLoading(false)
+      console.log('[VideoPlayer] method:', playbackInfo?.method, '| reason:', playbackInfo?.decision_reason)
+      console.log('[VideoPlayer] videoSource:', videoSource?.substring(0, 150))
     }
-    loadStream()
-  }, [mediaId])
+  }, [streamLoading, streamError, streamUrls, videoSource])
 
   // Create player with setup callback
-  const player = useVideoPlayer(videoSource, (p) => {
+  const player = useVeloxPlayer(videoSource, (p) => {
     playerRef.current = p
     p.timeUpdateEventInterval = 1
     p.volume = 1
     p.muted = false
   })
 
+  // When videoSource changes (initial load or episode switch), replace and play
+  const prevSourceRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (player && videoSource && prevSourceRef.current !== videoSource) {
+      player.replaceAsync({ uri: videoSource })
+      player.volume = 1
+      player.muted = false
+      player.play()
+      prevSourceRef.current = videoSource
+      hasSeekedRef.current = false // allow resume seek for new episode
+    }
+  }, [player, videoSource])
+
   // Poll player state
   useEffect(() => {
     if (!player) return
 
     const pollState = () => {
-      setPlayerStatus(player.status)
-      setIsPlaying(player.playing)
-      // Buffering = user wants to play but player is not playing (stalled/loading)
-      setIsBuffering(userWantsToPlayRef.current && !player.playing && player.status !== 'idle')
-      setCurrentTime(player.currentTime)
-      setDuration(player.duration)
-      setVolume(player.volume)
-      setIsMuted(player.muted)
-      // @ts-ignore - availableSubtitleTracks type mismatch with local SubtitleTrack
-      setAvailableSubtitles(player.availableSubtitleTracks)
-      // @ts-ignore - availableAudioTracks not in types but exists on player
-      setAvailableAudioTracks(player.availableAudioTracks || [])
-      // @ts-ignore - playbackRate not in types but exists
-      setPlaybackSpeed(player.playbackRate || 1)
+      try {
+        const status = player.status
+        const playing = player.playing
+        setPlayerStatus(status)
+        setIsPlaying(playing)
 
-      // Update video stats from documented expo-video APIs
-      if (showStats) {
-        const track = player.videoTrack
-        const bitrateRaw = track?.peakBitrate ?? track?.averageBitrate ?? track?.bitrate ?? 0
-        const bufferSec =
-          player.bufferedPosition >= 0 && player.currentTime >= 0
-            ? Math.max(0, player.bufferedPosition - player.currentTime)
-            : 0
 
-        // Connection quality heuristic based on buffer health
-        let connectionQuality = 'N/A'
-        if (player.bufferedPosition >= 0) {
-          if (bufferSec >= 10) connectionQuality = 'Excellent'
-          else if (bufferSec >= 5) connectionQuality = 'Good'
-          else if (bufferSec >= 2) connectionQuality = 'Poor'
-          else connectionQuality = 'Buffering...'
+        // Buffering = user wants to play but player is not playing (stalled/loading)
+        const buffering = userWantsToPlayRef.current && !playing && status !== 'idle'
+        setIsBuffering(buffering)
+
+        // Auto-fallback: error OR stuck not playing for 5s → switch to HLS
+        if ((status === 'error' || (status !== 'idle' && status !== 'readyToPlay' && !playing)) &&
+            fallbackRef.current === 'direct') {
+          if (!loadingStartRef.current) loadingStartRef.current = Date.now()
+          if (status === 'error' || (Date.now() - loadingStartRef.current) > 5000) {
+            fallbackRef.current = 'hls'
+            loadingStartRef.current = 0
+            const mh = maxQuality !== 'auto' ? maxQuality : 1080
+            const hlsUrl = (videoSource || '').replace(/\/api\/stream\/(\d+)/, '/api/stream/$1/hls/master.m3u8')
+              + (videoSource?.includes('?') ? '&' : '?') + `mh=${mh}`
+            console.log('[VideoPlayer] Direct play failed, falling back to HLS')
+            try {
+              player.replaceAsync({ uri: hlsUrl })
+              player.play()
+            } catch {}
+            return
+          }
+        } else {
+          loadingStartRef.current = 0
         }
 
-        // Audio info from current audio track
-        const audio = player.audioTrack
-        const audioInfo = audio ? (audio.label || audio.name || audio.language || 'Unknown') : 'N/A'
+        setCurrentTime(player.currentTime)
+        // Always prefer server duration (accurate) — HLS player.duration grows as segments load
+        const serverDuration = playbackInfo?.duration ?? 0
+        setDuration(serverDuration > 0 ? serverDuration : player.duration)
+        setVolume(player.volume)
+        setIsMuted(player.muted)
+        // @ts-ignore - availableSubtitleTracks type mismatch with local SubtitleTrack
+        setAvailableSubtitles(player.availableSubtitleTracks)
+        // @ts-ignore - availableAudioTracks not in types but exists on player
+        setAvailableAudioTracks(player.availableAudioTracks || [])
+        // @ts-ignore - playbackRate not in types but exists
+        setPlaybackSpeed(player.playbackRate || 1)
 
-        setVideoStats({
-          bitrate: bitrateRaw,
-          resolution:
-            track?.size ? `${track.size.width}\u00D7${track.size.height}` : '',
-          codec: track?.mimeType ?? '',
-          frameRate: track?.frameRate ?? 0,
-          bufferHealth: bufferSec,
-          qualityLevels: player.availableVideoTracks?.length ?? 0,
-          abrSwitches: abrSwitchCountRef.current,
-          connectionQuality,
-          audioInfo,
-        })
-      }
+        if (showStats) {
+          const track = player.videoTrack
+          const bitrateRaw = track?.bitrate ?? 0
+          const bufferSec =
+            player.bufferedPosition >= 0 && player.currentTime >= 0
+              ? Math.max(0, player.bufferedPosition - player.currentTime)
+              : 0
 
-      if (player.status === 'readyToPlay' && !isPlayerReady) {
-        setIsPlayerReady(true)
+          let connectionQuality = 'N/A'
+          if (player.bufferedPosition >= 0) {
+            if (bufferSec >= 10) connectionQuality = 'Excellent'
+            else if (bufferSec >= 5) connectionQuality = 'Good'
+            else if (bufferSec >= 2) connectionQuality = 'Poor'
+            else connectionQuality = 'Buffering...'
+          }
+
+          const audio = player.audioTrack
+          const audioInfo = audio ? (audio.label || audio.language || 'Unknown') : 'N/A'
+
+          setVideoStats({
+            bitrate: bitrateRaw,
+            resolution:
+              track ? `${track.width}\u00D7${track.height}` : '',
+            codec: track?.mimeType ?? '',
+            frameRate: track?.frameRate ?? 0,
+            bufferHealth: bufferSec,
+            qualityLevels: player.availableVideoTracks?.length ?? 0,
+            abrSwitches: abrSwitchCountRef.current,
+            connectionQuality,
+            audioInfo,
+          })
+        }
+
+        if (player.status === 'readyToPlay' && !isPlayerReady) {
+          setIsPlayerReady(true)
+        }
+      } catch {
+        // Player was released during fallback transition — skip poll
       }
     }
 
@@ -399,40 +838,40 @@ export function VideoPlayerScreen() {
     return () => subscription.remove()
   }, [player])
 
-  // Check for next episode when near end
+  // Check for next episode when in credits region or near end
   useEffect(() => {
     if (!seriesId || !episodes || episodes.length === 0) return
-    if (!isPlaying) return
+    if (!isPlaying || duration <= 0) return
 
+    // Trigger "Up Next" when entering credits region, or last 30s if no credits marker
+    const inCredits = outroStart && currentTime >= outroStart
     const timeRemaining = duration - currentTime
-    const isNearEnd = timeRemaining > 0 && timeRemaining < 30 // Last 30 seconds
+    const isNearEnd = timeRemaining > 0 && timeRemaining < 30
 
-    if (isNearEnd && !showNextEpisode) {
-      // Find next episode
-      const currentEpisode = episodes.find((ep) => ep.id === mediaId)
-      if (currentEpisode) {
-        const currentIndex = episodes.findIndex((ep) => ep.id === mediaId)
-        if (currentIndex < episodes.length - 1) {
-          setShowNextEpisode(true)
-          setNextEpisodeCountdown(15)
-        }
+    if ((inCredits || isNearEnd) && !showNextEpisode) {
+      const currentIndex = episodes.findIndex((ep) => ep.media_id === mediaId)
+      if (currentIndex >= 0 && currentIndex < episodes.length - 1) {
+        setShowNextEpisode(true)
+        setNextEpisodeCountdown(15)
       }
     }
-  }, [currentTime, duration, isPlaying, seriesId, episodes, mediaId])
+  }, [currentTime, duration, isPlaying, seriesId, episodes, mediaId, outroStart])
 
   // Check for intro/outro skip markers
   useEffect(() => {
     if (!isPlaying || !currentTime) return
 
-    // Check if in intro region
-    if (introEnd && currentTime < introEnd && currentTime > 0) {
+    // Check if in intro region (use segment start/end, not just end)
+    const introStart = introSegment?.start ?? 0
+    if (introEnd && currentTime >= introStart && currentTime < introEnd) {
       setShowSkipIntro(true)
     } else {
       setShowSkipIntro(false)
     }
 
-    // Check if in outro region
-    if (outroStart && duration > 0 && currentTime >= outroStart) {
+    // Check if in outro/credits region — for series, show "Up Next" instead
+    // Skip Credits only for movies (no seriesId)
+    if (outroStart && duration > 0 && currentTime >= outroStart && !seriesId) {
       setShowSkipOutro(true)
     } else {
       setShowSkipOutro(false)
@@ -455,7 +894,7 @@ export function VideoPlayerScreen() {
           const currentIndex = episodes?.findIndex((ep) => ep.id === mediaId) ?? -1
           if (currentIndex >= 0 && episodes && currentIndex < episodes.length - 1) {
             const nextEp = episodes[currentIndex + 1]
-            handlePlayNextEpisode(nextEp.id)
+            handlePlayNextEpisode(nextEp.media_id)
           }
           return 0
         }
@@ -496,41 +935,107 @@ export function VideoPlayerScreen() {
     }
   }, [isPlaying, isLocked])
 
-  // Handle tap
-  const handleTapScreen = (event: { nativeEvent: { locationX: number; locationY: number } }) => {
-    if (isLocked) {
-      return
-    }
-
-    const now = Date.now()
-    const tapX = event.nativeEvent.locationX
-    const isDoubleTap = now - lastTapRef.current < 300 && Math.abs(tapX - tapXRef.current) < 50
-
-    if (isDoubleTap) {
-      handleDoubleTap(tapX)
+  // Refs for gesture callbacks (RNGH callbacks capture stale closures)
+  const showControlsRef = useRef(showControls)
+  showControlsRef.current = showControls
+  const isPlayingRef = useRef(isPlaying)
+  isPlayingRef.current = isPlaying
+  const isLockedRef = useRef(isLocked)
+  isLockedRef.current = isLocked
+  // Guard ref to block tap gestures while stats overlay is open (or just closed)
+  const statsGuardRef = useRef(false)
+  useEffect(() => {
+    if (showStats) {
+      statsGuardRef.current = true
     } else {
-      setShowControls(true)
-      scheduleHideControls()
+      // Keep guard up briefly after closing so gesture callback doesn't sneak through
+      setTimeout(() => { statsGuardRef.current = false }, 300)
     }
+  }, [showStats])
 
-    lastTapRef.current = now
-    tapXRef.current = tapX
-  }
+  // YouTube-style tap gestures via RNGH (no Pressable conflicts)
+  // Double tap on left/right third → seek ±5s (accumulate on rapid taps)
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .maxDuration(250)
+    .onEnd((event) => {
+      if (isLockedRef.current) return
+      if (statsGuardRef.current) return
 
-  // Handle double tap for seek
-  const handleDoubleTap = (x: number) => {
-    if (isLocked) {
-      setIsLocked(false)
-      return
-    }
-    // Wider seek zones on tablet/TV
-    const seekZoneDivider = layout.largeControls ? 2.5 : layout.device === 'tablet' ? 2.2 : 2
-    if (x < SCREEN_WIDTH / seekZoneDivider) {
-      handleSeek(-10)
-    } else if (x > SCREEN_WIDTH - SCREEN_WIDTH / seekZoneDivider) {
-      handleSeek(10)
-    }
-  }
+      // Ignore double taps in controls area
+      if (showControlsRef.current) {
+        if (event.y < 80 || event.y > SCREEN_HEIGHT - 160) return
+      }
+
+      const tapX = event.x
+      const zoneWidth = SCREEN_WIDTH / 3
+      const isLeftZone = tapX < zoneWidth
+      const isRightZone = tapX > SCREEN_WIDTH - zoneWidth
+
+      if (isLeftZone || isRightZone) {
+        const direction = isRightZone ? 5 : -5
+        seekAccumulatorRef.current += direction
+        handleSeek(direction)
+
+        setSeekFeedback({
+          side: isRightZone ? 'right' : 'left',
+          amount: Math.abs(seekAccumulatorRef.current),
+        })
+
+        if (seekResetTimerRef.current) clearTimeout(seekResetTimerRef.current)
+        seekResetTimerRef.current = setTimeout(() => {
+          seekAccumulatorRef.current = 0
+          setSeekFeedback(null)
+        }, 800)
+
+        // Show controls briefly during seek feedback
+        setShowControls(true)
+        scheduleHideControls()
+      }
+    })
+
+  // Single tap behavior:
+  // - Center: controls hidden → show controls; controls visible → toggle play/pause with animation
+  // - Edges: toggle controls visibility
+  // - Top bar / bottom panel: ignored (let TouchableOpacity buttons handle)
+  const singleTapGesture = Gesture.Tap()
+    .maxDuration(250)
+    .onEnd((event) => {
+      if (isLockedRef.current) return
+      if (statsGuardRef.current) return
+
+      const tapY = event.y
+      const tapX = event.x
+      const zoneWidth = SCREEN_WIDTH / 3
+      const isCenterZone = tapX >= zoneWidth && tapX <= SCREEN_WIDTH - zoneWidth
+
+      // When controls visible, ignore taps on top bar / bottom panel areas
+      if (showControlsRef.current) {
+        if (tapY < 80 || tapY > SCREEN_HEIGHT - 160) return
+      }
+
+      if (isCenterZone) {
+        if (!showControlsRef.current) {
+          // Center tap, controls hidden → show controls
+          setShowControls(true)
+          scheduleHideControls()
+        } else {
+          // Center tap, controls visible → toggle play/pause with animated icon
+          togglePlayPause()
+        }
+      } else {
+        // Edge tap → toggle controls
+        if (showControlsRef.current) {
+          setShowControls(false)
+        } else {
+          setShowControls(true)
+          scheduleHideControls()
+        }
+      }
+    })
+
+  // Double tap takes priority over single tap
+  const tapGestures = Gesture.Exclusive(doubleTapGesture, singleTapGesture)
 
   // Skip intro/outro handlers
   const handleSkipIntro = () => {
@@ -550,9 +1055,29 @@ export function VideoPlayerScreen() {
   }
 
   // Playback controls
+  // Animated feedback for play/pause (YouTube-style scale+fade)
+  const playPauseAnim = useRef(new RNAnimated.Value(0)).current
+  // Lock which icon to show during animation (true = show Play icon, false = show Pause icon)
+  const [animIcon, setAnimIcon] = useState<'play' | 'pause' | null>(null)
+
   const togglePlayPause = () => {
     if (!player) return
-    if (player.playing || userWantsToPlayRef.current) {
+
+    const wasPlaying = player.playing || userWantsToPlayRef.current
+
+    // Lock the icon BEFORE state changes: show what action happened
+    // Was playing → now pausing → show Pause icon; was paused → now playing → show Play icon
+    setAnimIcon(wasPlaying ? 'pause' : 'play')
+
+    // Trigger scale+fade animation
+    playPauseAnim.setValue(1)
+    RNAnimated.timing(playPauseAnim, {
+      toValue: 0,
+      duration: 400,
+      useNativeDriver: true,
+    }).start(() => setAnimIcon(null))
+
+    if (wasPlaying) {
       player.pause()
       userWantsToPlayRef.current = false
     } else {
@@ -588,15 +1113,6 @@ export function VideoPlayerScreen() {
     scheduleHideControls()
   }
 
-  const toggleFullscreen = () => {
-    if (isFullscreen) {
-      videoViewRef.current?.exitFullscreen()
-    } else {
-      videoViewRef.current?.enterFullscreen()
-    }
-    setIsFullscreen(!isFullscreen)
-    scheduleHideControls()
-  }
 
   // Subtitle handling
   const handleSubtitleSelect = (track: SubtitleTrack | null) => {
@@ -607,10 +1123,14 @@ export function VideoPlayerScreen() {
     scheduleHideControls()
   }
 
-  // Quality handling
-  const handleQualitySelect = (qualityLabel: string) => {
-    setSelectedQuality(qualityLabel)
+  // Quality handling — changes max_height → re-fetches stream URL → player reloads
+  const handleQualitySelect = (height: number | 'auto') => {
+    if (height === maxQuality) return
+    setMaxQuality(height)
+    // Always start from normal — fallback chain handles failures:
+    // server decision (direct play) → pretranscode → HLS transcode
     scheduleHideControls()
+    console.log('[VideoPlayer] Quality changed to:', height === 'auto' ? 'auto (1080p)' : `${height}p`)
   }
 
   // Speed handling
@@ -643,6 +1163,25 @@ export function VideoPlayerScreen() {
     }
   }
 
+  // Toggle orientation (landscape/portrait)
+  const toggleFullscreen = async () => {
+    if (isLandscape) {
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
+      setIsLandscape(false)
+    } else {
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT)
+      setIsLandscape(true)
+    }
+    scheduleHideControls()
+  }
+
+  // Unlock orientation on unmount
+  useEffect(() => {
+    return () => {
+      ScreenOrientation.unlockAsync()
+    }
+  }, [])
+
   // Toggle stats overlay
   const toggleStats = () => {
     setShowStats(!showStats)
@@ -657,7 +1196,7 @@ export function VideoPlayerScreen() {
 
   // Repeat mode handling
   const handleRepeatModeToggle = () => {
-    const modes: RepeatMode[] = ['off', 'one', 'all']
+    const modes: RepeatMode[] = ['none', 'one', 'all']
     const currentIndex = modes.indexOf(repeatMode)
     const nextIndex = (currentIndex + 1) % modes.length
     setRepeatMode(modes[nextIndex])
@@ -673,7 +1212,7 @@ export function VideoPlayerScreen() {
         player.currentTime = 0
         player.play()
       } else if (repeatMode === 'all' && seriesId) {
-        handlePlayNextEpisode(nextEpisode?.id ?? 0)
+        handlePlayNextEpisode(nextEpisode?.media_id ?? 0)
       }
     }
 
@@ -916,7 +1455,7 @@ export function VideoPlayerScreen() {
   }
 
   // Error state
-  if (error || !streamData?.hls_url && !streamData?.direct_url) {
+  if (error || (!streamLoading && !videoSource)) {
     return (
       <View style={styles.centerContainer}>
         <Text style={styles.errorText}>{error || 'Failed to load video'}</Text>
@@ -940,16 +1479,19 @@ export function VideoPlayerScreen() {
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
 
   // Find next episode info
-  const currentEpisodeIndex = episodes?.findIndex((ep) => ep.id === mediaId) ?? -1
+  const currentEpisodeIndex = episodes?.findIndex((ep) => ep.media_id === mediaId) ?? -1
   const nextEpisode = currentEpisodeIndex >= 0 && episodes && currentEpisodeIndex < episodes.length - 1
     ? episodes[currentEpisodeIndex + 1]
     : null
 
+  // Compose all gestures: taps are exclusive (double wins), race with pan
+  const composedGesture = Gesture.Race(panGesture, tapGestures)
+
   return (
     // @ts-ignore - GestureHandlerRootView children prop type issue
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <GestureDetector gesture={panGesture}>
-        <Pressable style={styles.container} onPress={handleTapScreen}>
+      <GestureDetector gesture={composedGesture}>
+        <View style={styles.container}>
           {/* Casting Overlay — replaces local video when casting */}
           {chromecast.casting ? (
             <View style={castStyles.overlay}>
@@ -1025,18 +1567,11 @@ export function VideoPlayerScreen() {
             </View>
           ) : (
             /* Video Player */
-            // @ts-ignore -- expo-video VideoView JSX type issue with strict mode
-            <VideoView
-              ref={videoViewRef as any}
+            <VeloxPlayerView
               style={styles.video}
               player={player}
               nativeControls={false}
               contentFit={aspectRatio}
-              allowsFullscreen={true}
-              allowsPictureInPicture={true}
-              startsPictureInPictureAutomatically={false}
-              onFullscreenEnter={() => setIsFullscreen(true)}
-              onFullscreenExit={() => setIsFullscreen(false)}
             />
           )}
 
@@ -1054,6 +1589,11 @@ export function VideoPlayerScreen() {
             }}
           />
 
+          {/* Double-tap seek feedback (YouTube-style) */}
+          {seekFeedback && (
+            <SeekFeedbackOverlay side={seekFeedback.side} amount={seekFeedback.amount} />
+          )}
+
           {/* Gesture feedback overlays */}
           {gestureSeek !== null && (
             <View style={styles.gestureFeedback}>
@@ -1063,8 +1603,8 @@ export function VideoPlayerScreen() {
             </View>
           )}
           {gestureVolume !== null && (
-            <View style={styles.volumeFeedback}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={styles.volumeFeedback} pointerEvents="none">
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}>
                 <Volume2 size={scaledFont(20, layout.fontScale)} color="#fff" />
                 <Text style={[styles.volumeFeedbackText, { fontSize: scaledFont(20, layout.fontScale) }]}>
                   {Math.round(gestureVolume * 100)}%
@@ -1073,8 +1613,8 @@ export function VideoPlayerScreen() {
             </View>
           )}
           {gestureBrightness !== null && (
-            <View style={styles.brightnessFeedback}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={styles.brightnessFeedback} pointerEvents="none">
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}>
                 <Sun size={scaledFont(20, layout.fontScale)} color="#fff" />
                 <Text style={[styles.brightnessFeedbackText, { fontSize: scaledFont(20, layout.fontScale) }]}>
                   {gestureBrightness >= 0 ? '+' : ''}{Math.round(gestureBrightness * 100)}%
@@ -1083,91 +1623,118 @@ export function VideoPlayerScreen() {
             </View>
           )}
 
-          {/* Buffering spinner - centered on screen */}
+          {/* Buffering spinner */}
           {isBuffering && (
             <View style={styles.pauseIndicatorContainer}>
               <ActivityIndicator size="large" color="#fff" />
             </View>
           )}
 
-          {/* Pause indicator - only when user actually paused (not buffering) */}
-          {showControls && !isPlaying && !isBuffering && !isLocked && (
-            <TouchableOpacity style={styles.pauseIndicatorContainer} activeOpacity={0.8} onPress={togglePlayPause}>
-              <View style={styles.pauseIndicator}>
-                <Play size={44} color="#fff" fill="#fff" style={{ marginLeft: 4 }} />
-              </View>
-            </TouchableOpacity>
-          )}
-
           {/* Skip Intro/Outro Buttons */}
           {showSkipIntro && (
             <TouchableOpacity style={[styles.skipButton, layout.device !== 'phone' && { paddingHorizontal: 24, paddingVertical: 14 }]} onPress={handleSkipIntro}>
-              <Text style={[styles.skipButtonText, { fontSize: scaledFont(14, layout.fontScale) }]}>Skip Intro ⏭</Text>
+              <Text style={[styles.skipButtonText, { fontSize: scaledFont(14, layout.fontScale) }]}>Skip Intro</Text>
+              <SkipForward size={16} color="#000" />
             </TouchableOpacity>
           )}
           {showSkipOutro && (
             <TouchableOpacity style={[styles.skipButton, layout.device !== 'phone' && { paddingHorizontal: 24, paddingVertical: 14 }]} onPress={handleSkipOutro}>
-              <Text style={[styles.skipButtonText, { fontSize: scaledFont(14, layout.fontScale) }]}>Skip Outro ⏭</Text>
+              <Text style={[styles.skipButtonText, { fontSize: scaledFont(14, layout.fontScale) }]}>Skip Credits</Text>
+              <SkipForward size={16} color="#000" />
             </TouchableOpacity>
           )}
 
-          {/* Video Stats Overlay */}
-          {showStats && (
-            <View style={[
-              styles.statsOverlay,
-              layout.device !== 'phone' && { top: 100, left: 24, minWidth: 280 },
-            ]}>
-              <Text style={[styles.statsTitle, { fontSize: scaledFont(12, layout.fontScale) }]}>Video Stats</Text>
-              <View style={styles.statsDivider} />
-              <Text style={[styles.statsText, { fontSize: scaledFont(11, layout.fontScale) }]}>
-                <Text style={styles.statsLabel}>{'Bitrate:      '}</Text>
-                <Text>{videoStats.bitrate > 0
-                  ? videoStats.bitrate >= 1_000_000
-                    ? `${(videoStats.bitrate / 1_000_000).toFixed(1)} Mbps`
-                    : `${Math.round(videoStats.bitrate / 1_000)} Kbps`
-                  : 'N/A'}</Text>
-              </Text>
-              <Text style={[styles.statsText, { fontSize: scaledFont(11, layout.fontScale) }]}>
-                <Text style={styles.statsLabel}>{'Resolution:   '}</Text>
-                <Text>{videoStats.resolution || 'N/A'}</Text>
-              </Text>
-              <Text style={[styles.statsText, { fontSize: scaledFont(11, layout.fontScale) }]}>
-                <Text style={styles.statsLabel}>{'Frame Rate:   '}</Text>
-                <Text>{videoStats.frameRate > 0
-                  ? `${videoStats.frameRate % 1 === 0 ? videoStats.frameRate : videoStats.frameRate.toFixed(3)} fps`
-                  : 'N/A'}</Text>
-              </Text>
-              <Text style={[styles.statsText, { fontSize: scaledFont(11, layout.fontScale) }]}>
-                <Text style={styles.statsLabel}>{'Codec:        '}</Text>
-                <Text>{videoStats.codec || 'N/A'}</Text>
-              </Text>
-              <Text style={[styles.statsText, { fontSize: scaledFont(11, layout.fontScale) }]}>
-                <Text style={styles.statsLabel}>{'Buffer:       '}</Text>
-                <Text>{videoStats.bufferHealth > 0 ? `${videoStats.bufferHealth.toFixed(1)}s` : 'N/A'}</Text>
-              </Text>
-              <Text style={[styles.statsText, { fontSize: scaledFont(11, layout.fontScale) }]}>
-                <Text style={styles.statsLabel}>{'Connection:   '}</Text>
-                <Text>{videoStats.connectionQuality}</Text>
-              </Text>
-              <Text style={[styles.statsText, { fontSize: scaledFont(11, layout.fontScale) }]}>
-                <Text style={styles.statsLabel}>{'Qualities:    '}</Text>
-                <Text>{videoStats.qualityLevels > 0 ? `${videoStats.qualityLevels} levels` : 'N/A'}</Text>
-              </Text>
-              <Text style={[styles.statsText, { fontSize: scaledFont(11, layout.fontScale) }]}>
-                <Text style={styles.statsLabel}>{'ABR Switches: '}</Text>
-                <Text>{videoStats.abrSwitches}</Text>
-              </Text>
-              <Text style={[styles.statsText, { fontSize: scaledFont(11, layout.fontScale) }]}>
-                <Text style={styles.statsLabel}>{'Audio:        '}</Text>
-                <Text>{videoStats.audioInfo}</Text>
-              </Text>
-            </View>
-          )}
+          {/* Playback Info Overlay — matches web WatchPlaybackStatsOverlay */}
+          {showStats && playbackInfo && (() => {
+            const pi = playbackInfo as any
+            const selectedAudio = pi.audio_tracks?.find((t: any) => t.selected) ?? pi.audio_tracks?.find((t: any) => t.is_default) ?? pi.audio_tracks?.[0]
+            const isTranscoding = pi.method === 'FullTranscode' || pi.method === 'TranscodeAudio'
+            const methodColors: Record<string, string> = { DirectPlay: '#4ade80', DirectStream: '#60a5fa', TranscodeAudio: '#facc15', FullTranscode: '#f87171' }
+            const methodLabels: Record<string, string> = { DirectPlay: 'Direct Play', DirectStream: 'Direct Stream', TranscodeAudio: 'Transcode Audio', FullTranscode: 'Full Transcode' }
+            const methodColor = methodColors[pi.method] ?? '#fff'
+            const fmtBitrate = (b: number) => b >= 1000 ? `${(b / 1000).toFixed(1)} Mbps` : `${b} Kbps`
+            const fmtChannels = (ch: number) => ch === 6 ? '5.1' : ch === 8 ? '7.1' : ch === 2 ? 'Stereo' : ch === 1 ? 'Mono' : `${ch}ch`
+            return (
+              <View style={[styles.statsOverlay, layout.device !== 'phone' && { top: 100, left: 24, minWidth: 280 }]}>
+                {/* Close button */}
+                <TouchableOpacity style={styles.statsCloseButton} onPress={() => setShowStats(false)}>
+                  <X size={16} color="rgba(255,255,255,0.5)" />
+                </TouchableOpacity>
+
+                {/* Playback Method */}
+                <View style={styles.statsSection}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Text style={styles.statsTitle}>Playback</Text>
+                    <View style={{ backgroundColor: methodColor + '33', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <Text style={{ color: methodColor, fontSize: 10, fontWeight: '700' }}>{methodLabels[pi.method] ?? pi.method}</Text>
+                    </View>
+                  </View>
+                  {pi.decision_reason ? <Text style={styles.statsMonoMuted}>{pi.decision_reason}</Text> : null}
+                </View>
+
+                {/* Video */}
+                <View style={styles.statsSection}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Text style={styles.statsTitle}>Video</Text>
+                    <View style={{ backgroundColor: pi.method === 'FullTranscode' ? '#f8717133' : '#4ade8033', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <Text style={{ color: pi.method === 'FullTranscode' ? '#f87171' : '#4ade80', fontSize: 10, fontWeight: '700' }}>
+                        {pi.method === 'FullTranscode' ? 'Transcoding' : 'Direct'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.statsMono}>
+                    {pi.video_codec?.toUpperCase() || '—'} {pi.height > 0 ? `${pi.width}×${pi.height}` : ''}
+                    {pi.video_profile ? ` ${pi.video_profile}` : ''}{pi.video_level > 0 ? ` L${pi.video_level}` : ''}
+                  </Text>
+                  <Text style={styles.statsMonoMuted}>
+                    {pi.bitrate > 0 ? fmtBitrate(pi.bitrate) : ''}
+                    {pi.video_fps > 0 ? ` · ${Number.isInteger(pi.video_fps) ? pi.video_fps : pi.video_fps.toFixed(2)} fps` : ''}
+                  </Text>
+                </View>
+
+                {/* Audio */}
+                {selectedAudio && (
+                  <View style={styles.statsSection}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <Text style={styles.statsTitle}>Audio</Text>
+                      <View style={{ backgroundColor: isTranscoding ? '#facc1533' : '#4ade8033', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ color: isTranscoding ? '#facc15' : '#4ade80', fontSize: 10, fontWeight: '700' }}>
+                          {isTranscoding ? 'Transcoding' : 'Direct'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.statsMono}>
+                      {selectedAudio.codec?.toUpperCase() || '—'} {fmtChannels(selectedAudio.channels)}
+                      {selectedAudio.language ? ` · ${selectedAudio.language}` : ''}
+                      {selectedAudio.is_default ? ' (Default)' : ''}
+                    </Text>
+                    <Text style={styles.statsMonoMuted}>
+                      {selectedAudio.bitrate > 0 ? `${selectedAudio.bitrate >= 1000 ? `${Math.round(selectedAudio.bitrate / 1000)} Kbps` : `${selectedAudio.bitrate} bps`}` : ''}
+                      {selectedAudio.sample_rate > 0 ? ` · ${selectedAudio.sample_rate} Hz` : ''}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Stream */}
+                <View style={[styles.statsSection, { borderBottomWidth: 0 }]}>
+                  <Text style={[styles.statsTitle, { marginBottom: 4 }]}>Stream</Text>
+                  <Text style={styles.statsMono}>
+                    {pi.method === 'DirectPlay' ? 'HTTP Range' : 'HLS'}
+                    {' · '}{pi.container?.toUpperCase() || '—'}
+                    {pi.file_size > 0 ? ` · ${(pi.file_size / (1024 * 1024 * 1024)).toFixed(1)} GB` : ''}
+                  </Text>
+                  {pi.estimated_bitrate > 0 && isTranscoding && (
+                    <Text style={styles.statsMonoMuted}>Estimated: {fmtBitrate(pi.estimated_bitrate)}</Text>
+                  )}
+                </View>
+              </View>
+            )
+          })()}
 
           {/* Controls Overlay */}
           {showControls && !isLocked && (
             <View style={styles.controlsOverlay}>
-              {/* Top bar - minimal */}
+              {/* Top bar */}
               <View style={styles.topBar}>
                 <TouchableOpacity style={styles.topBackButton} onPress={handleBack}>
                   <ChevronLeft size={22} color="rgba(255,255,255,0.8)" />
@@ -1178,18 +1745,46 @@ export function VideoPlayerScreen() {
                 </View>
               </View>
 
-              {/* Spacer for tap area */}
-              <View style={styles.centerArea} />
+              {/* Center — animated play/pause icon, only visible during animation */}
+              <View style={styles.centerArea} pointerEvents="none">
+                {animIcon && (
+                  <RNAnimated.View
+                    style={[
+                      styles.centerPlayButton,
+                      {
+                        opacity: playPauseAnim,
+                        transform: [{
+                          scale: playPauseAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1.6, 1],
+                          }),
+                        }],
+                      },
+                    ]}
+                  >
+                    {animIcon === 'play' ? (
+                      <Play size={playPauseIconSize} color="#fff" fill="#fff" style={{ marginLeft: 4 }} />
+                    ) : (
+                      <Pause size={playPauseIconSize} color="#fff" fill="#fff" />
+                    )}
+                  </RNAnimated.View>
+                )}
+              </View>
 
               {/* Bottom panel */}
               <View style={styles.bottomPanel}>
-                {/* Row 1: Title */}
-                <Text style={[styles.bottomTitle, { fontSize: scaledFont(15, layout.fontScale) }]} numberOfLines={1}>
-                  {mediaTitle}
-                </Text>
-
-                {/* Row 2: Action buttons */}
-                <View style={styles.actionButtonsRow}>
+                {/* Title + Action buttons in one row */}
+                <View style={styles.titleActionRow}>
+                  <Text
+                    style={[
+                      styles.bottomTitle,
+                      { fontSize: scaledFont(14, layout.fontScale), flex: layout.device === 'tablet' ? 5 : 3 },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {mediaTitle}
+                  </Text>
+                  <View style={[styles.actionButtonsRow, { flex: layout.device === 'tablet' ? 5 : 7 }]}>
                   {/* Subtitles */}
                   <TouchableOpacity
                     style={[styles.actionButton, selectedSubtitle && styles.actionButtonActive]}
@@ -1216,7 +1811,7 @@ export function VideoPlayerScreen() {
                   {/* Settings */}
                   <TouchableOpacity
                     style={styles.actionButton}
-                    onPress={() => { setShowAspectRatioMenu(true); scheduleHideControls() }}
+                    onPress={() => { setShowAspectRatioMenu(true); setSettingsView('main'); scheduleHideControls() }}
                   >
                     <Settings size={17} color="rgba(255,255,255,0.7)" />
                   </TouchableOpacity>
@@ -1224,7 +1819,7 @@ export function VideoPlayerScreen() {
                   {nextEpisode && (
                     <TouchableOpacity
                       style={styles.actionButton}
-                      onPress={() => handlePlayNextEpisode(nextEpisode.id)}
+                      onPress={() => handlePlayNextEpisode(nextEpisode.media_id)}
                     >
                       <SkipForward size={17} color="rgba(255,255,255,0.7)" />
                     </TouchableOpacity>
@@ -1236,13 +1831,14 @@ export function VideoPlayerScreen() {
                   >
                     <Lock size={17} color="rgba(255,255,255,0.7)" />
                   </TouchableOpacity>
-                  {/* Fullscreen */}
+                  {/* Fullscreen — rotate orientation */}
                   <TouchableOpacity
                     style={styles.actionButton}
                     onPress={toggleFullscreen}
                   >
-                    {isFullscreen ? <Minimize2 size={17} color="rgba(255,255,255,0.7)" /> : <Maximize2 size={17} color="rgba(255,255,255,0.7)" />}
+                    {isLandscape ? <Minimize2 size={17} color="rgba(255,255,255,0.7)" /> : <Maximize2 size={17} color="rgba(255,255,255,0.7)" />}
                   </TouchableOpacity>
+                  </View>
                 </View>
 
                 {/* Row 2: Progress bar */}
@@ -1268,18 +1864,18 @@ export function VideoPlayerScreen() {
                       {formatTime(currentTime)}
                     </Text>
                     <View style={styles.transportControls}>
-                      <TouchableOpacity style={styles.seekSmallButton} onPress={() => handleSeek(-5)}>
+                      <TouchableOpacity style={styles.seekSmallButton} hitSlop={{ top: 12, bottom: 12, left: 12, right: 4 }} onPress={() => handleSeek(-5)}>
                         <RotateCcw size={20} color="rgba(255,255,255,0.75)" />
                         <Text style={styles.seekSmallText}>5</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.playSmallButton} onPress={togglePlayPause}>
+                      <TouchableOpacity style={styles.playSmallButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={togglePlayPause}>
                         {isPlaying || isBuffering ? (
                           <Pause size={26} color="#fff" fill="#fff" />
                         ) : (
                           <Play size={26} color="#fff" fill="#fff" style={{ marginLeft: 2 }} />
                         )}
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.seekSmallButton} onPress={() => handleSeek(5)}>
+                      <TouchableOpacity style={styles.seekSmallButton} hitSlop={{ top: 12, bottom: 12, left: 4, right: 12 }} onPress={() => handleSeek(5)}>
                         <Text style={styles.seekSmallText}>5</Text>
                         <RotateCw size={20} color="rgba(255,255,255,0.75)" />
                       </TouchableOpacity>
@@ -1303,32 +1899,26 @@ export function VideoPlayerScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Next Episode Preview */}
+          {/* Up Next card — floating bottom-right, matching web */}
           {showNextEpisode && nextEpisode && (
-            <View style={styles.nextEpisodeOverlay}>
-              <View style={[styles.nextEpisodeCard, layout.device !== 'phone' && { maxWidth: 500 }]}>
-                <Text style={[styles.nextEpisodeLabel, { fontSize: scaledFont(12, layout.fontScale) }]}>Up Next</Text>
-                <Text style={[styles.nextEpisodeTitle, { fontSize: scaledFont(18, layout.fontScale) }]} numberOfLines={1}>
-                  {nextEpisode.title}
-                </Text>
-                <Text style={[styles.nextEpisodeCountdown, { fontSize: scaledFont(14, layout.fontScale) }]}>
-                  Playing in {nextEpisodeCountdown}s
-                </Text>
-                <View style={styles.nextEpisodeButtons}>
-                  <TouchableOpacity style={styles.nextEpisodeCancel} onPress={handleCancelNextEpisode}>
-                    <Text style={[styles.nextEpisodeCancelText, { fontSize: scaledFont(16, layout.fontScale) }]}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.nextEpisodePlay}
-                    onPress={() => handlePlayNextEpisode(nextEpisode.id)}
-                  >
-                    <Text style={[styles.nextEpisodePlayText, { fontSize: scaledFont(16, layout.fontScale) }]}>Play Now</Text>
-                  </TouchableOpacity>
-                </View>
+            <View style={styles.upNextCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.upNextLabel}>Up next</Text>
+              <Text style={styles.upNextTitle} numberOfLines={2}>{nextEpisode.title}</Text>
+              <View style={styles.upNextButtons}>
+                <TouchableOpacity
+                  style={styles.upNextPlayBtn}
+                  onPress={() => handlePlayNextEpisode(nextEpisode.media_id)}
+                >
+                  <Play size={13} color="#fff" fill="#fff" />
+                  <Text style={styles.upNextPlayText}>Play Next</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.upNextDismissBtn} onPress={handleCancelNextEpisode}>
+                  <Text style={styles.upNextDismissText}>Dismiss</Text>
+                </TouchableOpacity>
               </View>
             </View>
           )}
-        </Pressable>
+        </View>
       </GestureDetector>
 
       {/* Subtitle Picker Modal — matches web SubtitlePicker */}
@@ -1339,63 +1929,44 @@ export function VideoPlayerScreen() {
         onRequestClose={() => setShowSubtitleMenu(false)}
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSubtitleMenu(false)}>
-          <View style={[styles.subPickerContainer, { width: SCREEN_WIDTH * (layout.device === 'phone' ? 0.85 : 0.55) }]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.subPickerContainer, { width: layout.device === 'phone' ? 280 : 320 }]} onStartShouldSetResponder={() => true}>
             {/* Header */}
             <View style={styles.subPickerHeader}>
               <Text style={styles.subPickerHeaderText}>Subtitles</Text>
             </View>
 
             <ScrollView style={{ maxHeight: SCREEN_HEIGHT * 0.6 }} showsVerticalScrollIndicator={false}>
-              {/* Primary subtitle list */}
-              <TouchableOpacity
-                style={styles.subRow}
-                onPress={() => { handleSubtitleSelect(null); setShowSubtitleMenu(false) }}
-              >
-                <Captions size={18} color={!selectedSubtitle ? '#fff' : 'rgba(255,255,255,0.4)'} />
-                <View style={styles.subRowContent}>
-                  <Text style={[styles.subRowName, !selectedSubtitle && { color: '#fff' }]}>Off</Text>
-                </View>
-                {!selectedSubtitle && <Text style={styles.subRowCheck}>✓</Text>}
-              </TouchableOpacity>
+              {/* ── Primary subtitle list ── */}
+              <SubRow
+                name="Off"
+                selected={!selectedSubtitle}
+                onPress={() => { setSelectedSubtitle(null); setShowSubtitleMenu(false) }}
+              />
 
               {buildVisibleSubtitles(backendSubtitleTracks, false).map((track) => {
                 const { name, fmt } = parseSubtitleLabel(track.label, track.language)
                 const isSelected = languageMatches(primaryBackendSub?.language ?? null, track.language)
                 return (
-                  <TouchableOpacity
+                  <SubRow
                     key={track.id}
-                    style={styles.subRow}
-                    onPress={() => {
-                      const nativeTrack = availableSubtitles.find((t) => t.language === track.language)
-                      if (nativeTrack) handleSubtitleSelect(nativeTrack)
-                      setShowSubtitleMenu(false)
-                    }}
-                  >
-                    <Captions size={18} color={isSelected ? '#fff' : 'rgba(255,255,255,0.4)'} />
-                    <View style={styles.subRowContent}>
-                      <Text style={[styles.subRowName, isSelected && { color: '#fff' }]}>{name}</Text>
-                      {(fmt || track.format) ? <Text style={styles.subRowFmt}>{fmt || track.format}</Text> : null}
-                    </View>
-                    {isSelected && <Text style={styles.subRowCheck}>✓</Text>}
-                  </TouchableOpacity>
+                    name={name}
+                    fmt={fmt || track.format}
+                    selected={isSelected}
+                    onPress={() => { setSelectedSubtitle(track.language); setShowSubtitleMenu(false) }}
+                  />
                 )
               })}
 
-              {/* Secondary subtitle section */}
+              {/* ── Secondary subtitle section ── */}
               <View style={styles.subSectionDivider}>
                 <Text style={styles.subSectionLabel}>Secondary subtitle</Text>
               </View>
 
-              <TouchableOpacity
-                style={styles.subRow}
+              <SubRow
+                name="Off"
+                selected={!secondarySubLang}
                 onPress={() => { setSecondarySubtitleLanguage(null); setShowSubtitleMenu(false) }}
-              >
-                <Captions size={18} color={!secondarySubLang ? '#fff' : 'rgba(255,255,255,0.4)'} />
-                <View style={styles.subRowContent}>
-                  <Text style={[styles.subRowName, !secondarySubLang && { color: '#fff' }]}>Off</Text>
-                </View>
-                {!secondarySubLang && <Text style={styles.subRowCheck}>✓</Text>}
-              </TouchableOpacity>
+              />
 
               {buildVisibleSubtitles(backendSubtitleTracks, false)
                 .filter((s) => !s.is_image)
@@ -1403,18 +1974,13 @@ export function VideoPlayerScreen() {
                   const { name, fmt } = parseSubtitleLabel(track.label, track.language)
                   const isSelected = languageMatches(secondarySubLang, track.language)
                   return (
-                    <TouchableOpacity
+                    <SubRow
                       key={`sec-${track.id}`}
-                      style={styles.subRow}
+                      name={name}
+                      fmt={fmt || track.format}
+                      selected={isSelected}
                       onPress={() => { setSecondarySubtitleLanguage(track.language, track.id); setShowSubtitleMenu(false) }}
-                    >
-                      <Captions size={18} color={isSelected ? '#fff' : 'rgba(255,255,255,0.4)'} />
-                      <View style={styles.subRowContent}>
-                        <Text style={[styles.subRowName, isSelected && { color: '#fff' }]}>{name}</Text>
-                        {(fmt || track.format) ? <Text style={styles.subRowFmt}>{fmt || track.format}</Text> : null}
-                      </View>
-                      {isSelected && <Text style={styles.subRowCheck}>✓</Text>}
-                    </TouchableOpacity>
+                    />
                   )
                 })}
 
@@ -1423,6 +1989,54 @@ export function VideoPlayerScreen() {
                   <Text style={styles.noSubtitlesText}>No subtitles available</Text>
                 </View>
               )}
+
+              {/* ── Secondary source selector (expandable) ── */}
+              {secondarySubLang && (() => {
+                const sources = backendSubtitleTracks.filter(
+                  (t) => !t.is_image && languageMatches(t.language, secondarySubLang)
+                )
+                if (sources.length <= 1) return null
+                return (
+                  <View style={styles.subSourceSection}>
+                    <Text style={styles.subSectionLabel}>Secondary Source</Text>
+                    {sources.map((s) => {
+                      const { name: srcName } = parseSubtitleLabel(s.label, s.language)
+                      const label = `${srcName} (#${s.id} • ${s.format?.toUpperCase()}${s.is_default ? ' • Default' : ''})`
+                      const isActive = secondaryBackendSub?.id === s.id
+                      return (
+                        <TouchableOpacity
+                          key={s.id}
+                          style={[styles.subSourceOption, isActive && styles.subSourceOptionActive]}
+                          onPress={() => setSecondarySubtitleLanguage(s.language, s.id)}
+                        >
+                          <Text style={[styles.subSourceOptionText, isActive && { color: '#fff' }]} numberOfLines={1}>{label}</Text>
+                          {isActive && <Text style={{ color: '#fff', fontSize: 14 }}>✓</Text>}
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                )
+              })()}
+
+              {/* ── Translate Subtitle ── */}
+              {backendSubtitleTracks.filter((s) => !s.is_image).length > 0 && (
+                <SubtitleTranslateSection
+                  subtitles={backendSubtitleTracks.filter((s) => !s.is_image)}
+                  onTranslated={() => {
+                    // Refresh playback info to get new subtitle
+                    setShowSubtitleMenu(false)
+                  }}
+                />
+              )}
+
+              {/* ── Search for Subtitles ── */}
+              <SubtitleSearchSection
+                mediaId={mediaId}
+                defaultLang={selectedSubtitle}
+                onDownloaded={() => {
+                  setShowSubtitleMenu(false)
+                }}
+              />
             </ScrollView>
           </View>
         </TouchableOpacity>
@@ -1587,24 +2201,56 @@ export function VideoPlayerScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Quality (HLS only) */}
-              {streamData?.hls_url && (
+              {/* Quality — clickable row opens submenu (like web) */}
+              {qualityOptions.length > 0 && (
                 <>
                   <View style={styles.settingsDivider} />
-                  <Text style={styles.settingsSectionTitle}>Quality</Text>
-                  <View style={{ gap: 4 }}>
-                    {qualityOptions.map((q) => (
-                      <TouchableOpacity
-                        key={q.label}
-                        style={[styles.settingsRow, selectedQuality === q.label && styles.settingsRowActive]}
-                        onPress={() => handleQualitySelect(q.label)}
-                      >
-                        <Text style={[styles.settingsRowText, selectedQuality === q.label && { color: '#fff', fontWeight: '600' }]}>
-                          {q.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <TouchableOpacity
+                    style={styles.settingsRow}
+                    onPress={() => setSettingsView((prev) => prev === 'quality' ? 'main' : 'quality')}
+                  >
+                    <Text style={styles.settingsRowText}>Quality</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
+                        {currentQualityLabel}
+                      </Text>
+                      <ChevronRight size={14} color="rgba(255,255,255,0.5)" />
+                    </View>
+                  </TouchableOpacity>
+                  {settingsView === 'quality' && (
+                    <View style={{ gap: 2, marginTop: 4 }}>
+                      {qualityOptions.map((q) => {
+                        const isSelected = maxQuality !== 'auto' && maxQuality === q.height
+                        return (
+                          <TouchableOpacity
+                            key={`${q.source}-${q.height}`}
+                            style={[styles.settingsRow, isSelected && styles.settingsRowActive]}
+                            onPress={() => { handleQualitySelect(q.height); setSettingsView('main') }}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={[styles.settingsRowText, isSelected && { color: '#fff', fontWeight: '600' }]}>
+                                {q.label}
+                              </Text>
+                              {q.instant && q.source !== 'original' && (
+                                <Text style={{ fontSize: 11, color: '#facc15' }}>⚡</Text>
+                              )}
+                            </View>
+                          </TouchableOpacity>
+                        )
+                      })}
+                      {/* Auto option at bottom with separator */}
+                      <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', marginTop: 2, paddingTop: 2 }}>
+                        <TouchableOpacity
+                          style={[styles.settingsRow, maxQuality === 'auto' && styles.settingsRowActive]}
+                          onPress={() => { handleQualitySelect('auto'); setSettingsView('main') }}
+                        >
+                          <Text style={[styles.settingsRowText, maxQuality === 'auto' && { color: '#fff', fontWeight: '600' }]}>
+                            Auto
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
                 </>
               )}
 
@@ -1612,7 +2258,7 @@ export function VideoPlayerScreen() {
               <View style={styles.settingsDivider} />
               <Text style={styles.settingsSectionTitle}>Repeat</Text>
               <View style={styles.settingsGrid}>
-                {(['off', 'one', 'all'] as const).map((m) => (
+                {(['none', 'one', 'all'] as const).map((m) => (
                   <TouchableOpacity
                     key={m}
                     style={[styles.settingsGridItem, repeatMode === m && styles.settingsGridItemActive]}
@@ -1688,7 +2334,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 48,
     paddingBottom: 16,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'transparent',
   },
   topBackButton: {
     flexDirection: 'row',
@@ -1705,8 +2351,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  volumeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  volumeSlider: {
+    width: 120,
+    height: 32,
+    justifyContent: 'center',
+  },
+  volumeTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  volumeFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: '#fff',
+  },
+  volumeThumb: {
+    position: 'absolute',
+    top: -5,
+    marginLeft: -7,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#fff',
+  },
   centerArea: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centerPlayButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1716,31 +2399,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pauseIndicator: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   bottomPanel: {
     paddingHorizontal: 16,
     paddingBottom: 34,
     paddingTop: 16,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'transparent',
+  },
+  titleActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
   },
   bottomTitle: {
     color: '#fff',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    marginBottom: 10,
   },
   actionButtonsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 8,
-    marginBottom: 10,
   },
   actionButton: {
     width: 36,
@@ -1805,7 +2493,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    padding: 8,
+    padding: 12,
   },
   seekSmallText: {
     color: 'rgba(255,255,255,0.75)',
@@ -1873,6 +2561,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 20,
   },
+  // doubleTapFeedback styles moved to SeekFeedbackOverlay component
   gestureFeedback: {
     position: 'absolute',
     top: '50%',
@@ -1891,11 +2580,9 @@ const styles = StyleSheet.create({
   volumeFeedback: {
     position: 'absolute',
     right: 20,
-    top: '40%',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
   volumeFeedbackText: {
     color: '#fff',
@@ -1905,11 +2592,9 @@ const styles = StyleSheet.create({
   brightnessFeedback: {
     position: 'absolute',
     left: 20,
-    top: '40%',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
   brightnessFeedbackText: {
     color: '#fff',
@@ -1918,50 +2603,68 @@ const styles = StyleSheet.create({
   },
   skipButton: {
     position: 'absolute',
-    bottom: 120,
+    bottom: 240,
     right: 20,
-    backgroundColor: 'rgba(229, 9, 20, 0.9)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    zIndex: 50,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   skipButtonText: {
-    color: '#fff',
+    color: '#000',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   statsOverlay: {
     position: 'absolute',
     top: 80,
     left: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: 12,
+    width: 240,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  statsCloseButton: {
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    padding: 4,
     borderRadius: 8,
-    minWidth: 220,
+    zIndex: 1,
+  },
+  statsSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
   statsTitle: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
-    fontFamily: 'monospace',
-    marginBottom: 4,
   },
-  statsDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    marginBottom: 6,
-  },
-  statsLabel: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontFamily: 'monospace',
-  },
-  statsText: {
-    color: '#fff',
+  statsMono: {
+    color: 'rgba(255,255,255,0.8)',
     fontSize: 11,
     fontFamily: 'monospace',
-    marginBottom: 2,
-    lineHeight: 16,
+    lineHeight: 18,
+  },
+  statsMonoMuted: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 11,
+    fontFamily: 'monospace',
+    lineHeight: 18,
   },
   lockIndicator: {
     position: 'absolute',
@@ -1976,50 +2679,62 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
   },
-  nextEpisodeOverlay: {
+  upNextCard: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    padding: 20,
-    paddingBottom: 40,
+    bottom: 240,
+    right: 20,
+    width: 240,
+    backgroundColor: '#1e1e1e',
+    borderRadius: 12,
+    padding: 16,
+    zIndex: 50,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.6,
+    shadowRadius: 16,
+    elevation: 20,
   },
-  nextEpisodeCard: {
-    alignItems: 'center',
-  },
-  nextEpisodeLabel: {
-    color: '#e50914',
-    fontSize: 12,
-    fontWeight: '600',
+  upNextLabel: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 11,
     marginBottom: 4,
   },
-  nextEpisodeTitle: {
+  upNextTitle: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  nextEpisodeCountdown: {
-    color: '#888',
     fontSize: 14,
-    marginBottom: 16,
-  },
-  nextEpisodeButtons: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  nextEpisodeCancel: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#333',
-  },
-  nextEpisodeCancelText: {
-    color: '#fff',
-    fontSize: 16,
     fontWeight: '600',
+    marginBottom: 12,
+  },
+  upNextButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  upNextPlayBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#e50914',
+    borderRadius: 8,
+    paddingVertical: 10,
+  },
+  upNextPlayText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  upNextDismissBtn: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  upNextDismissText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
   },
   nextEpisodePlay: {
     paddingHorizontal: 24,
@@ -2065,9 +2780,15 @@ const styles = StyleSheet.create({
   // Subtitle picker styles (matches web SubtitlePicker)
   subPickerContainer: {
     backgroundColor: '#242424',
-    borderRadius: 16,
+    borderRadius: 12,
     overflow: 'hidden',
-    maxWidth: 500,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    elevation: 20,
   },
   subPickerHeader: {
     borderBottomWidth: 1,
@@ -2121,6 +2842,35 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
+  subSourceSection: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  subSourceOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  subSourceOptionActive: {
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  subSourceOptionText: {
+    flex: 1,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  _subBottomRowRemoved: {
+  },
   // Unified settings modal styles
   settingsContainer: {
     backgroundColor: '#1e1e1e',
@@ -2166,6 +2916,9 @@ const styles = StyleSheet.create({
     marginVertical: 12,
   },
   settingsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,

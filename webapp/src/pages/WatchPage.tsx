@@ -19,7 +19,6 @@ import {
   LuRotateCw,
   LuRepeat,
   LuRepeat2,
-  LuExternalLink,
   LuExpand,
   LuInfo,
   LuLock,
@@ -47,6 +46,7 @@ import { DualSubtitleOverlay } from '@/components/DualSubtitleOverlay'
 import { SubtitlePicker } from '@/components/SubtitlePicker'
 import { AudioPicker } from '@/components/AudioPicker'
 import { TrickplayPreview } from '@/components/TrickplayPreview'
+import { api } from '@velox/shared/api'
 import { useToast } from '@/components/Toast'
 import { WatchDetailSheet } from '@/components/watch/WatchDetailSheet'
 import { WatchPlaybackStatsOverlay } from '@/components/watch/WatchPlaybackStatsOverlay'
@@ -169,8 +169,12 @@ export default function WatchPage() {
   const { data: subtitles = [] } = useSubtitles(mediaId, playbackRequest)
   const { data: audioTracks = [] } = useAudioTracks(mediaId, playbackRequest)
   const { data: playbackInfo } = usePlaybackInfo(mediaId, playbackRequest)
-  const isHlsPlayback =
+  // Fallback chain: try direct play first, switch to HLS on error.
+  // Backend decides the preferred method, but client always tries direct first for auto mode.
+  const [directPlayFailed, setDirectPlayFailed] = useState(false)
+  const backendWantsHls =
     playbackInfo?.method === 'FullTranscode' || playbackInfo?.method === 'TranscodeAudio'
+  const isHlsPlayback = backendWantsHls || directPlayFailed
 
   const isEpisode = media?.media.media_type === 'episode'
   const seriesId = media?.series_id ?? 0
@@ -181,7 +185,7 @@ export default function WatchPage() {
     if (isEpisode && seriesId > 0) {
       navigate(`/series/${seriesId}`)
     } else {
-      navigate(`/movie/${mediaId}`)
+      navigate(`/movies/${mediaId}`)
     }
   }
   const { data: seasons = [] } = useSeasons(isEpisode ? seriesId : 0)
@@ -369,6 +373,8 @@ export default function WatchPage() {
   const [currentLevel, setCurrentLevel] = useState(-1)
   const [bandwidth, setBandwidth] = useState<number | null>(null)
   const [showQualityIndicator, setShowQualityIndicator] = useState(false)
+  // Image subtitles (PGS/VobSub) require server-side burn-in via HLS transcode.
+  // Only available when actually using HLS transcode — not direct play or pretranscode MP4.
   const allowsImageSubtitles =
     playbackInfo?.method === 'FullTranscode' || playbackInfo?.method === 'TranscodeAudio'
 
@@ -404,6 +410,7 @@ export default function WatchPage() {
   }, [playbackInfo?.duration])
 
   useEffect(() => {
+    setDirectPlayFailed(false)
     setHlsStartOffset(null)
     setBufferedRange({ start: 0, end: 0 })
     streamSourceOffsetRef.current = 0
@@ -563,11 +570,12 @@ export default function WatchPage() {
     const clampedTime = clampSeekTarget(targetTime, video)
     const sessionOffset = streamSourceOffsetRef.current
     const localTarget = clampedTime - sessionOffset
-    // Session reload (server-side seek) is only safe for TranscodeAudio (video copy)
-    // which is lightweight and doesn't consume transcode slots. FullTranscode would
-    // tie up a VAAPI/CPU slot for a second concurrent job — clamp seek instead.
-    const canReloadSession =
-      isHlsPlayback && playbackInfo?.method === 'TranscodeAudio' && Boolean(streamUrls?.hls)
+    // Session reload (server-side seek) is safe when video is copied (not transcoded):
+    // - TranscodeAudio: video copy + audio transcode (lightweight)
+    // - directPlayFailed fallback: video copy via HLS (no transcode slot used)
+    // FullTranscode would tie up a VAAPI/CPU slot for a second concurrent job — clamp seek instead.
+    const isVideoCopy = playbackInfo?.method === 'TranscodeAudio' || directPlayFailed
+    const canReloadSession = isHlsPlayback && isVideoCopy && Boolean(streamUrls?.hls)
     const isBeforeCurrentSession = isHlsPlayback && localTarget < 0
     const isBeyondReadyEdge =
       isHlsPlayback &&
@@ -834,6 +842,19 @@ export default function WatchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioLanguage, buildHlsSessionUrl, hlsStartOffset, isHlsPlayback, streamUrls])
 
+  // Stop backend transcode when leaving the page or switching media.
+  // Uses beforeunload for hard reload / tab close.
+  useEffect(() => {
+    const stopTranscode = () => {
+      api.delete(`/stream/${mediaId}/session`).catch(() => {})
+    }
+    window.addEventListener('beforeunload', stopTranscode)
+    return () => {
+      window.removeEventListener('beforeunload', stopTranscode)
+      stopTranscode()
+    }
+  }, [mediaId])
+
   // Resume position is read from usePlayerStore.getState().lastPositions[mediaId]
   // directly in the HLS init effect — no cross-effect refs needed.
 
@@ -1054,7 +1075,14 @@ export default function WatchPage() {
           setIsPlaying(false)
           updateProgress({ mediaId, data: { position: duration, completed: true } })
         }}
-        onError={() => setError('Video playback error')}
+        onError={() => {
+          if (!isHlsPlayback && streamUrls?.hls) {
+            // Direct play failed — fallback to HLS (pretranscode or transcode online)
+            setDirectPlayFailed(true)
+          } else {
+            setError('Video playback error')
+          }
+        }}
       >
         {/* Native <track> for iOS native fullscreen (webkitEnterFullscreen fallback) */}
         {primarySub && !primarySub.is_image && subtitleServeUrl(primarySub) && (
@@ -1673,16 +1701,6 @@ export default function WatchPage() {
                                 className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
                               >
                                 <LuActivity size={13} /> Playback Info
-                              </button>
-                            </div>
-
-                            {/* More */}
-                            <div className="border-t border-white/10 pt-3">
-                              <button
-                                onClick={handleBack}
-                                className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
-                              >
-                                <LuExternalLink size={13} /> Back
                               </button>
                             </div>
                           </div>

@@ -71,6 +71,95 @@ func TestResolveSelectedAudioTrackID(t *testing.T) {
 	}
 }
 
+func TestResolvePlaybackAudioTrackAutoSelectsCompatibleAlternative(t *testing.T) {
+	audioTracks := []model.AudioTrack{
+		{ID: 10, Language: "eng", Codec: "dts", IsDefault: true},
+		{ID: 11, Language: "eng", Codec: "aac", IsDefault: false},
+	}
+
+	selected, effectiveID, autoSelected := resolvePlaybackAudioTrack(0, "", audioTracks, &playback.ChromeDesktop)
+	if selected == nil {
+		t.Fatal("selected track = nil, want AAC alternative")
+	}
+	if got, want := selected.Codec, "aac"; got != want {
+		t.Fatalf("selected codec = %q, want %q", got, want)
+	}
+	if got, want := effectiveID, 11; got != want {
+		t.Fatalf("effectiveID = %d, want %d", got, want)
+	}
+	if !autoSelected {
+		t.Fatal("autoSelected = false, want true")
+	}
+}
+
+func TestResolvePlaybackAudioTrackPrefersSameLanguageAlternative(t *testing.T) {
+	audioTracks := []model.AudioTrack{
+		{ID: 10, Language: "jpn", Codec: "dts", IsDefault: true},
+		{ID: 11, Language: "eng", Codec: "aac", IsDefault: false},
+		{ID: 12, Language: "jpn", Codec: "aac", IsDefault: false},
+	}
+
+	selected, effectiveID, autoSelected := resolvePlaybackAudioTrack(0, "", audioTracks, &playback.ChromeDesktop)
+	if selected == nil {
+		t.Fatal("selected track = nil, want same-language AAC alternative")
+	}
+	if got, want := selected.ID, int64(12); got != want {
+		t.Fatalf("selected ID = %d, want %d", got, want)
+	}
+	if got, want := effectiveID, 12; got != want {
+		t.Fatalf("effectiveID = %d, want %d", got, want)
+	}
+	if !autoSelected {
+		t.Fatal("autoSelected = false, want true")
+	}
+}
+
+func TestResolvePlaybackAudioTrackHonorsExplicitSelection(t *testing.T) {
+	audioTracks := []model.AudioTrack{
+		{ID: 10, Language: "eng", Codec: "dts", IsDefault: true},
+		{ID: 11, Language: "eng", Codec: "aac", IsDefault: false},
+	}
+
+	selected, effectiveID, autoSelected := resolvePlaybackAudioTrack(11, "", audioTracks, &playback.ChromeDesktop)
+	if selected == nil {
+		t.Fatal("selected track = nil, want explicit track")
+	}
+	if got, want := selected.ID, int64(11); got != want {
+		t.Fatalf("selected ID = %d, want %d", got, want)
+	}
+	if got, want := effectiveID, 11; got != want {
+		t.Fatalf("effectiveID = %d, want %d", got, want)
+	}
+	if autoSelected {
+		t.Fatal("autoSelected = true, want false for explicit selection")
+	}
+}
+
+func TestAdjustPlaybackDecisionForSelectedAudioTrackUsesDirectStream(t *testing.T) {
+	decision := playback.PlaybackDecision{
+		Method:         playback.MethodDirectPlay,
+		VideoAction:    playback.VideoCopy,
+		AudioAction:    playback.AudioCopy,
+		SubtitleAction: playback.SubtitleNone,
+		Reason:         "Direct play compatible",
+	}
+	selected := &model.AudioTrack{ID: 11, Codec: "aac", IsDefault: false}
+
+	got := adjustPlaybackDecisionForSelectedAudioTrack(decision, selected, 11, true)
+	if got.Method != playback.MethodDirectStream {
+		t.Fatalf("Method = %q, want %q", got.Method, playback.MethodDirectStream)
+	}
+	if got.VideoAction != playback.VideoCopy {
+		t.Fatalf("VideoAction = %q, want %q", got.VideoAction, playback.VideoCopy)
+	}
+	if got.AudioAction != playback.AudioCopy {
+		t.Fatalf("AudioAction = %q, want %q", got.AudioAction, playback.AudioCopy)
+	}
+	if got.Reason == decision.Reason {
+		t.Fatalf("Reason = %q, want reason to mention selected compatible audio track", got.Reason)
+	}
+}
+
 func TestPlaybackModeQuery(t *testing.T) {
 	if got := playbackModeQuery(playback.MethodDirectPlay); got != "direct" {
 		t.Fatalf("playbackModeQuery(DirectPlay) = %q, want %q", got, "direct")
