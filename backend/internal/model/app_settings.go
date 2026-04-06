@@ -73,4 +73,7 @@ const (
 	SettingPretranscodeSchedule = "pretranscode_schedule"
 	// SettingPretranscodeConcurrency controls max concurrent encode jobs (1-4).
 	SettingPretranscodeConcurrency = "pretranscode_concurrency"
+	// SettingPretranscodePaused tracks whether the pretranscode scheduler is paused (survives restarts).
+	// Values: "true" (paused), "false" (running)
+	SettingPretranscodePaused = "pretranscode_paused"
 )

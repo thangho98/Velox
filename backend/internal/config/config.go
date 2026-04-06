@@ -21,7 +21,7 @@ type Config struct {
 	CORSOrigin        string
 
 	// Hardware transcoding (Plan E Phase 01)
-	HWAccel       string // auto|videotoolbox|vaapi|nvenc|qsv|none
+	HWAccel       string // auto|videotoolbox|vaapi|nvenc|qsv|amf|none
 	MaxTranscodes int    // max concurrent FFmpeg jobs
 
 	// Trickplay thumbnails (Plan E Phase 03)

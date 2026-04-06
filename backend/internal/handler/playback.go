@@ -66,6 +66,7 @@ type PlaybackInfoRequest struct {
 type PlaybackInfoResponse struct {
 	MediaID            int                 `json:"media_id"`
 	PrimaryFileID      int64               `json:"primary_file_id,omitempty"`
+	StreamSessionID    string              `json:"stream_session_id,omitempty"`
 	Method             string              `json:"method"`
 	StreamURL          string              `json:"stream_url"`
 	DirectURL          string              `json:"direct_url,omitempty"`

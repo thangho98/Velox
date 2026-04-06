@@ -17,11 +17,12 @@ import (
 // transcodeJob tracks a background FFmpeg transcode.
 // Multiple HTTP requests waiting for the same transcode all share one job.
 type transcodeJob struct {
-	done         chan struct{}      // closed (not sent) when FFmpeg exits
-	err          error              // set before done is closed
-	cancel       context.CancelFunc // cancels the FFmpeg context
-	mediaID      int64              // media this job belongs to
-	lastActivity time.Time          // last time a segment was requested
+	done            chan struct{}      // closed (not sent) when FFmpeg exits
+	err             error              // set before done is closed
+	cancel          context.CancelFunc // cancels the FFmpeg context
+	mediaID         int64              // media this job belongs to
+	streamSessionID string             // viewer-scoped playback session
+	lastActivity    time.Time          // last time a segment was requested
 }
 
 // staleSessionTimeout is how long a transcode session can go without any
@@ -31,7 +32,7 @@ const staleSessionTimeout = 5 * time.Minute
 // Transcoder manages FFmpeg-based HLS transcoding and remuxing.
 type Transcoder struct {
 	outputDir string
-	hwAccel   string        // resolved HW accel type ("videotoolbox", "nvenc", "vaapi", "qsv", or "")
+	hwAccel   string        // resolved HW accel type ("videotoolbox", "nvenc", "vaapi", "qsv", "amf", or "")
 	semaphore chan struct{} // limits concurrent FFmpeg transcode jobs
 	mu        sync.Mutex
 	active    map[string]*transcodeJob // masterPath → in-progress job
@@ -78,6 +79,22 @@ func (t *Transcoder) TouchJob(masterPath string) {
 	}
 }
 
+// TouchJobByStreamSessionID updates the last activity time for all active
+// transcode jobs for a given viewer-scoped stream session.
+func (t *Transcoder) TouchJobByStreamSessionID(streamSessionID string) {
+	if streamSessionID == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := time.Now()
+	for _, job := range t.active {
+		if job.streamSessionID == streamSessionID {
+			job.lastActivity = now
+		}
+	}
+}
+
 // TouchJobByMediaID updates the last activity time for all active transcode jobs
 // for a given media ID. Called by the segment server when serving segments.
 func (t *Transcoder) TouchJobByMediaID(mediaID int64) {
@@ -114,7 +131,13 @@ func (t *Transcoder) cancelStaleJobs() {
 	now := time.Now()
 	for path, job := range t.active {
 		if now.Sub(job.lastActivity) > staleSessionTimeout {
-			log.Printf("transcoder: killing stale transcode for media %d (%s), last activity %v ago", job.mediaID, path, now.Sub(job.lastActivity).Round(time.Second))
+			log.Printf(
+				"transcoder: killing stale transcode for media %d session %s (%s), last activity %v ago",
+				job.mediaID,
+				job.streamSessionID,
+				path,
+				now.Sub(job.lastActivity).Round(time.Second),
+			)
 			job.cancel()
 		}
 	}
@@ -132,6 +155,45 @@ func (t *Transcoder) CancelTranscode(mediaID int64) int {
 			job.cancel()
 			killed++
 		}
+	}
+	return killed
+}
+
+// CancelTranscodeByStreamSessionID kills all active FFmpeg processes for a
+// given viewer-scoped stream session.
+func (t *Transcoder) CancelTranscodeByStreamSessionID(streamSessionID string) int {
+	if streamSessionID == "" {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	killed := 0
+	for path, job := range t.active {
+		if job.streamSessionID == streamSessionID && job.cancel != nil {
+			log.Printf("transcoder: cancelling stream session %s (%s)", streamSessionID, path)
+			job.cancel()
+			killed++
+		}
+	}
+	return killed
+}
+
+// CancelTranscodeByStreamSessionIDExcept kills all active FFmpeg processes for a
+// stream session except the currently requested master playlist.
+func (t *Transcoder) CancelTranscodeByStreamSessionIDExcept(streamSessionID, keepMasterPath string) int {
+	if streamSessionID == "" {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	killed := 0
+	for path, job := range t.active {
+		if job.streamSessionID != streamSessionID || path == keepMasterPath || job.cancel == nil {
+			continue
+		}
+		log.Printf("transcoder: cancelling superseded stream session %s (%s)", streamSessionID, path)
+		job.cancel()
+		killed++
 	}
 	return killed
 }
@@ -221,8 +283,11 @@ func startOffsetMillis(startOffset float64) int64 {
 // Example: fileID=5, siIdx=2 → "f5_sub2_"
 // Example: fileID=5, startOffset=3480 → "f5_off3480000_"
 // Example: fileID=5, videoCopy=true → "vcf5_"
-func hlsPrefix(fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64) string {
+func hlsPrefix(streamSessionID string, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64) string {
 	var prefix string
+	if streamSessionID != "" {
+		prefix += fmt.Sprintf("ss%s_", streamSessionID)
+	}
 	if videoCopy {
 		prefix += "vc"
 	}
@@ -242,10 +307,10 @@ func hlsPrefix(fileID int64, subtitleStreamIndex int, videoCopy bool, startOffse
 // given (mediaID, fileID, subtitleStreamIndex, videoCopy, startOffset)
 // combination.
 // Used by StreamService to retrieve the correct playlist path after transcoding.
-func (t *Transcoder) MasterPlaylistPath(mediaID, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64) string {
+func (t *Transcoder) MasterPlaylistPath(mediaID int64, streamSessionID string, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64) string {
 	return filepath.Join(
 		t.HLSDir(mediaID),
-		hlsPrefix(fileID, subtitleStreamIndex, videoCopy, startOffset)+"master.m3u8",
+		hlsPrefix(streamSessionID, fileID, subtitleStreamIndex, videoCopy, startOffset)+"master.m3u8",
 	)
 }
 
@@ -308,13 +373,18 @@ func (t *Transcoder) SegmentPath(mediaID int64, segment string) string {
 // WaitForSegment waits up to timeout for a segment file to appear on disk.
 // Returns true if the path exists, false if timed out or all relevant jobs
 // in the same media directory have finished without producing it.
-func (t *Transcoder) WaitForSegment(path string, timeout time.Duration) bool {
+func (t *Transcoder) WaitForSegment(streamSessionID, path string, timeout time.Duration) bool {
 	if _, err := os.Stat(path); err == nil {
 		return true
 	}
 
 	segDir := filepath.Dir(path)
-	if !t.hasActiveJobInDir(segDir) {
+	sessionScoped := streamSessionID != ""
+	if sessionScoped {
+		if !t.hasActiveJobForStreamSession(streamSessionID) {
+			return false
+		}
+	} else if !t.hasActiveJobInDir(segDir) {
 		return false
 	}
 
@@ -328,7 +398,11 @@ func (t *Transcoder) WaitForSegment(path string, timeout time.Duration) bool {
 			if _, err := os.Stat(path); err == nil {
 				return true
 			}
-			if !t.hasActiveJobInDir(segDir) {
+			active := t.hasActiveJobInDir(segDir)
+			if sessionScoped {
+				active = t.hasActiveJobForStreamSession(streamSessionID)
+			}
+			if !active {
 				_, err := os.Stat(path)
 				return err == nil
 			}
@@ -336,6 +410,17 @@ func (t *Transcoder) WaitForSegment(path string, timeout time.Duration) bool {
 			return false
 		}
 	}
+}
+
+func (t *Transcoder) hasActiveJobForStreamSession(streamSessionID string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, job := range t.active {
+		if job.streamSessionID == streamSessionID {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *Transcoder) hasActiveJobInDir(dir string) bool {

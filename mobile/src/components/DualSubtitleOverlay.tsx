@@ -161,6 +161,10 @@ export function DualSubtitleOverlay({
 
   const primaryFontSize = PRIMARY_SIZE_MAP[appearance.size]
   const secondaryFontSize = SECONDARY_SIZE_MAP[appearance.size]
+  // Scale down subtitle font on phones in portrait (smaller video area).
+  // Don't scale on tablets or landscape (they have more horizontal space).
+  const isPhone = width < 600
+  const portraitScale = isLandscape || !isPhone ? 1 : 0.7
   const bgColor = getBackgroundColor(appearance.background)
   const needsPadding = appearance.background !== 'none'
   const textShadow = getTextShadow(appearance.background)
@@ -169,7 +173,7 @@ export function DualSubtitleOverlay({
   const stripTags = (text: string) => text.replace(/<[^>]+>/g, '')
 
   return (
-    <View style={[styles.container, { bottom: isLandscape ? '14%' : '22%' }]} pointerEvents="none">
+    <View style={[styles.container, { bottom: isLandscape ? '14%' : '20%' }]} pointerEvents="none">
       {/* Secondary subtitle (above primary, yellow, smaller) */}
       {secondaryText && (
         <View
@@ -183,7 +187,7 @@ export function DualSubtitleOverlay({
             style={[
               styles.subtitleText,
               {
-                fontSize: secondaryFontSize,
+                fontSize: Math.round(secondaryFontSize * portraitScale),
                 color: '#FFD700',
                 fontWeight: '500',
                 textShadowColor: 'rgba(0,0,0,0.9)',
@@ -210,7 +214,7 @@ export function DualSubtitleOverlay({
             style={[
               styles.subtitleText,
               {
-                fontSize: primaryFontSize,
+                fontSize: Math.round(primaryFontSize * portraitScale),
                 color: appearance.color,
                 fontWeight: '700',
                 textShadowColor: 'rgba(0,0,0,0.9)',

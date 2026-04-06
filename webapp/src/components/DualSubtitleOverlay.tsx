@@ -221,7 +221,7 @@ export function DualSubtitleOverlay({
     // Portrait letterbox: position in the black bar, above controls
     const targetBottom =
       primaryRenderedInVideo && !primaryText ? secondaryOnlyBase : CONTROLS_HEIGHT
-    bottomPx = Math.round(Math.max(targetBottom, letterboxBottom * 0.4))
+    bottomPx = Math.round(Math.max(targetBottom, letterboxBottom * 0.6))
   } else {
     // Landscape or small letterbox: position just above controls on the video
     bottomPx =

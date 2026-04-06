@@ -33,12 +33,6 @@
           "developmentClient": true
         }
       ],
-      [
-        "react-native-google-cast",
-        {
-          "receiverAppId": "CC1AD845"
-        }
-      ]
     ],
     "ios": {
       "bundleIdentifier": "com.velox.app",

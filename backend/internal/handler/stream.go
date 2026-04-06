@@ -33,6 +33,7 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	streamSessionID := streamSessionIDFromValues(r.URL.Query())
 
 	// Parse optional file ID — GetPlaybackInfo embeds ?fid= so we serve the exact same file.
 	var fileID int64
@@ -92,7 +93,7 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
+		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, streamSessionID, r.URL.Query()), http.StatusTemporaryRedirect)
 		return
 	}
 
@@ -114,7 +115,7 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 			// falling through to Direct Play (which may serve an incompatible original file).
 			log.Printf("stream: pretranscode file missing for media %d (%s), falling back to HLS", id, ptFile.FilePath)
 			w.Header().Set("Cache-Control", "no-store")
-			http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
+			http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, streamSessionID, r.URL.Query()), http.StatusTemporaryRedirect)
 			return
 		}
 	}
@@ -149,7 +150,7 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 	default:
 		// TranscodeAudio or FullTranscode: redirect client to HLS endpoint.
 		w.Header().Set("Cache-Control", "no-store")
-		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, r.URL.Query()), http.StatusTemporaryRedirect)
+		http.Redirect(w, r, buildHLSRedirectURL(id, mf.ID, streamSessionID, r.URL.Query()), http.StatusTemporaryRedirect)
 	}
 }
 
@@ -178,6 +179,10 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	videoCopy := r.URL.Query().Get("vcopy") == "1"
+	streamSessionID := streamSessionIDFromValues(r.URL.Query())
+	if streamSessionID == "" {
+		streamSessionID = newStreamSessionID()
+	}
 	startOffset := parseStartOffset(r.URL.Query().Get("start"))
 	maxHeight := 0
 	if mh := r.URL.Query().Get("mh"); mh != "" {
@@ -188,6 +193,7 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 	playlistPath, err := h.svc.PrepareHLS(
 		r.Context(),
 		id,
+		streamSessionID,
 		hlsFileID,
 		subtitleStreamIndex,
 		videoCopy,
@@ -208,6 +214,10 @@ func (h *StreamHandler) HLSABRMaster(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if streamSessionIDFromValues(r.URL.Query()) != "" {
+		respondError(w, http.StatusConflict, "adaptive bitrate playback is disabled for isolated stream sessions")
 		return
 	}
 
@@ -244,6 +254,10 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := h.svc.SegmentPath(id, segment)
+	streamSessionID := streamSessionIDFromValues(r.URL.Query())
+	if streamSessionID == "" {
+		streamSessionID = extractStreamSessionIDFromSegmentName(segment)
+	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		// If a transcode is in progress, wait for the segment to appear.
@@ -251,7 +265,7 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 		// process sequentially — a seek to the end needs to wait for FFmpeg to
 		// catch up. WaitForSegment exits early once the job completes, so this
 		// timeout is just an upper bound.
-		if !h.svc.WaitForSegment(path, 90*time.Second) {
+		if !h.svc.WaitForSegment(streamSessionID, path, 90*time.Second) {
 			respondError(w, http.StatusNotFound, "segment not found")
 			return
 		}
@@ -263,7 +277,7 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update last activity so abandoned transcode sessions are killed after a timeout.
-	h.svc.TouchTranscodeActivity(id)
+	h.svc.TouchTranscodeActivity(id, streamSessionID)
 
 	w.Header().Set("Content-Type", "video/mp2t")
 	// Allow browser to cache segments for 5 minutes to avoid re-downloading
@@ -280,7 +294,19 @@ func (h *StreamHandler) StopTranscode(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	killed := h.svc.StopTranscode(id)
+	killed := h.svc.StopTranscode(id, streamSessionIDFromValues(r.URL.Query()))
+	respondJSON(w, http.StatusOK, map[string]int{"killed": killed})
+}
+
+// StopTranscodeBySession kills active FFmpeg processes for a specific
+// viewer-scoped stream session without affecting other viewers of the same media.
+func (h *StreamHandler) StopTranscodeBySession(w http.ResponseWriter, r *http.Request) {
+	streamSessionID := sanitizeStreamSessionID(r.PathValue("ssid"))
+	if streamSessionID == "" {
+		respondError(w, http.StatusBadRequest, "invalid stream session id")
+		return
+	}
+	killed := h.svc.StopTranscode(0, streamSessionID)
 	respondJSON(w, http.StatusOK, map[string]int{"killed": killed})
 }
 
@@ -302,14 +328,17 @@ func isValidSegmentName(name string) bool {
 	return true
 }
 
-func buildHLSRedirectURL(mediaID, fileID int64, original url.Values) string {
+func buildHLSRedirectURL(mediaID, fileID int64, streamSessionID string, original url.Values) string {
 	query := make(url.Values)
 	query.Set("fid", strconv.FormatInt(fileID, 10))
 
-	for _, key := range []string{"api_key", "token", "at", "si", "vcopy", "start"} {
+	for _, key := range []string{"api_key", "token", "at", "si", "vcopy", "start", streamSessionQueryKey} {
 		if value := original.Get(key); value != "" {
 			query.Set(key, value)
 		}
+	}
+	if streamSessionID != "" {
+		query.Set(streamSessionQueryKey, streamSessionID)
 	}
 
 	return "/api/stream/" + strconv.FormatInt(mediaID, 10) + "/hls/master.m3u8?" + query.Encode()
@@ -344,6 +373,7 @@ func rewriteHLSPlaylist(content []byte, original url.Values) []byte {
 	at := original.Get("at")
 	si := original.Get("si")
 	start := original.Get("start")
+	streamSessionID := original.Get(streamSessionQueryKey)
 
 	lines := strings.Split(string(content), "\n")
 	for i, line := range lines {
@@ -353,7 +383,7 @@ func rewriteHLSPlaylist(content []byte, original url.Values) []byte {
 		}
 
 		if strings.HasPrefix(trimmed, "#EXT-X-MEDIA:") {
-			lines[i] = rewriteExtXMediaURI(line, apiKey, token, at, si, start)
+			lines[i] = rewriteExtXMediaURI(line, apiKey, token, at, si, start, streamSessionID)
 			continue
 		}
 
@@ -361,13 +391,13 @@ func rewriteHLSPlaylist(content []byte, original url.Values) []byte {
 			continue
 		}
 
-		lines[i] = appendQueryToPlaylistURI(line, apiKey, token, at, si, start)
+		lines[i] = appendQueryToPlaylistURI(line, apiKey, token, at, si, start, streamSessionID)
 	}
 
 	return []byte(strings.Join(lines, "\n"))
 }
 
-func rewriteExtXMediaURI(line, apiKey, token, at, si, startOffset string) string {
+func rewriteExtXMediaURI(line, apiKey, token, at, si, startOffset, streamSessionID string) string {
 	const marker = `URI="`
 	start := strings.Index(line, marker)
 	if start < 0 {
@@ -380,10 +410,10 @@ func rewriteExtXMediaURI(line, apiKey, token, at, si, startOffset string) string
 	}
 	end += start
 
-	return line[:start] + appendQueryToPlaylistURI(line[start:end], apiKey, token, at, si, startOffset) + line[end:]
+	return line[:start] + appendQueryToPlaylistURI(line[start:end], apiKey, token, at, si, startOffset, streamSessionID) + line[end:]
 }
 
-func appendQueryToPlaylistURI(rawURI, apiKey, token, at, si, start string) string {
+func appendQueryToPlaylistURI(rawURI, apiKey, token, at, si, start, streamSessionID string) string {
 	uri, err := url.Parse(rawURI)
 	if err != nil || uri == nil {
 		return rawURI
@@ -395,6 +425,9 @@ func appendQueryToPlaylistURI(rawURI, apiKey, token, at, si, start string) strin
 	}
 	if token != "" {
 		query.Set("token", token)
+	}
+	if streamSessionID != "" {
+		query.Set(streamSessionQueryKey, streamSessionID)
 	}
 	if at != "" && strings.HasSuffix(uri.Path, ".m3u8") {
 		query.Set("at", at)

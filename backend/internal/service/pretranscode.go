@@ -85,13 +85,28 @@ func (s *PretranscodeService) Start() {
 	// Recovery: reset any 'encoding' queue items back to 'queued' (interrupted by restart)
 	s.recoverInterruptedJobs()
 
+	// Restore persisted paused state from database.
+	// Fail-safe: if DB read fails, keep paused=true to avoid unexpected resume.
+	ctx := context.Background()
+	pausedVal, err := s.settingsRepo.Get(ctx, model.SettingPretranscodePaused)
+	if err != nil {
+		log.Printf("pretranscode: failed to read paused state from DB (%v) — keeping paused", err)
+		s.paused.Store(true)
+	} else {
+		s.paused.Store(pausedVal == "true")
+		if pausedVal == "true" {
+			log.Println("pretranscode: scheduler started (paused)")
+		} else {
+			log.Println("pretranscode: scheduler started")
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelFn = cancel
 	s.stopCh = make(chan struct{})
 	s.running.Store(true)
 
 	go s.schedulerLoop(ctx)
-	log.Println("pretranscode: scheduler started")
 }
 
 // Stop gracefully stops the scheduler.
@@ -108,10 +123,28 @@ func (s *PretranscodeService) Stop() {
 }
 
 // Pause pauses the scheduler (current job finishes, no new jobs picked up).
-func (s *PretranscodeService) Pause() { s.paused.Store(true) }
+// Persists to database so the pause state survives restarts.
+// Returns error if DB write fails; scheduler state is unchanged on failure (atomic).
+func (s *PretranscodeService) Pause() error {
+	ctx := context.Background()
+	if err := s.settingsRepo.Set(ctx, model.SettingPretranscodePaused, "true"); err != nil {
+		return err
+	}
+	s.paused.Store(true)
+	return nil
+}
 
 // Resume resumes the scheduler.
-func (s *PretranscodeService) Resume() { s.paused.Store(false) }
+// Persists to database so the resume state survives restarts.
+// Returns error if DB write fails; scheduler state is unchanged on failure (atomic).
+func (s *PretranscodeService) Resume() error {
+	ctx := context.Background()
+	if err := s.settingsRepo.Set(ctx, model.SettingPretranscodePaused, "false"); err != nil {
+		return err
+	}
+	s.paused.Store(false)
+	return nil
+}
 
 // IsPaused returns whether the scheduler is paused.
 func (s *PretranscodeService) IsPaused() bool { return s.paused.Load() }

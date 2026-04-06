@@ -316,8 +316,10 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	if h.apiKeyStore != nil {
 		apiKey = h.apiKeyStore.Generate(userID, isAdmin)
 	}
+	streamSessionID := newStreamSessionID()
 	baseQuery := url.Values{}
 	baseQuery.Set("fid", strconv.FormatInt(primaryFile.ID, 10))
+	baseQuery.Set(streamSessionQueryKey, streamSessionID)
 	if apiKey != "" {
 		baseQuery.Set("api_key", apiKey)
 	}
@@ -326,6 +328,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	directQuery := cloneValues(baseQuery)
 	directQuery.Set("pm", "direct")
 	resp.DirectURL = buildURLWithQuery(baseURL, directQuery)
+	resp.StreamSessionID = streamSessionID
 
 	// Build HLS query with all necessary params
 	hlsQuery := cloneValues(baseQuery)
@@ -368,16 +371,9 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		}
 	case playback.MethodTranscodeAudio, playback.MethodFullTranscode:
 		resp.StreamURL = buildURLWithQuery(baseURL+"/hls/master.m3u8", hlsQuery)
-		// ABR pipeline encodes audio once (default track only) and has no subtitle filter.
-		// Only offer ABR when neither subtitle burn-in nor a non-default audio track is needed.
-		// Only serve ABR if already cached — don't start background generation here
-		// because it consumes a transcode slot and can block realtime playback for
-		// other media. ABR will be generated opportunistically when slots are idle.
-		if subtitleStreamIndex < 0 && effectiveAudioTrackID == 0 {
-			if h.streamSvc.ABRCached(mediaID, primaryFile.ID) {
-				resp.AbrURL = buildURLWithQuery(baseURL+"/hls/abr.m3u8", cloneValues(baseQuery))
-			}
-		}
+		// Session-scoped playback must remain isolated per viewer. The current
+		// ABR cache is shared by mediaID+fileID, so advertising abr_url here
+		// would let clients bypass the per-session HLS transcode path.
 		// On-demand pretranscode: remux HLS → MP4 for next time ⚡
 		if clientCaps.MaxHeight > 0 {
 			go h.streamSvc.RemuxToPretranscode(context.Background(), primaryFile.ID, mediaID, clientCaps.MaxHeight)
@@ -433,7 +429,13 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 
 	// Log play start activity
 	if h.activitySvc != nil {
-		h.activitySvc.Log(&userID, "play_start", r.RemoteAddr, &mediaID, "")
+		h.activitySvc.Log(
+			&userID,
+			"play_start",
+			r.RemoteAddr,
+			&mediaID,
+			fmt.Sprintf(`{"stream_session_id":"%s","method":"%s"}`, streamSessionID, resp.Method),
+		)
 	}
 
 	w.Header().Set("Cache-Control", "no-store")

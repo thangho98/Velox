@@ -115,7 +115,9 @@ func (s *PretranscodeService) processJob(ctx context.Context, job *model.Pretran
 	freeSpace := diskFreeSpace(s.outputBaseDir)
 	if freeSpace > 0 && freeSpace < estimatedSize*2 {
 		log.Printf("pretranscode: disk low (free: %d MB, need ~%d MB) — pausing", freeSpace/1024/1024, estimatedSize/1024/1024)
-		s.Pause()
+		if err := s.Pause(); err != nil {
+			log.Printf("pretranscode: disk low auto-pause: failed to persist: %v", err)
+		}
 		_ = s.repo.CompleteJob(ctx, job.ID, "failed")
 		return
 	}
@@ -263,6 +265,8 @@ func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inp
 		args = append(args, "-vf", "format=nv12,hwupload,scale_vaapi=format=nv12", "-c:v", "h264_vaapi", "-b:v", fmt.Sprintf("%dk", bitrate))
 	case "nvenc":
 		args = append(args, "-c:v", "h264_nvenc", "-preset", "p4", "-b:v", fmt.Sprintf("%dk", bitrate))
+	case "amf":
+		args = append(args, "-c:v", "h264_amf", "-b:v", fmt.Sprintf("%dk", bitrate))
 	default:
 		args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p")
 	}
@@ -345,6 +349,8 @@ func (s *PretranscodeService) runFFmpeg(ctx context.Context, inputPath, outputPa
 		args = append(args, "-c:v", "h264_qsv", "-preset", "medium")
 	case "videotoolbox":
 		args = append(args, "-c:v", "h264_videotoolbox")
+	case "amf":
+		args = append(args, "-c:v", "h264_amf", "-quality", "balanced")
 	default:
 		args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "22", "-pix_fmt", "yuv420p")
 	}

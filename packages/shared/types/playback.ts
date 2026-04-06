@@ -3,8 +3,8 @@
 export interface StreamUrls {
   direct: string
   hls?: string
-  abr?: string
   primary_file_id?: number
+  stream_session_id?: string
 }
 
 export interface SubtitleTrack {
@@ -88,6 +88,7 @@ export interface SubtitleDownloadRequest {
 export interface PlaybackInfo {
   media_id: number
   primary_file_id: number
+  stream_session_id?: string
   method: string
   stream_url: string
   direct_url?: string

@@ -54,7 +54,10 @@ func (h *PretranscodeHandler) Stop(w http.ResponseWriter, r *http.Request) {
 // Resume resumes the paused scheduler.
 // POST /api/admin/pretranscode/resume
 func (h *PretranscodeHandler) Resume(w http.ResponseWriter, r *http.Request) {
-	h.svc.Resume()
+	if err := h.svc.Resume(); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to resume: "+err.Error())
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "resumed"})
 }
 

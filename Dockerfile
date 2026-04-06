@@ -69,6 +69,7 @@ RUN apk add --no-cache \
     tini
 
 # GPU drivers — x86_64 only (Intel VAAPI, AMD VAAPI, NVIDIA via host runtime)
+# AMF is not included in the stock Alpine FFmpeg package used by this image.
 # Not available on ARM (Apple Silicon, Raspberry Pi)
 ARG TARGETARCH
 RUN if [ "$TARGETARCH" = "amd64" ]; then \

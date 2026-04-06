@@ -9,8 +9,12 @@
 *.swo
 
 # Node
-webapp/node_modules
+**/node_modules
 webapp/.vite
+
+# Mobile (not needed in Docker)
+mobile
+android-native
 
 # Go
 backend/bin

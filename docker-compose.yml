@@ -20,7 +20,7 @@ services:
 
       # ---- Velox config ----
       - VELOX_DATA_DIR=/data
-      - VELOX_HW_ACCEL=auto           # auto|vaapi|nvenc|qsv|none
+      - VELOX_HW_ACCEL=auto           # auto|vaapi|qsv|nvenc|videotoolbox|amf|none (amf: native/custom FFmpeg, not stock Docker)
       - VELOX_MAX_TRANSCODES=2
       - VELOX_FILE_WATCHER=true
       - VELOX_TRICKPLAY_ENABLED=false

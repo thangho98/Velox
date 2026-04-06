@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -25,7 +26,7 @@ type Generator struct {
 	outputDir  string
 	interval   int      // seconds between thumbnail frames
 	hwAccel    string   // hardware accelerator ("vaapi", "videotoolbox", "nvenc", etc.)
-	inProgress sync.Map // mediaID (int64) → struct{}; prevents duplicate concurrent generations
+	inProgress sync.Map // mediaID (int64) → struct{}; prevents duplicate concurrent generation
 }
 
 // New creates a Generator.
@@ -82,12 +83,15 @@ func (g *Generator) GenerateAsync(mediaID int64, inputPath string, durationSec i
 
 // Generate generates sprite sheets and VTT manifest for a media file.
 // Runs FFmpeg synchronously; intended to be called from a goroutine.
-// Falls back to software decode if hardware acceleration fails to produce output.
+// Uses seeking + frame extraction to handle problematic codecs (e.g., Dolby Vision).
 func (g *Generator) Generate(mediaID int64, inputPath string, durationSec int) error {
 	dir := g.MediaDir(mediaID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
+
+	// Detect HDR content to enable tone mapping.
+	isHDR := isHDRFile(inputPath)
 
 	// One frame every interval seconds; at least one frame for very short files.
 	totalFrames := durationSec / g.interval
@@ -95,22 +99,116 @@ func (g *Generator) Generate(mediaID int64, inputPath string, durationSec int) e
 		totalFrames = 1
 	}
 
-	// ffmpeg tile filter produces one output image per sprite sheet of framesPerSprite tiles.
-	// sprite_%d.jpg uses 1-based numbering by default with the tile filter.
-	spritePattern := filepath.Join(dir, "sprite_%d.jpg")
-	vfFilter := fmt.Sprintf(
-		"fps=1/%d,scale=%d:%d,tile=%dx%d",
-		g.interval, tileWidth, tileHeight, tileColumns, tileRows,
-	)
+	// Cap total frames to avoid excessive generation time.
+	// For very long videos, this means less coverage but faster generation.
+	if totalFrames > framesPerSprite*10 {
+		totalFrames = framesPerSprite * 10
+	}
 
-	var lastErr error
-	softwareFallback := false
+	// Use seeking-based extraction which works with problematic codecs like Dolby Vision.
+	// The fps=1/N + tile filter fails for DOV content; seeking + frame extraction works.
+	frames, err := g.extractFramesWithSeek(mediaID, inputPath, durationSec, totalFrames, isHDR)
+	if err != nil {
+		return fmt.Errorf("extract frames: %w", err)
+	}
 
-	// Try hardware-accelerated decode first (if configured), then fall back to software.
-	// Some HDR/DV profiles can't be decoded by VAAPI hardware.
-	tryGenerate := func(hwAccel string) error {
-		args := []string{"-hide_banner", "-loglevel", "error"}
-		switch hwAccel {
+	if len(frames) == 0 {
+		return fmt.Errorf("no frames extracted")
+	}
+
+	// Group frames into sprite sheets using tile filter.
+	// We write frames to a temp list file, then use ffmpeg with concat demuxer + tile.
+	if err := g.createSpriteSheets(mediaID, frames); err != nil {
+		return fmt.Errorf("create sprite sheets: %w", err)
+	}
+
+	// Verify at least one sprite was produced
+	if _, err := os.Stat(g.SpritePath(mediaID, 1)); err != nil {
+		return fmt.Errorf("no sprites generated: %w", err)
+	}
+
+	// Cleanup frames directory now that sprites are created to save disk space.
+	framesDir := filepath.Join(g.MediaDir(mediaID), "frames")
+	if err := os.RemoveAll(framesDir); err != nil {
+		log.Printf("trickplay: warning: failed to cleanup frames dir for media %d: %v", mediaID, err)
+	}
+
+	// Use actual frame count (len(frames)) in case some extractions failed.
+	// Note: if extraction failed for some frames, VTT entries will reference
+	// existing frames only (sorted by filename), so timestamps may not be exact.
+	actualFrameCount := len(frames)
+	vtt := g.buildVTTFromFrames(mediaID, frames, g.interval)
+	if err := os.WriteFile(g.VTTPath(mediaID), []byte(vtt), 0644); err != nil {
+		return fmt.Errorf("write vtt: %w", err)
+	}
+
+	spriteCount := int(math.Ceil(float64(actualFrameCount) / float64(framesPerSprite)))
+	log.Printf("trickplay: generated %d frames for media %d (%d sprites)",
+		actualFrameCount, mediaID, spriteCount)
+	return nil
+}
+
+// extractFramesWithSeek extracts frames at evenly-spaced timestamps using seeking.
+// This approach works with codecs like Dolby Vision that fail with fps filter + tile.
+// Frames are stored in persistent storage so they survive container restarts.
+func (g *Generator) extractFramesWithSeek(mediaID int64, inputPath string, durationSec, totalFrames int, isHDR bool) ([]string, error) {
+	// Use persistent storage instead of /tmp so frames survive container restarts.
+	framesDir := filepath.Join(g.MediaDir(mediaID), "frames")
+	if err := os.MkdirAll(framesDir, 0755); err != nil {
+		return nil, fmt.Errorf("mkdir frames dir: %w", err)
+	}
+
+	// Build list of timestamps (in seconds) for frame extraction.
+	var timestamps []int
+	interval := durationSec / totalFrames
+	if interval < 1 {
+		interval = 1
+	}
+	for i := 0; i < totalFrames; i++ {
+		ts := i * interval
+		if ts >= durationSec {
+			break
+		}
+		timestamps = append(timestamps, ts)
+	}
+
+	// Extract frames at each timestamp, skipping already-extracted frames (resume support).
+	for i, ts := range timestamps {
+		outputPath := filepath.Join(framesDir, fmt.Sprintf("frame_%05d.jpg", i))
+		// Skip if frame already exists (allows resume after container restart).
+		if _, err := os.Stat(outputPath); err == nil {
+			continue
+		}
+		if err := g.extractFrameAt(inputPath, ts, outputPath, isHDR); err != nil {
+			log.Printf("trickplay: warning: failed to extract frame at %ds for media %d: %v", ts, mediaID, err)
+			continue
+		}
+	}
+
+	// Collect all extracted frame paths.
+	entries, err := os.ReadDir(framesDir)
+	if err != nil {
+		return nil, fmt.Errorf("read frames dir: %w", err)
+	}
+	var frames []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".jpg") {
+			frames = append(frames, filepath.Join(framesDir, entry.Name()))
+		}
+	}
+	// Sort frames by name to ensure correct order.
+	sort.Strings(frames)
+
+	return frames, nil
+}
+
+// extractFrameAt extracts a single frame from inputPath at the given timestamp (seconds).
+// Uses seeking to avoid decoding the entire video.
+// For HDR content, applies tone mapping to convert to SDR.
+func (g *Generator) extractFrameAt(inputPath string, timestampSec int, outputPath string, isHDR bool) error {
+	args := []string{"-hide_banner", "-loglevel", "error"}
+	if g.hwAccel != "" {
+		switch g.hwAccel {
 		case "vaapi":
 			args = append(args, "-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128")
 		case "videotoolbox":
@@ -119,86 +217,169 @@ func (g *Generator) Generate(mediaID int64, inputPath string, durationSec int) e
 			args = append(args, "-hwaccel", "cuda")
 		case "qsv":
 			args = append(args, "-hwaccel", "qsv")
-		case "amf":
-			args = append(args, "-hwaccel", "amf")
-		}
-		args = append(args, "-i", inputPath, "-vf", vfFilter, "-q:v", "5", "-y", spritePattern)
-
-		cmd := exec.Command("ffmpeg", args...)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("ffmpeg sprite generation: %w — %s", err, stderr.String())
-		}
-		return nil
-	}
-
-	// Try with hardware acceleration first (if available)
-	if g.hwAccel != "" {
-		lastErr = tryGenerate(g.hwAccel)
-		if lastErr == nil {
-			// Verify at least one sprite was produced
-			if _, err := os.Stat(g.SpritePath(mediaID, 1)); err != nil {
-				log.Printf("trickplay: hwaccel %s produced no sprites for media %d, falling back to software",
-					g.hwAccel, mediaID)
-				lastErr = err
-				softwareFallback = true
-			}
-		} else {
-			log.Printf("trickplay: hwaccel %s failed for media %d: %v, trying software decode",
-				g.hwAccel, mediaID, lastErr)
-			softwareFallback = true
 		}
 	}
+	args = append(args, "-ss", fmt.Sprintf("%d", timestampSec))
+	args = append(args, "-i", inputPath)
 
-	// Fall back to software decode if hw accel failed or produced no output
-	if softwareFallback || g.hwAccel == "" {
-		// Clean up any partial output from failed hwaccel attempt
-		if softwareFallback {
-			for i := 1; ; i++ {
-				if os.Remove(g.SpritePath(mediaID, i)) != nil {
-					break
-				}
-			}
-		}
-		lastErr = tryGenerate("")
-	}
+	// Build video filter chain.
+	vf := g.buildFrameFilter(isHDR)
+	args = append(args, "-vf", vf)
+	args = append(args, "-frames:v", "1", "-q:v", "5", "-y", outputPath)
 
-	if lastErr != nil {
-		return fmt.Errorf("software decode fallback: %w", lastErr)
+	cmd := exec.Command("ffmpeg", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ffmpeg: %w — %s", err, stderr.String())
 	}
-
-	// Verify at least one sprite was produced
-	if _, err := os.Stat(g.SpritePath(mediaID, 1)); err != nil {
-		return fmt.Errorf("no sprites generated: ffmpeg produced no output files")
-	}
-
-	vtt := g.buildVTT(mediaID, totalFrames)
-	if err := os.WriteFile(g.VTTPath(mediaID), []byte(vtt), 0644); err != nil {
-		return fmt.Errorf("write vtt: %w", err)
-	}
-
-	spriteCount := int(math.Ceil(float64(totalFrames) / float64(framesPerSprite)))
-	accelStr := ""
-	if g.hwAccel != "" && !softwareFallback {
-		accelStr = fmt.Sprintf(" (hw: %s)", g.hwAccel)
-	} else if softwareFallback {
-		accelStr = " (software fallback)"
-	}
-	log.Printf("trickplay: generated %d frames for media %d (%d sprites)%s",
-		totalFrames, mediaID, spriteCount, accelStr)
 	return nil
 }
 
-// buildVTT returns the WebVTT manifest mapping timestamps to sprite coordinates.
-// Sprite files are referenced by their API URL (/api/media/{id}/trickplay/sprite_N.jpg).
-func (g *Generator) buildVTT(mediaID int64, totalFrames int) string {
+// buildFrameFilter returns the FFmpeg video filter chain for frame extraction.
+// For HDR content, includes tone mapping based on hardware accelerator.
+func (g *Generator) buildFrameFilter(isHDR bool) string {
+	if !isHDR {
+		return fmt.Sprintf("scale=%d:%d", tileWidth, tileHeight)
+	}
+
+	switch g.hwAccel {
+	case "vaapi":
+		// VAAPI HDR: upload to GPU, tone map to SDR (NV12), then hardware scale.
+		// Order: format -> hwupload -> tonemap_vaapi -> scale_vaapi
+		return fmt.Sprintf("format=nv12,hwupload,tonemap_vaapi=format=nv12,scale_vaapi=w=%d:h=%d:format=nv12", tileWidth, tileHeight)
+	case "nvenc", "cuda", "amf":
+		// NVIDIA GPU HDR via OpenCL: zscale to linear BT.709, tonemap to SDR, then scale.
+		return fmt.Sprintf("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=opencl:format=nv12,scale=%d:%d", tileWidth, tileHeight)
+	case "videotoolbox":
+		// macOS VideoToolbox: no HW tonemap, use software zscale+hable.
+		return fmt.Sprintf("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709,format=yuv420p,scale=%d:%d", tileWidth, tileHeight)
+	default:
+		// Software HDR tonemap fallback using zscale + hable.
+		return fmt.Sprintf("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709,format=yuv420p,scale=%d:%d", tileWidth, tileHeight)
+	}
+}
+
+// isHDRFile returns true if the input file uses HDR color transfer (PQ/SMPTE2084)
+// or BT.2020 color primaries.
+func isHDRFile(inputPath string) bool {
+	cmd := exec.Command("ffprobe",
+		"-v", "quiet",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=color_transfer,color_primaries",
+		"-of", "default=noprint_wrappers=1",
+		inputPath,
+	)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	lower := strings.ToLower(out.String())
+	return strings.Contains(lower, "smpte2084") || strings.Contains(lower, "bt2020")
+}
+
+// createSpriteSheets combines extracted frames into sprite sheets using ffmpeg's
+// concat demuxer + tile filter.
+func (g *Generator) createSpriteSheets(mediaID int64, frames []string) error {
+	if len(frames) == 0 {
+		return fmt.Errorf("no frames provided")
+	}
+
+	dir := g.MediaDir(mediaID)
+	spritePattern := filepath.Join(dir, "sprite_%d.jpg")
+
+	// If we have exactly framesPerSprite frames (100), we can tile directly.
+	if len(frames) >= framesPerSprite {
+		if err := g.tileFrames(frames[:framesPerSprite], spritePattern); err != nil {
+			return fmt.Errorf("tile frames: %w", err)
+		}
+	}
+
+	// If we have more frames, create multiple sprite sheets.
+	sheets := (len(frames) + framesPerSprite - 1) / framesPerSprite
+	for sheet := 1; sheet < sheets; sheet++ {
+		start := sheet * framesPerSprite
+		end := start + framesPerSprite
+		if start >= len(frames) {
+			break
+		}
+		if end > len(frames) {
+			end = len(frames)
+		}
+		sheetFrames := frames[start:end]
+		outputPath := fmt.Sprintf("%s/sprite_%d.jpg", dir, sheet+1)
+		if err := g.tileFrames(sheetFrames, outputPath); err != nil {
+			return fmt.Errorf("tile sheet %d: %w", sheet+1, err)
+		}
+	}
+
+	return nil
+}
+
+// tileFrames combines a list of frame paths into a single sprite sheet image using ffmpeg.
+func (g *Generator) tileFrames(frames []string, outputPath string) error {
+	if len(frames) == 0 {
+		return nil
+	}
+
+	// Create a list file for ffmpeg concat demuxer.
+	listFile, err := os.CreateTemp(os.TempDir(), "trickplay-frames-*.txt")
+	if err != nil {
+		return fmt.Errorf("create list file: %w", err)
+	}
+	listFilePath := listFile.Name()
+	defer os.Remove(listFilePath)
+
+	for _, frame := range frames {
+		if _, err := listFile.WriteString(fmt.Sprintf("file '%s'\n", frame)); err != nil {
+			return fmt.Errorf("write list file: %w", err)
+		}
+	}
+	listFile.Close()
+
+	// Calculate how many frames fit in the tile grid.
+	cols := int(math.Ceil(math.Sqrt(float64(len(frames)))))
+	if cols > tileColumns {
+		cols = tileColumns
+	}
+	rows := (len(frames) + cols - 1) / cols
+
+	args := []string{
+		"-hide_banner", "-loglevel", "error",
+		"-f", "concat", "-safe", "0",
+		"-i", listFilePath,
+		"-vf", fmt.Sprintf("scale=%d:%d,tile=%dx%d", tileWidth, tileHeight, cols, rows),
+		"-q:v", "5", "-y", outputPath,
+	}
+
+	cmd := exec.Command("ffmpeg", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ffmpeg tile: %w — %s", err, stderr.String())
+	}
+	return nil
+}
+
+// buildVTTFromFrames builds VTT using actual extracted frames (sorted by filename).
+// Frame names are "frame_%05d.jpg" where the index corresponds to the original timestamp.
+// Missing frames (extraction failures) are skipped, so timestamps may not be evenly spaced.
+func (g *Generator) buildVTTFromFrames(mediaID int64, frames []string, interval int) string {
 	var sb strings.Builder
 	sb.WriteString("WEBVTT\n\n")
 
-	for i := 0; i < totalFrames; i++ {
-		startSec := i * g.interval
-		endSec := startSec + g.interval
+	for i, framePath := range frames {
+		// Extract frame index from filename (e.g., "frame_00051.jpg" -> 51).
+		filename := filepath.Base(framePath)
+		var frameIdx int
+		if _, err := fmt.Sscanf(filename, "frame_%d.jpg", &frameIdx); err != nil {
+			log.Printf("trickplay: warning: could not parse frame index from %s: %v", filename, err)
+			continue
+		}
+
+		startSec := frameIdx * interval
+		endSec := startSec + interval
 
 		// Sprite sheet index (1-based) and position within the sheet.
 		spriteIndex := i/framesPerSprite + 1
@@ -209,10 +390,9 @@ func (g *Generator) buildVTT(mediaID int64, totalFrames int) string {
 		y := row * tileHeight
 
 		sb.WriteString(vttTimestamp(startSec) + " --> " + vttTimestamp(endSec) + "\n")
-		sb.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&sb,
 			"/api/media/%d/trickplay/sprite_%d.jpg#xywh=%d,%d,%d,%d\n\n",
-			mediaID, spriteIndex, x, y, tileWidth, tileHeight,
-		))
+			mediaID, spriteIndex, x, y, tileWidth, tileHeight)
 	}
 
 	return sb.String()

@@ -58,14 +58,23 @@ func (s *StreamService) FindPretranscodeProfile(ctx context.Context, profileID i
 	return s.pretranscodeSvc.GetProfile(ctx, profileID)
 }
 
-// StopTranscode kills active FFmpeg transcode processes for a media item.
-func (s *StreamService) StopTranscode(mediaID int64) int {
+// StopTranscode kills active FFmpeg transcode processes for a viewer stream
+// session when available, otherwise falls back to media-wide cancellation.
+func (s *StreamService) StopTranscode(mediaID int64, streamSessionID string) int {
+	if streamSessionID != "" {
+		return s.transcoder.CancelTranscodeByStreamSessionID(streamSessionID)
+	}
 	return s.transcoder.CancelTranscode(mediaID)
 }
 
 // TouchTranscodeActivity updates the last activity time for all active transcode
-// jobs for a media item. Called when serving segments to detect abandoned sessions.
-func (s *StreamService) TouchTranscodeActivity(mediaID int64) {
+// jobs for a viewer stream session when available, otherwise falls back to
+// media-wide activity updates for legacy callers.
+func (s *StreamService) TouchTranscodeActivity(mediaID int64, streamSessionID string) {
+	if streamSessionID != "" {
+		s.transcoder.TouchJobByStreamSessionID(streamSessionID)
+		return
+	}
 	s.transcoder.TouchJobByMediaID(mediaID)
 }
 
@@ -107,7 +116,7 @@ func (s *StreamService) FindAllPretranscodesWithProfiles(ctx context.Context, me
 // subtitleStreamIndex: if >= 0, burn-in that subtitle stream into the video.
 // videoCopy: if true, copy the video stream unchanged (only transcode audio).
 // startOffset: if > 0, begin the HLS session at that global timeline position.
-func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64, maxHeight int) (string, error) {
+func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, streamSessionID string, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64, maxHeight int) (string, error) {
 	var mf *model.MediaFile
 	var err error
 	if fileID > 0 {
@@ -136,16 +145,16 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, fileID in
 	// Pass mf.ID so the cache key is (mediaID, fileID, subtitleStreamIndex) — avoids
 	// version collisions when multiple file versions exist for the same media.
 	if len(audioTracks) > 1 {
-		if err := s.transcoder.GenerateHLSWithAudio(mediaID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
+		if err := s.transcoder.GenerateHLSWithAudio(mediaID, streamSessionID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
 			return "", err
 		}
 	} else {
-		if err := s.transcoder.GenerateHLS(mediaID, mf.FilePath, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
+		if err := s.transcoder.GenerateHLS(mediaID, streamSessionID, mf.FilePath, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
 			return "", err
 		}
 	}
 
-	return s.transcoder.MasterPlaylistPath(mediaID, mf.ID, subtitleStreamIndex, videoCopy, startOffset), nil
+	return s.transcoder.MasterPlaylistPath(mediaID, streamSessionID, mf.ID, subtitleStreamIndex, videoCopy, startOffset), nil
 }
 
 // SegmentPath returns the path to an HLS segment.
@@ -154,8 +163,8 @@ func (s *StreamService) SegmentPath(mediaID int64, segment string) string {
 }
 
 // WaitForSegment waits for a segment to appear on disk if a transcode is active.
-func (s *StreamService) WaitForSegment(path string, timeout time.Duration) bool {
-	return s.transcoder.WaitForSegment(path, timeout)
+func (s *StreamService) WaitForSegment(streamSessionID, path string, timeout time.Duration) bool {
+	return s.transcoder.WaitForSegment(streamSessionID, path, timeout)
 }
 
 // GetPrimaryFile returns the media file for streaming.

@@ -36,7 +36,9 @@ func hwInputArgs(hwAccel string) []string {
 	case "qsv":
 		return []string{"-hwaccel", "qsv"}
 	case "amf":
-		return []string{"-hwaccel", "amf"}
+		// AMF is an encoder backend, not a generic FFmpeg hwaccel name.
+		// Keep decode in software unless a platform-specific path is added later.
+		return nil
 	}
 	return nil
 }

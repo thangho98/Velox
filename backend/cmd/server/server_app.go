@@ -487,6 +487,10 @@ func resolveHWAccel(mode string) string {
 	case "none":
 		return ""
 	default:
+		if !playback.IsHWAccelAvailable(mode) {
+			log.Printf("hardware acceleration: %s requested but unavailable, using software encoder", mode)
+			return ""
+		}
 		log.Printf("hardware acceleration: %s (configured)", mode)
 		return mode
 	}

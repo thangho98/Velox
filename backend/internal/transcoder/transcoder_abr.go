@@ -135,10 +135,16 @@ func (t *Transcoder) generateABRVariant(inputPath, playlistPath, segPattern stri
 	args := []string{"-hide_banner", "-loglevel", "warning"}
 	args = append(args, buildFFmpegInputArgs(hwAccel)...)
 	args = append(args, "-i", inputPath)
-	args = append(args,
-		"-vf", hwScaleFilter(hwAccel, v.Height),
-		"-c:v", hwVideoCodec(hwAccel),
-	)
+
+	// Apply HDR→SDR tonemapping if the source is HDR, then scale to target height.
+	hdr := isHDRFile(inputPath)
+	var vf string
+	if hdr {
+		vf = fmt.Sprintf("%s,%s", hdrToneMapFilterForHW(hwAccel), hwScaleFilter(hwAccel, v.Height))
+	} else {
+		vf = hwScaleFilter(hwAccel, v.Height)
+	}
+	args = append(args, "-vf", vf, "-c:v", hwVideoCodec(hwAccel))
 	switch hwAccel {
 	case "":
 		args = append(args, "-preset", "veryfast", "-profile:v", "high", "-level", "4.1", "-threads", "0")

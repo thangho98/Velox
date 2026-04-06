@@ -73,7 +73,9 @@ func (s *PretranscodeService) EnqueueAllLibraries(ctx context.Context) (int, err
 
 // CancelAll cancels queued jobs, kills current FFmpeg process, and pauses.
 func (s *PretranscodeService) CancelAll(ctx context.Context) (int64, error) {
-	s.Pause()
+	if err := s.Pause(); err != nil {
+		return 0, fmt.Errorf("pausing scheduler: %w", err)
+	}
 	// Cancel the scheduler context to kill any running FFmpeg process
 	if s.cancelFn != nil {
 		s.cancelFn()
@@ -250,7 +252,9 @@ func (s *PretranscodeService) StartAll(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
-	s.Resume()
+	if err := s.Resume(); err != nil {
+		return n, fmt.Errorf("resuming scheduler: %w", err)
+	}
 	if !s.IsRunning() {
 		s.Start()
 	}

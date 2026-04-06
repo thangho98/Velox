@@ -698,7 +698,7 @@ export default function WatchPage() {
     const rawUrl = useHls
       ? sessionOffset > 0.25 && streamUrls.hls
         ? buildHlsSessionUrl(streamUrls.hls, sessionOffset)
-        : streamUrls.abr || streamUrls.hls
+        : streamUrls.hls
       : streamUrls.direct
     if (!rawUrl) return
     setIsBuffering(true)
@@ -706,7 +706,7 @@ export default function WatchPage() {
       ? rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(accessToken)
       : rawUrl
 
-    if (useHls && (streamUrls.abr || streamUrls.hls) && Hls.isSupported()) {
+    if (useHls && streamUrls.hls && Hls.isSupported()) {
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 600,
@@ -845,15 +845,18 @@ export default function WatchPage() {
   // Stop backend transcode when leaving the page or switching media.
   // Uses beforeunload for hard reload / tab close.
   useEffect(() => {
+    const streamSessionId = streamUrls?.stream_session_id
+    if (!streamSessionId) return
+
     const stopTranscode = () => {
-      api.delete(`/stream/${mediaId}/session`).catch(() => {})
+      api.delete(`/stream/sessions/${streamSessionId}`).catch(() => {})
     }
     window.addEventListener('beforeunload', stopTranscode)
     return () => {
       window.removeEventListener('beforeunload', stopTranscode)
       stopTranscode()
     }
-  }, [mediaId])
+  }, [streamUrls?.stream_session_id])
 
   // Resume position is read from usePlayerStore.getState().lastPositions[mediaId]
   // directly in the HLS init effect — no cross-effect refs needed.

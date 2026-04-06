@@ -44,6 +44,13 @@
   "devDependencies": {
     "@babel/core": "^7.25.0",
     "@types/react": "~19.2.14",
+    "babel-preset-expo": "^55.0.15",
     "typescript": "~5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "wrap-ansi": "7.0.0",
+      "string-width": "4.2.3"
+    }
   }
 }

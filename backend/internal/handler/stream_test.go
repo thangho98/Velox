@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -15,9 +17,10 @@ func TestBuildHLSRedirectURLPreservesAuthAndPlaybackQuery(t *testing.T) {
 		"at":      {"11"},
 		"sub":     {"vi"},
 		"start":   {"3480.5"},
+		"ssid":    {"viewer123"},
 	}
 
-	got := buildHLSRedirectURL(323, 323, original)
+	got := buildHLSRedirectURL(323, 323, "viewer123", original)
 
 	if !strings.HasPrefix(got, "/api/stream/323/hls/master.m3u8?") {
 		t.Fatalf("unexpected redirect path: %s", got)
@@ -37,6 +40,9 @@ func TestBuildHLSRedirectURLPreservesAuthAndPlaybackQuery(t *testing.T) {
 	if !strings.Contains(got, "start=3480.5") {
 		t.Fatalf("redirect missing start offset: %s", got)
 	}
+	if !strings.Contains(got, "ssid=viewer123") {
+		t.Fatalf("redirect missing stream session id: %s", got)
+	}
 	if strings.Contains(got, "sub=vi") {
 		t.Fatalf("redirect should not carry subtitle language hint: %s", got)
 	}
@@ -50,18 +56,35 @@ func TestRewriteHLSPlaylistPropagatesToken(t *testing.T) {
 		"at":      {"11"},
 		"si":      {"2"},
 		"start":   {"120"},
+		"ssid":    {"viewer123"},
 	}
 
 	got := string(rewriteHLSPlaylist(content, query))
 
 	for _, want := range []string{
-		"f323_q1080.m3u8?api_key=stream-key&at=11&si=2&start=120&token=abc123",
-		"URI=\"audio_1.m3u8?api_key=stream-key&at=11&si=2&start=120&token=abc123\"",
-		"f323_seg_0001.ts?api_key=stream-key&token=abc123",
+		"f323_q1080.m3u8?api_key=stream-key&at=11&si=2&ssid=viewer123&start=120&token=abc123",
+		"URI=\"audio_1.m3u8?api_key=stream-key&at=11&si=2&ssid=viewer123&start=120&token=abc123\"",
+		"f323_seg_0001.ts?api_key=stream-key&ssid=viewer123&token=abc123",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("rewritten playlist missing %q in %q", want, got)
 		}
+	}
+}
+
+func TestHLSABRMasterRejectsSessionScopedRequest(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/stream/42/hls/abr.m3u8?ssid=viewer123", nil)
+	req.SetPathValue("id", "42")
+	rr := httptest.NewRecorder()
+
+	handler := &StreamHandler{}
+	handler.HLSABRMaster(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusConflict)
+	}
+	if !strings.Contains(rr.Body.String(), "adaptive bitrate playback is disabled") {
+		t.Fatalf("response = %q, want isolation error", rr.Body.String())
 	}
 }
 

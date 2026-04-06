@@ -17,12 +17,24 @@ import { CastButton } from '../components/CastButton'
 import { useChromecast } from '../hooks/useChromecast'
 import { useResponsiveLayout, scaledFont } from '../lib/responsive'
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native'
-import { useVeloxPlayer, VeloxPlayerView } from '../../modules/velox-player'
-import type { VideoPlayerStatus } from '../../modules/velox-player'
+import { useVideoPlayer, VideoView } from 'expo-video'
+import type { VideoPlayer, SubtitleTrack as ExpoSubtitleTrack } from 'expo-video'
+
+// Typed wrapper for player status
+type VideoPlayerStatus = 'idle' | 'loading' | 'readyToPlay' | 'error'
+
+// SubtitleTrack aligned with expo-video's shape
+interface SubtitleTrack {
+  id?: number
+  language: string
+  languageInfo: string
+  uri: string
+  label: string
+  mimeType: string
+  isImage: boolean
+}
 
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler'
-
-import type { SubtitleTrack } from '../../modules/velox-player'
 import { useStreamUrls, useEpisodes, usePlaybackInfo, useMediaWithFiles } from '@velox/shared/hooks'
 import { useTranslateSubtitle, useSubtitleSearch, useDownloadSubtitle } from '@velox/shared/hooks/media/useSubtitleOps'
 import { useProgress, useUpdateProgress } from '@velox/shared/hooks/media/useProgress'
@@ -524,9 +536,20 @@ export function VideoPlayerScreen() {
     return accessToken ? `${base}?token=${encodeURIComponent(accessToken)}` : base
   }
 
+  // Sync knownDurationRef and duration state from playback info (ffprobe value).
+  // This is the floor: duration state never drops below this even while HLS
+  // transcoding is in progress and the live-like playlist only has partial segments.
+  useEffect(() => {
+    const d = playbackInfo?.duration ?? 0
+    if (d > 0) {
+      knownDurationRef.current = d
+      setDuration((prev) => (prev < d ? d : prev))
+    }
+  }, [playbackInfo?.duration])
 
-  // Video source — use server's URL directly (VeloxPlayer handles most codecs)
-  // Fallback: if direct play fails (H.264 10-bit etc), auto-retry with HLS
+
+  // Video source — prefer the session-scoped HLS URL when available so each
+  // viewer stays on an isolated stream. Direct playback remains the fallback.
   const fallbackRef = useRef<'direct' | 'hls'>('direct')
   const loadingStartRef = useRef<number>(0)
   const videoSource = useMemo(() => {
@@ -547,13 +570,16 @@ export function VideoPlayerScreen() {
   }, [streamUrls, accessToken, maxQuality, fallbackRef.current])
 
   // Player state
-  const playerRef = useRef<ReturnType<typeof useVeloxPlayer> | null>(null)
+  const playerRef = useRef<VideoPlayer | null>(null)
   const [playerStatus, setPlayerStatus] = useState<VideoPlayerStatus>('idle')
   const [isPlaying, setIsPlaying] = useState(false)
   const [isBuffering, setIsBuffering] = useState(false)
   const userWantsToPlayRef = useRef(true) // user intent: true = wants to play
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  // knownDurationRef: ffprobe-reported total duration — used as floor so the player
+  // never shows a partial duration while HLS transcoding is still in progress.
+  const knownDurationRef = useRef(0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [isLandscape, setIsLandscape] = useState(false)
@@ -708,10 +734,18 @@ export function VideoPlayerScreen() {
     }
   }, [streamLoading, streamError, streamUrls, videoSource])
 
+  useEffect(() => {
+    const streamSessionId = streamUrls?.stream_session_id
+    if (!streamSessionId) return
+
+    return () => {
+      api.delete(`/stream/sessions/${streamSessionId}`).catch(() => {})
+    }
+  }, [streamUrls?.stream_session_id])
+
   // Create player with setup callback
-  const player = useVeloxPlayer(videoSource, (p) => {
+  const player = useVideoPlayer(null, (p) => {
     playerRef.current = p
-    p.timeUpdateEventInterval = 1
     p.volume = 1
     p.muted = false
   })
@@ -720,12 +754,13 @@ export function VideoPlayerScreen() {
   const prevSourceRef = useRef<string | null>(null)
   useEffect(() => {
     if (player && videoSource && prevSourceRef.current !== videoSource) {
-      player.replaceAsync({ uri: videoSource })
-      player.volume = 1
-      player.muted = false
-      player.play()
+      player.replaceAsync({ uri: videoSource }).then(() => {
+        player.volume = 1
+        player.muted = false
+        player.play()
+      })
       prevSourceRef.current = videoSource
-      hasSeekedRef.current = false // allow resume seek for new episode
+      hasSeekedRef.current = false
     }
   }, [player, videoSource])
 
@@ -733,10 +768,13 @@ export function VideoPlayerScreen() {
   useEffect(() => {
     if (!player) return
 
-    const pollState = () => {
+    const pollState = async () => {
       try {
         const status = player.status
         const playing = player.playing
+        if (status === 'error' || status === 'readyToPlay') {
+          console.log('[VideoPlayer] status:', status, 'playing:', playing, 'fallback:', fallbackRef.current)
+        }
         setPlayerStatus(status)
         setIsPlaying(playing)
 
@@ -750,14 +788,20 @@ export function VideoPlayerScreen() {
             fallbackRef.current === 'direct') {
           if (!loadingStartRef.current) loadingStartRef.current = Date.now()
           if (status === 'error' || (Date.now() - loadingStartRef.current) > 5000) {
+            // Only one fallback at a time
+            if (fallbackRef.current !== 'direct') return
             fallbackRef.current = 'hls'
             loadingStartRef.current = 0
             const mh = maxQuality !== 'auto' ? maxQuality : 1080
-            const hlsUrl = (videoSource || '').replace(/\/api\/stream\/(\d+)/, '/api/stream/$1/hls/master.m3u8')
-              + (videoSource?.includes('?') ? '&' : '?') + `mh=${mh}`
+            // If videoSource already points to HLS (e.g. pretranscode), use it directly
+            const baseHlsUrl = videoSource && videoSource.includes('/hls/master.m3u8')
+              ? videoSource
+              : (videoSource ?? '').replace(/\/api\/stream\/(\d+)/, '/api/stream/$1/hls/master.m3u8')
+            const hlsUrl = baseHlsUrl + (baseHlsUrl.includes('?') ? '&' : '?') + `mh=${mh}`
             console.log('[VideoPlayer] Direct play failed, falling back to HLS')
+            console.log('[VideoPlayer] hlsUrl:', hlsUrl?.substring(0, 200))
             try {
-              player.replaceAsync({ uri: hlsUrl })
+              await player.replaceAsync({ uri: hlsUrl })
               player.play()
             } catch {}
             return
@@ -767,9 +811,9 @@ export function VideoPlayerScreen() {
         }
 
         setCurrentTime(player.currentTime)
-        // Always prefer server duration (accurate) — HLS player.duration grows as segments load
-        const serverDuration = playbackInfo?.duration ?? 0
-        setDuration(serverDuration > 0 ? serverDuration : player.duration)
+        // Use Math.max to never decrease duration — matches web behavior.
+        // knownDurationRef.current is ffprobe duration (floor), player.duration is video-reported.
+        setDuration((prev) => Math.max(prev, player.duration, knownDurationRef.current))
         setVolume(player.volume)
         setIsMuted(player.muted)
         // @ts-ignore - availableSubtitleTracks type mismatch with local SubtitleTrack
@@ -801,7 +845,7 @@ export function VideoPlayerScreen() {
           setVideoStats({
             bitrate: bitrateRaw,
             resolution:
-              track ? `${track.width}\u00D7${track.height}` : '',
+              track ? `${(track as any).width ?? 0}\u00D7${(track as any).height ?? 0}` : '',
             codec: track?.mimeType ?? '',
             frameRate: track?.frameRate ?? 0,
             bufferHealth: bufferSec,
@@ -915,11 +959,12 @@ export function VideoPlayerScreen() {
     if (playerStatus !== 'readyToPlay') return
     if (startFromBeginning) return
 
+    // Only seek if player currentTime differs from saved position by > 5s
     if (Math.abs(player.currentTime - progress.position / 1000) > 5) {
       player.currentTime = progress.position / 1000
       hasSeekedRef.current = true
     }
-  }, [player, progress, playerStatus, startFromBeginning])
+  }, [player, progress?.position, playerStatus, startFromBeginning])
 
   // Schedule controls hide
   const scheduleHideControls = useCallback(() => {
@@ -1117,8 +1162,9 @@ export function VideoPlayerScreen() {
   // Subtitle handling
   const handleSubtitleSelect = (track: SubtitleTrack | null) => {
     if (!player) return
+    // @ts-ignore - expo-video SubtitleTrack type may not include all runtime fields
     player.subtitleTrack = track
-    setSelectedSubtitle(track?.id || null)
+    setSelectedSubtitle(track?.language || null)
     setShowSubtitleMenu(false)
     scheduleHideControls()
   }
@@ -1567,7 +1613,8 @@ export function VideoPlayerScreen() {
             </View>
           ) : (
             /* Video Player */
-            <VeloxPlayerView
+            // @ts-ignore -- expo-video VideoView type definition mismatch with React 19
+            <VideoView
               style={styles.video}
               player={player}
               nativeControls={false}
@@ -1649,8 +1696,11 @@ export function VideoPlayerScreen() {
             const pi = playbackInfo as any
             const selectedAudio = pi.audio_tracks?.find((t: any) => t.selected) ?? pi.audio_tracks?.find((t: any) => t.is_default) ?? pi.audio_tracks?.[0]
             const isTranscoding = pi.method === 'FullTranscode' || pi.method === 'TranscodeAudio'
-            const methodColors: Record<string, string> = { DirectPlay: '#4ade80', DirectStream: '#60a5fa', TranscodeAudio: '#facc15', FullTranscode: '#f87171' }
-            const methodLabels: Record<string, string> = { DirectPlay: 'Direct Play', DirectStream: 'Direct Stream', TranscodeAudio: 'Transcode Audio', FullTranscode: 'Full Transcode' }
+            const isPreTranscode = pi.method === 'PreTranscode'
+            const isVideoDirect = !isTranscoding && !isPreTranscode
+            const isAudioDirect = !isTranscoding && !isPreTranscode
+            const methodColors: Record<string, string> = { DirectPlay: '#4ade80', DirectStream: '#60a5fa', TranscodeAudio: '#facc15', FullTranscode: '#f87171', PreTranscode: '#c084fc' }
+            const methodLabels: Record<string, string> = { DirectPlay: 'Direct Play', DirectStream: 'Direct Stream', TranscodeAudio: 'Transcode Audio', FullTranscode: 'Full Transcode', PreTranscode: 'Pre-Transcode' }
             const methodColor = methodColors[pi.method] ?? '#fff'
             const fmtBitrate = (b: number) => b >= 1000 ? `${(b / 1000).toFixed(1)} Mbps` : `${b} Kbps`
             const fmtChannels = (ch: number) => ch === 6 ? '5.1' : ch === 8 ? '7.1' : ch === 2 ? 'Stereo' : ch === 1 ? 'Mono' : `${ch}ch`
@@ -1676,9 +1726,9 @@ export function VideoPlayerScreen() {
                 <View style={styles.statsSection}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <Text style={styles.statsTitle}>Video</Text>
-                    <View style={{ backgroundColor: pi.method === 'FullTranscode' ? '#f8717133' : '#4ade8033', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                      <Text style={{ color: pi.method === 'FullTranscode' ? '#f87171' : '#4ade80', fontSize: 10, fontWeight: '700' }}>
-                        {pi.method === 'FullTranscode' ? 'Transcoding' : 'Direct'}
+                    <View style={{ backgroundColor: isPreTranscode ? '#c084fc33' : isTranscoding ? '#f8717133' : '#4ade8033', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <Text style={{ color: isPreTranscode ? '#c084fc' : isTranscoding ? '#f87171' : '#4ade80', fontSize: 10, fontWeight: '700' }}>
+                        {isPreTranscode ? 'Pre-Transcoded' : isTranscoding ? 'Transcoding' : 'Direct'}
                       </Text>
                     </View>
                   </View>
@@ -1697,9 +1747,9 @@ export function VideoPlayerScreen() {
                   <View style={styles.statsSection}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                       <Text style={styles.statsTitle}>Audio</Text>
-                      <View style={{ backgroundColor: isTranscoding ? '#facc1533' : '#4ade8033', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                        <Text style={{ color: isTranscoding ? '#facc15' : '#4ade80', fontSize: 10, fontWeight: '700' }}>
-                          {isTranscoding ? 'Transcoding' : 'Direct'}
+                      <View style={{ backgroundColor: isPreTranscode ? '#c084fc33' : isTranscoding ? '#facc1533' : '#4ade8033', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ color: isPreTranscode ? '#c084fc' : isTranscoding ? '#facc15' : '#4ade80', fontSize: 10, fontWeight: '700' }}>
+                          {isPreTranscode ? 'Pre-Transcoded' : isTranscoding ? 'Transcoding' : 'Direct'}
                         </Text>
                       </View>
                     </View>
@@ -1773,73 +1823,142 @@ export function VideoPlayerScreen() {
 
               {/* Bottom panel */}
               <View style={styles.bottomPanel}>
-                {/* Title + Action buttons in one row */}
-                <View style={styles.titleActionRow}>
-                  <Text
-                    style={[
-                      styles.bottomTitle,
-                      { fontSize: scaledFont(14, layout.fontScale), flex: layout.device === 'tablet' ? 5 : 3 },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {mediaTitle}
-                  </Text>
-                  <View style={[styles.actionButtonsRow, { flex: layout.device === 'tablet' ? 5 : 7 }]}>
-                  {/* Subtitles */}
-                  <TouchableOpacity
-                    style={[styles.actionButton, selectedSubtitle && styles.actionButtonActive]}
-                    onPress={() => { setShowSubtitleMenu(true); scheduleHideControls() }}
-                  >
-                    <Captions size={18} color={selectedSubtitle ? '#fff' : 'rgba(255,255,255,0.7)'} />
-                  </TouchableOpacity>
-                  {/* Audio */}
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => { setShowAudioMenu(true); scheduleHideControls() }}
-                  >
-                    <Music size={17} color="rgba(255,255,255,0.7)" />
-                  </TouchableOpacity>
-                  {/* Speed */}
-                  <TouchableOpacity
-                    style={[styles.actionButton, playbackSpeed !== 1 && styles.actionButtonActive]}
-                    onPress={() => { setShowSpeedMenu(true); scheduleHideControls() }}
-                  >
-                    <Text style={[styles.speedText, playbackSpeed !== 1 && { color: '#fff' }]}>
-                      {playbackSpeed === 1 ? '1×' : `${playbackSpeed}×`}
+                {/* Title + Action buttons — portrait: stacked, landscape: single row */}
+                {layout.orientation === 'portrait' ? (
+                  <>
+                    <Text
+                      style={[
+                        styles.bottomTitle,
+                        { fontSize: scaledFont(14, layout.fontScale), marginBottom: 10 },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {mediaTitle}
                     </Text>
-                  </TouchableOpacity>
-                  {/* Settings */}
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => { setShowAspectRatioMenu(true); setSettingsView('main'); scheduleHideControls() }}
-                  >
-                    <Settings size={17} color="rgba(255,255,255,0.7)" />
-                  </TouchableOpacity>
-                  {/* Next Episode */}
-                  {nextEpisode && (
+                    <View style={styles.actionButtonsRow}>
+                    {/* Subtitles */}
+                    <TouchableOpacity
+                      style={[styles.actionButton, selectedSubtitle && styles.actionButtonActive]}
+                      onPress={() => { setShowSubtitleMenu(true); scheduleHideControls() }}
+                    >
+                      <Captions size={18} color={selectedSubtitle ? '#fff' : 'rgba(255,255,255,0.7)'} />
+                    </TouchableOpacity>
+                    {/* Audio track */}
                     <TouchableOpacity
                       style={styles.actionButton}
-                      onPress={() => handlePlayNextEpisode(nextEpisode.media_id)}
+                      onPress={() => { setShowAudioMenu(true); scheduleHideControls() }}
                     >
-                      <SkipForward size={17} color="rgba(255,255,255,0.7)" />
+                      <Music size={18} color="rgba(255,255,255,0.7)" />
                     </TouchableOpacity>
-                  )}
-                  {/* Lock */}
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={toggleLock}
-                  >
-                    <Lock size={17} color="rgba(255,255,255,0.7)" />
-                  </TouchableOpacity>
-                  {/* Fullscreen — rotate orientation */}
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={toggleFullscreen}
-                  >
-                    {isLandscape ? <Minimize2 size={17} color="rgba(255,255,255,0.7)" /> : <Maximize2 size={17} color="rgba(255,255,255,0.7)" />}
-                  </TouchableOpacity>
+                    {/* Speed */}
+                    <TouchableOpacity
+                      style={[styles.actionButton, playbackSpeed !== 1 && styles.actionButtonActive]}
+                      onPress={() => { setShowSpeedMenu(true); scheduleHideControls() }}
+                    >
+                      <Text style={[styles.speedText, playbackSpeed !== 1 && { color: '#fff' }]}>
+                        {playbackSpeed === 1 ? '1×' : `${playbackSpeed}×`}
+                      </Text>
+                    </TouchableOpacity>
+                    {/* Settings */}
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => { setShowAspectRatioMenu(true); setSettingsView('main'); scheduleHideControls() }}
+                    >
+                      <Settings size={17} color="rgba(255,255,255,0.7)" />
+                    </TouchableOpacity>
+                    {/* Next episode (series only) */}
+                    {seriesId && (
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => handlePlayNextEpisode(nextEpisode?.media_id ?? 0)}
+                      >
+                        <SkipForward size={18} color="rgba(255,255,255,0.7)" />
+                      </TouchableOpacity>
+                    )}
+                    {/* Lock */}
+                    <TouchableOpacity
+                      style={[styles.actionButton, isLocked && styles.actionButtonActive]}
+                      onPress={toggleLock}
+                    >
+                      {isLocked ? <Lock size={18} color="#fff" /> : <Lock size={18} color="rgba(255,255,255,0.7)" />}
+                    </TouchableOpacity>
+                    {/* Fullscreen */}
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={toggleFullscreen}
+                    >
+                      {isLandscape ? <Minimize2 size={17} color="rgba(255,255,255,0.7)" /> : <Maximize2 size={17} color="rgba(255,255,255,0.7)" />}
+                    </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.titleActionRow}>
+                    <Text
+                      style={[
+                        styles.bottomTitle,
+                        { fontSize: scaledFont(14, layout.fontScale), flex: layout.device === 'tablet' ? 5 : 3 },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {mediaTitle}
+                    </Text>
+                    <View style={[styles.actionButtonsRow, { flex: layout.device === 'tablet' ? 5 : 7 }]}>
+                    {/* Subtitles */}
+                    <TouchableOpacity
+                      style={[styles.actionButton, selectedSubtitle && styles.actionButtonActive]}
+                      onPress={() => { setShowSubtitleMenu(true); scheduleHideControls() }}
+                    >
+                      <Captions size={18} color={selectedSubtitle ? '#fff' : 'rgba(255,255,255,0.7)'} />
+                    </TouchableOpacity>
+                    {/* Audio track */}
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => { setShowAudioMenu(true); scheduleHideControls() }}
+                    >
+                      <Music size={18} color="rgba(255,255,255,0.7)" />
+                    </TouchableOpacity>
+                    {/* Speed */}
+                    <TouchableOpacity
+                      style={[styles.actionButton, playbackSpeed !== 1 && styles.actionButtonActive]}
+                      onPress={() => { setShowSpeedMenu(true); scheduleHideControls() }}
+                    >
+                      <Text style={[styles.speedText, playbackSpeed !== 1 && { color: '#fff' }]}>
+                        {playbackSpeed === 1 ? '1×' : `${playbackSpeed}×`}
+                      </Text>
+                    </TouchableOpacity>
+                    {/* Settings */}
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => { setShowAspectRatioMenu(true); setSettingsView('main'); scheduleHideControls() }}
+                    >
+                      <Settings size={17} color="rgba(255,255,255,0.7)" />
+                    </TouchableOpacity>
+                    {/* Next episode (series only) */}
+                    {seriesId && (
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => handlePlayNextEpisode(nextEpisode?.media_id ?? 0)}
+                      >
+                        <SkipForward size={18} color="rgba(255,255,255,0.7)" />
+                      </TouchableOpacity>
+                    )}
+                    {/* Lock */}
+                    <TouchableOpacity
+                      style={[styles.actionButton, isLocked && styles.actionButtonActive]}
+                      onPress={toggleLock}
+                    >
+                      {isLocked ? <Lock size={18} color="#fff" /> : <Lock size={18} color="rgba(255,255,255,0.7)" />}
+                    </TouchableOpacity>
+                    {/* Fullscreen (Minimize2 in landscape since already fullscreen) */}
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={toggleFullscreen}
+                    >
+                      <Minimize2 size={17} color="rgba(255,255,255,0.7)" />
+                    </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
+                )}
 
                 {/* Row 2: Progress bar */}
                 <Pressable

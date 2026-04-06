@@ -52,11 +52,12 @@ export function useStreamUrls(mediaId: number, request: PlaybackInfoRequest = {}
       return {
         direct: info.direct_url || info.stream_url,
         hls: hlsUrl,
-        abr: info.abr_url || undefined,
         primary_file_id: info.primary_file_id,
+        stream_session_id: info.stream_session_id,
       }
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
     placeholderData: (prev) => prev,
     structuralSharing: (prev, next) => {
       const p = prev as StreamUrls | undefined
@@ -65,8 +66,8 @@ export function useStreamUrls(mediaId: number, request: PlaybackInfoRequest = {}
         p &&
         p.direct === n.direct &&
         p.hls === n.hls &&
-        p.abr === n.abr &&
-        p.primary_file_id === n.primary_file_id
+        p.primary_file_id === n.primary_file_id &&
+        p.stream_session_id === n.stream_session_id
       ) {
         return p
       }

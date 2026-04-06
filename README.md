@@ -15,7 +15,7 @@
 **Playback**
 - Direct Play with automatic codec detection
 - HLS transcoding with adaptive bitrate (ABR)
-- Hardware acceleration — Intel VAAPI, NVIDIA NVENC, AMD VAAPI, Apple VideoToolbox
+- Hardware acceleration — Intel VAAPI/QSV, NVIDIA NVENC, AMD VAAPI/AMF, Apple VideoToolbox
 - Pre-transcode — Netflix-style offline encoding for instant playback
 - On-demand remux — realtime transcode output cached as pre-transcode for next time
 - Netflix-style quality selector (Original / 1080p / 720p / 480p / Auto)
@@ -106,8 +106,10 @@ Velox auto-detects your GPU. Set `VELOX_HW_ACCEL=auto` (default) or specify:
 | GPU | Value | Docker Config |
 |-----|-------|---------------|
 | Intel (6th gen+) | `vaapi` | `devices: /dev/dri:/dev/dri` |
+| Intel Quick Sync | `qsv` | `devices: /dev/dri:/dev/dri` |
 | NVIDIA | `nvenc` | See [NVIDIA setup](#nvidia-gpu) |
 | AMD | `vaapi` | `devices: /dev/dri:/dev/dri` |
+| AMD AMF | `amf` | Native/custom FFmpeg only (not stock Docker image) |
 | Apple Silicon | `videotoolbox` | Native only (not Docker) |
 | None | `none` | Software encoding (libx264) |
 
@@ -138,7 +140,7 @@ services:
 | `PGID` | `1000` | Group ID for file permissions |
 | `TZ` | `UTC` | Timezone |
 | `VELOX_DATA_DIR` | `/data` | Database, cache, and config storage |
-| `VELOX_HW_ACCEL` | `auto` | Hardware acceleration (`auto`/`vaapi`/`nvenc`/`qsv`/`videotoolbox`/`none`) |
+| `VELOX_HW_ACCEL` | `auto` | Hardware acceleration (`auto`/`vaapi`/`qsv`/`nvenc`/`videotoolbox`/`amf`/`none`) |
 | `VELOX_MAX_TRANSCODES` | `2` | Maximum concurrent transcode sessions |
 | `VELOX_FILE_WATCHER` | `true` | Auto-detect new/changed media files |
 | `VELOX_TRICKPLAY_ENABLED` | `false` | Generate thumbnail preview strips |

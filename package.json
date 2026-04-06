@@ -22,5 +22,11 @@
     "backend/**/*.go": [
       "gofmt -w"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "wrap-ansi": "7.0.0",
+      "string-width": "4.2.3"
+    }
   }
 }
