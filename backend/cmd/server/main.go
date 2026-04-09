@@ -7,6 +7,7 @@ import (
 
 	"github.com/thawng/velox/internal/config"
 	"github.com/thawng/velox/internal/database"
+	"github.com/thawng/velox/internal/logger"
 )
 
 const version = "velox v0.1.1"
@@ -15,6 +16,7 @@ func main() {
 	if err := config.LoadDotEnv(); err != nil {
 		log.Fatalf("failed to load .env: %v", err)
 	}
+	logger.Setup()
 
 	if handleCommand(os.Args) {
 		return

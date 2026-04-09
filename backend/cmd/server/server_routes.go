@@ -238,6 +238,10 @@ func (app *serverApp) registerStreamRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stream/{id}/hls/master.m3u8", app.handlers.stream.HLSMaster)
 	mux.HandleFunc("GET /api/stream/{id}/hls/abr.m3u8", app.handlers.stream.HLSABRMaster)
 	mux.HandleFunc("GET /api/stream/{id}/hls/{segment}", app.handlers.stream.HLSSegment)
+
+	// Stream V2 Engine Routes
+	mux.HandleFunc("GET /api/stream/v2/{id}/hls/master.m3u8", app.handlers.streamV2.HLSMaster)
+	mux.HandleFunc("GET /api/stream/v2/{id}/hls/{segment}", app.handlers.streamV2.HLSMedia)
 	mux.HandleFunc("DELETE /api/stream/sessions/{ssid}", app.handlers.stream.StopTranscodeBySession)
 	mux.HandleFunc("DELETE /api/stream/by-id/{id}/session", app.handlers.stream.StopTranscode)
 	mux.HandleFunc("GET /api/media/{id}/trickplay/manifest.vtt", app.handlers.trickplay.ServeVTT)

@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import {
   useDismissProgress,
   useProgress,
   useUpdateProgress,
   useStreamUrl,
 } from '@/hooks/stores/useMedia'
-import { LuFilm, LuPlay, LuPencil, LuLink, LuCheck, LuCircle } from 'react-icons/lu'
+import { usePlayerStore } from '@/stores/player'
+import { LuFilm, LuPlay, LuPencil, LuLink, LuCheck, LuCircle, LuRotateCcw } from 'react-icons/lu'
 import { tmdbImage } from '@/lib/image'
 import { ActionMenu } from '@/components/ActionMenu'
 import type { ActionMenuItem } from '@/components/ActionMenu'
@@ -21,14 +22,20 @@ interface EpisodeCardProps {
 
 export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
   const { t } = useTranslation('media')
+  const navigate = useNavigate()
   const { data: progress } = useProgress(episode.media_id)
   const { mutate: updateProgress } = useUpdateProgress()
   const { mutate: dismissProgress } = useDismissProgress()
   const { mutate: getStreamUrl } = useStreamUrl(episode.media_id)
   const [copied, setCopied] = useState(false)
   const duration = episode.duration || 0
-  const hasProgress = !!progress && progress.position > 0 && !progress.completed && duration > 0
-  const progressPercent = hasProgress ? Math.min(100, (progress.position / duration) * 100) : 0
+  const showProgressBar =
+    !!progress && (progress.position > 0 || progress.completed) && duration > 0
+  const progressPercent = progress?.completed
+    ? 100
+    : showProgressBar
+      ? Math.min(100, (progress.position / duration) * 100)
+      : 0
 
   const menuItems: ActionMenuItem[] = [
     {
@@ -43,6 +50,15 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
             data: { position: duration > 0 ? duration : 0, completed: true },
           })
         }
+      },
+    },
+    {
+      label: t('actions.playFromBeginning', { defaultValue: 'Xem từ đầu' }),
+      icon: <LuRotateCcw size={16} />,
+      onClick: () => {
+        usePlayerStore.getState().setLastPosition(episode.media_id, 0)
+        updateProgress({ mediaId: episode.media_id, data: { position: 0, completed: false } })
+        navigate(`/watch/${episode.media_id}`)
       },
     },
     {
@@ -104,7 +120,7 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
         {episode.overview && (
           <p className="mt-1 line-clamp-2 text-sm text-gray-400">{episode.overview}</p>
         )}
-        {hasProgress && (
+        {showProgressBar && (
           <div className="mt-2 max-w-sm">
             <div className="h-1 rounded-full bg-gray-700">
               <div
@@ -113,7 +129,9 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
               />
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              {t('detail.percentWatched', { percent: Math.round(progressPercent) })}
+              {progress?.completed
+                ? t('detail.watched', { defaultValue: 'Đã xem xong' })
+                : t('detail.percentWatched', { percent: Math.round(progressPercent) })}
             </p>
           </div>
         )}
@@ -127,7 +145,9 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
         <Link
           to={`/watch/${episode.media_id}`}
           className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-netflix-red sm:hidden"
-          aria-label={hasProgress ? t('actions.resume') : t('actions.play')}
+          aria-label={
+            showProgressBar && !progress?.completed ? t('actions.resume') : t('actions.play')
+          }
         >
           <LuPlay size={16} />
         </Link>
@@ -136,7 +156,7 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
           className="hidden items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white opacity-0 transition-all hover:bg-netflix-red group-hover:opacity-100 sm:flex"
         >
           <LuPlay size={16} />
-          {hasProgress ? t('actions.resume') : t('actions.play')}
+          {showProgressBar && !progress?.completed ? t('actions.resume') : t('actions.play')}
         </Link>
         <ActionMenu items={menuItems} isAdmin={isAdmin} size={18} />
       </div>

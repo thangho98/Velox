@@ -64,12 +64,20 @@ type PlaybackInfoRequest struct {
 
 // PlaybackInfoResponse represents playback decision response
 type PlaybackInfoResponse struct {
-	MediaID            int                 `json:"media_id"`
-	PrimaryFileID      int64               `json:"primary_file_id,omitempty"`
-	StreamSessionID    string              `json:"stream_session_id,omitempty"`
-	Method             string              `json:"method"`
-	StreamURL          string              `json:"stream_url"`
-	DirectURL          string              `json:"direct_url,omitempty"`
+	MediaID         int    `json:"media_id"`
+	PrimaryFileID   int64  `json:"primary_file_id,omitempty"`
+	StreamSessionID string `json:"stream_session_id,omitempty"`
+	Method          string `json:"method"`
+	StreamURL       string `json:"stream_url"`
+	DirectURL       string `json:"direct_url,omitempty"`
+	// PreTranscodeURL serves the pre-encoded MP4 (no pm=direct, backend picks pretranscode lookup).
+	// Set when a ready pre-transcode file exists for this media+quality.
+	PreTranscodeURL string `json:"pretranscode_url,omitempty"`
+	// HLSURL is the realtime HLS transcode endpoint, always available as last-resort fallback.
+	HLSURL string `json:"hls_url,omitempty"`
+	// Prefer is the backend's hint of which URL the client should try FIRST.
+	// Values: "direct" | "pretranscode" | "hls". Client owns the actual fallback chain.
+	Prefer             string              `json:"prefer,omitempty"`
 	AbrURL             string              `json:"abr_url,omitempty"`
 	VideoCodec         string              `json:"video_codec"`
 	VideoProfile       string              `json:"video_profile,omitempty"`

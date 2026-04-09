@@ -1,10 +1,10 @@
 # ============================================================
 # Velox — Production Multi-stage Dockerfile
-# Supports: x86_64 (Intel/AMD), ARM64 (Raspberry Pi, Synology)
+# Supports: x86_64 (Intel/AMD), ARM64 (Raspberry Pi/Mac M-series)
 # ============================================================
 
 # ----- Stage 1: Frontend build -----
-FROM node:22-alpine AS frontend
+FROM node:22-bullseye-slim AS frontend
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
@@ -15,14 +15,16 @@ COPY packages/shared/package.json packages/shared/
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY packages/shared/ packages/shared/
 COPY webapp/ webapp/
+ARG VITE_DEBUG=false
+ENV VITE_DEBUG=$VITE_DEBUG
 RUN cd webapp && pnpm run build
 
 
 # ----- Stage 2: Backend build -----
-FROM golang:1.24-alpine AS backend
+FROM golang:1.24-bookworm AS backend
 
 # CGO required for mattn/go-sqlite3
-RUN apk add --no-cache gcc musl-dev
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc-dev
 
 # go.mod requires 1.26 — let Go auto-download the right toolchain
 ENV GOTOOLCHAIN=auto
@@ -39,46 +41,62 @@ RUN CGO_ENABLED=1 go build \
 
 
 # ----- Stage 3: Production runtime -----
-FROM alpine:3.21
+FROM debian:bookworm-slim
 
 LABEL maintainer="thawng"
 LABEL org.opencontainers.image.title="Velox"
 LABEL org.opencontainers.image.description="Self-hosted home media server"
 
 # Runtime deps:
-#   ffmpeg/ffprobe  — transcoding + media probe
+#   jellyfin-ffmpeg — transcoding + media probe (via official Jellyfin APT repo)
 #   python3 + pip   — Subscene subtitle scraper (DrissionPage)
 #   chromium + xvfb — headless browser for Cloudflare bypass
 #   font packages   — subtitle rendering (burn-in)
 #   nginx           — serve frontend SPA + reverse proxy API
 #   tzdata          — timezone support
-#   su-exec         — run as non-root (lightweight gosu alternative)
-RUN apk add --no-cache \
+#   gosu            — run as non-root (su-exec equivalent)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg \
+    ca-certificates \
     ffmpeg \
-    chromaprint \
     python3 \
-    py3-pip \
+    python3-pip \
+    python3-venv \
     chromium \
-    xvfb-run \
-    font-noto \
-    font-noto-cjk \
+    xvfb \
+    fonts-noto \
+    fonts-noto-cjk \
     nginx \
     tzdata \
-    su-exec \
-    curl \
+    gosu \
     tini
 
-# GPU drivers — x86_64 only (Intel VAAPI, AMD VAAPI, NVIDIA via host runtime)
-# AMF is not included in the stock Alpine FFmpeg package used by this image.
-# Not available on ARM (Apple Silicon, Raspberry Pi)
+# Install jellyfin-ffmpeg7 directly from Jellyfin's official repository
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg && \
+    echo "deb [arch=$( dpkg --print-architecture ) signed-by=/etc/apt/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main" | tee /etc/apt/sources.list.d/jellyfin.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends jellyfin-ffmpeg7 && \
+    apt-get remove -y gnupg && \
+    apt-get autoremove -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# GPU drivers — x86_64 only (Intel VAAPI, AMD VAAPI)
+# Note: intel-media-va-driver-non-free is the recommended iHD driver
 ARG TARGETARCH
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
-        apk add --no-cache libva libva-intel-driver intel-media-driver mesa-va-gallium mesa-dri-gallium; \
+        sed -i 's/Components: main/Components: main non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && \
+        apt-get update && apt-get install -y --no-install-recommends \
+        intel-media-va-driver-non-free \
+        va-driver-all \
+        mesa-va-drivers && \
+        apt-get clean && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # Create velox user (UID/GID configurable at runtime)
-RUN addgroup -g 1000 velox && \
-    adduser -D -u 1000 -G velox -h /app velox
+RUN groupadd -g 1000 velox && \
+    useradd -r -u 1000 -g velox -d /app velox
 
 WORKDIR /app
 
@@ -97,7 +115,7 @@ COPY --from=backend /velox /app/velox
 COPY --from=frontend /build/webapp/dist /app/webapp
 
 # Nginx config — SPA + API reverse proxy
-RUN cat > /etc/nginx/http.d/velox.conf <<'NGINX'
+RUN cat > /etc/nginx/sites-available/velox.conf <<'NGINX'
 server {
     listen 80;
     server_name _;
@@ -111,10 +129,15 @@ server {
     gzip_types text/plain text/css application/json application/javascript text/xml;
     gzip_min_length 1000;
 
-    # Cache static assets
+    # Cache static assets (Vite content-hashed filenames)
     location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+    }
+
+    # Never cache index.html — ensures browser loads latest JS/CSS bundles
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
 
     # WebSocket endpoint
@@ -157,8 +180,9 @@ server {
 }
 NGINX
 
-# Remove default nginx config
-RUN rm -f /etc/nginx/http.d/default.conf
+# Enable nginx site and disable default
+RUN rm -f /etc/nginx/sites-enabled/default && \
+    ln -s /etc/nginx/sites-available/velox.conf /etc/nginx/sites-enabled/velox.conf
 
 # Entrypoint script
 RUN cat > /app/entrypoint.sh <<'ENTRYPOINT'
@@ -188,7 +212,7 @@ rm -rf "$VELOX_DATA_DIR/transcode/"*
 export LIBVA_DRIVER_NAME=${LIBVA_DRIVER_NAME:-iHD}
 
 # ---- Set Chromium path for DrissionPage ----
-export CHROME_PATH=/usr/bin/chromium-browser
+export CHROME_PATH=/usr/bin/chromium
 
 # ---- Start Xvfb for Subscene scraper (virtual display) ----
 if [ "${SUBSCENE_ENABLED:-true}" = "true" ]; then
@@ -217,5 +241,5 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8080/api/health || exit 1
 
 # ---- Use tini as PID 1 (proper signal handling) ----
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/app/entrypoint.sh"]

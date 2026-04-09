@@ -1,7 +1,10 @@
 // Client capability detection using MediaSource API
 // Results are cached in localStorage
 
-const STORAGE_KEY = 'velox-client-capabilities-v2'
+const STORAGE_KEY = 'velox-client-capabilities'
+// Schema version — bumped when detection logic changes in a way that invalidates cached results.
+// Stored inside the cached object; mismatched versions trigger re-detection.
+const SCHEMA_VERSION = 2
 
 export interface ClientCapabilities {
   browser: string
@@ -17,6 +20,7 @@ export interface ClientCapabilities {
     height: number
   }
   detectedAt: string
+  schemaVersion?: number
 }
 
 // Test codec support using MediaSource.isTypeSupported
@@ -188,10 +192,10 @@ export function getCapabilities(): ClientCapabilities {
     const cached = localStorage.getItem(STORAGE_KEY)
     if (cached) {
       const parsed = JSON.parse(cached) as ClientCapabilities
-      // Refresh if older than 7 days
+      // Re-detect when schema changes or cache is older than 7 days
       const detectedAt = new Date(parsed.detectedAt)
       const daysSince = (Date.now() - detectedAt.getTime()) / (1000 * 60 * 60 * 24)
-      if (daysSince < 7) {
+      if (parsed.schemaVersion === SCHEMA_VERSION && daysSince < 7) {
         _memCache = parsed
         return parsed
       }
@@ -199,9 +203,12 @@ export function getCapabilities(): ClientCapabilities {
   } catch {
     // ignore parsing errors
   }
+  // Clean up legacy versioned keys
+  localStorage.removeItem('velox-client-capabilities-v2')
 
-  // Detect and cache
+  // Detect and cache with current schema version
   const caps = detectCapabilities()
+  caps.schemaVersion = SCHEMA_VERSION
   localStorage.setItem(STORAGE_KEY, JSON.stringify(caps))
   _memCache = caps
   return caps

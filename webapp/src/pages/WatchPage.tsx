@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router'
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState, useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
 import {
@@ -48,6 +48,9 @@ import { AudioPicker } from '@/components/AudioPicker'
 import { TrickplayPreview } from '@/components/TrickplayPreview'
 import { api } from '@velox/shared/api'
 import { useToast } from '@/components/Toast'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('WatchPage')
 import { WatchDetailSheet } from '@/components/watch/WatchDetailSheet'
 import { WatchPlaybackStatsOverlay } from '@/components/watch/WatchPlaybackStatsOverlay'
 import { WatchTopBar } from '@/components/watch/WatchTopBar'
@@ -74,12 +77,6 @@ type DetailPanel = 'none' | 'info' | 'season'
 
 import type { QualityOption } from '@/types/api'
 
-const buildHlsSessionUrl = (baseUrl: string, startOffset: number) => {
-  const url = new URL(baseUrl, window.location.origin)
-  url.searchParams.set('start', startOffset.toFixed(3))
-  return `${url.pathname}${url.search}${url.hash}`
-}
-
 export default function WatchPage() {
   const { id } = useParams<{ id: string }>()
   const mediaId = Number(id)
@@ -100,6 +97,20 @@ export default function WatchPage() {
   const qualityIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lowBandwidthToastShown = useRef(false)
   const { t } = useTranslation('watch')
+
+  const [forceFullTranscode, setForceFullTranscode] = useState(false)
+
+  const buildHlsSessionUrl = useCallback(
+    (baseUrl: string, startOffset: number, forceTranscode: boolean) => {
+      const url = new URL(baseUrl, window.location.origin)
+      url.searchParams.set('start', startOffset.toFixed(3))
+      if (forceTranscode) {
+        url.searchParams.delete('vcopy')
+      }
+      return `${url.pathname}${url.search}${url.hash}`
+    },
+    [],
+  )
 
   const {
     available: castAvailable,
@@ -156,25 +167,126 @@ export default function WatchPage() {
   const effectiveSubtitleLanguage = subtitleLanguage ?? preferences?.subtitle_language ?? null
   const qualityMaxHeight = maxQuality === 'auto' ? undefined : maxQuality
 
-  const playbackRequest = {
-    video_codecs: clientCaps.videoCodecs,
-    audio_codecs: clientCaps.audioCodecs,
-    containers: clientCaps.containers,
-    max_height: qualityMaxHeight,
-    selected_subtitle: effectiveSubtitleLanguage ?? 'off',
-    selected_subtitle_id: subtitleTrackId ?? 0,
-    selected_audio_track: audioTrackId ?? 0,
-  }
-  const { data: streamUrls, isLoading: streamLoading } = useStreamUrls(mediaId, playbackRequest)
+  const playbackRequest = useMemo(
+    () => ({
+      video_codecs: clientCaps.videoCodecs,
+      audio_codecs: clientCaps.audioCodecs,
+      containers: clientCaps.containers,
+      max_height: qualityMaxHeight,
+      selected_subtitle: effectiveSubtitleLanguage ?? 'off',
+      selected_subtitle_id: subtitleTrackId ?? 0,
+      selected_audio_track: audioTrackId ?? 0,
+    }),
+    [
+      clientCaps.videoCodecs,
+      clientCaps.audioCodecs,
+      clientCaps.containers,
+      qualityMaxHeight,
+      effectiveSubtitleLanguage,
+      subtitleTrackId,
+      audioTrackId,
+    ],
+  )
+
   const { data: subtitles = [] } = useSubtitles(mediaId, playbackRequest)
   const { data: audioTracks = [] } = useAudioTracks(mediaId, playbackRequest)
   const { data: playbackInfo } = usePlaybackInfo(mediaId, playbackRequest)
-  // Fallback chain: try direct play first, switch to HLS on error.
-  // Backend decides the preferred method, but client always tries direct first for auto mode.
-  const [directPlayFailed, setDirectPlayFailed] = useState(false)
-  const backendWantsHls =
-    playbackInfo?.method === 'FullTranscode' || playbackInfo?.method === 'TranscodeAudio'
-  const isHlsPlayback = backendWantsHls || directPlayFailed
+
+  // Stream URLs use a stable key that excludes TEXT subtitle selection so switching
+  // text subtitles (SRT/ASS) does not reload the video. IMAGE subtitles
+  // (PGS/VobSub) require server-side burn-in, so their ID IS included in the key
+  // to trigger a fresh stream URL fetch with the correct ?si= parameter.
+  const burnInSubtitleId =
+    (subtitleTrackId
+      ? subtitles.find((s) => s.id === subtitleTrackId && s.is_image)?.id
+      : undefined) ??
+    (effectiveSubtitleLanguage
+      ? subtitles.find((s) => languageMatches(s.language, effectiveSubtitleLanguage) && s.is_image)
+          ?.id
+      : undefined) ??
+    0
+  const streamRequestKey = useMemo(
+    () => ({
+      video_codecs: clientCaps.videoCodecs,
+      audio_codecs: clientCaps.audioCodecs,
+      containers: clientCaps.containers,
+      max_height: qualityMaxHeight,
+      selected_audio_track: audioTrackId ?? 0,
+      selected_subtitle_id: burnInSubtitleId,
+    }),
+    [
+      clientCaps.videoCodecs,
+      clientCaps.audioCodecs,
+      clientCaps.containers,
+      qualityMaxHeight,
+      audioTrackId,
+      burnInSubtitleId,
+    ],
+  )
+  const { data: streamUrls, isLoading: streamLoading } = useStreamUrls(mediaId, streamRequestKey)
+
+  // 3-tier fallback chain owned by the client:
+  //   direct → pretranscode → hls
+  // Backend hints the starting tier via streamUrls.prefer; client advances the
+  // chain on playback failure (network error, audio decode failure, etc.).
+  type PlaybackSource = 'direct' | 'pretranscode' | 'hls'
+  const [playbackSource, setPlaybackSource] = useState<PlaybackSource | null>(null)
+
+  // Initialize source from backend hint as soon as URLs are available.
+  // Skip a tier when its URL is missing (e.g. no pretranscode → direct → hls).
+  useEffect(() => {
+    if (!streamUrls) return
+    if (playbackSource !== null) return
+    const pickFirstAvailable = (): PlaybackSource => {
+      const order: PlaybackSource[] =
+        streamUrls.prefer === 'pretranscode'
+          ? ['pretranscode', 'direct', 'hls']
+          : streamUrls.prefer === 'hls'
+            ? ['hls', 'pretranscode', 'direct']
+            : ['direct', 'pretranscode', 'hls']
+      for (const tier of order) {
+        if (tier === 'direct' && streamUrls.direct) return tier
+        if (tier === 'pretranscode' && streamUrls.pretranscode) return tier
+        if (tier === 'hls' && streamUrls.hls) return tier
+      }
+      return 'hls'
+    }
+    const picked = pickFirstAvailable()
+    log.info(`[Playback Source] Init: preferred=${streamUrls.prefer}, chosen=${picked}`)
+    setPlaybackSource(picked)
+  }, [streamUrls, playbackSource])
+
+  // advanceFallback moves to the next tier when current source fails.
+  const advanceFallback = useCallback(
+    (reason: string) => {
+      log.warn(`[Fallback Triggered] Reason: ${reason}`)
+      setPlaybackSource((current) => {
+        if (!streamUrls) return current
+        const chain: PlaybackSource[] = ['direct', 'pretranscode', 'hls']
+        const startIdx = current ? chain.indexOf(current) + 1 : 0
+        for (let i = startIdx; i < chain.length; i++) {
+          const tier = chain[i]
+          if (tier === 'direct' && streamUrls.direct) {
+            log.warn(`fallback → direct (${reason})`)
+            return tier
+          }
+          if (tier === 'pretranscode' && streamUrls.pretranscode) {
+            log.warn(`fallback → pretranscode (${reason})`)
+            return tier
+          }
+          if (tier === 'hls' && streamUrls.hls) {
+            log.warn(`fallback → hls (${reason})`)
+            return tier
+          }
+        }
+        log.warn(`fallback exhausted (${reason})`)
+        return current
+      })
+    },
+    [streamUrls],
+  )
+
+  const isHlsPlayback = playbackSource === 'hls'
 
   const isEpisode = media?.media.media_type === 'episode'
   const seriesId = media?.series_id ?? 0
@@ -378,6 +490,21 @@ export default function WatchPage() {
   const allowsImageSubtitles =
     playbackInfo?.method === 'FullTranscode' || playbackInfo?.method === 'TranscodeAudio'
 
+  // When an image subtitle (PGS/VobSub) is selected or deselected while HLS is active,
+  // reload the HLS session at the current position so the server burns it in.
+  const burnInSubId = burnedInPrimarySub?.id ?? 0
+  const prevBurnInSubRef = useRef(burnInSubId)
+  useEffect(() => {
+    if (prevBurnInSubRef.current === burnInSubId) return
+    prevBurnInSubRef.current = burnInSubId
+    if (!isHlsPlayback || !allowsImageSubtitles) return
+    const pos = videoRef.current?.currentTime ?? 0
+    const globalPos = streamSourceOffsetRef.current + pos
+    setLastPosition(mediaId, globalPos)
+    // Trigger HLS session reload at current position
+    setHlsStartOffset(globalPos > 0.25 ? globalPos : null)
+  }, [burnInSubId, isHlsPlayback, allowsImageSubtitles, mediaId, setLastPosition])
+
   // Media Session — update position state for lock screen progress bar
   useEffect(() => {
     if (!('mediaSession' in navigator) || !videoRef.current) return
@@ -410,7 +537,7 @@ export default function WatchPage() {
   }, [playbackInfo?.duration])
 
   useEffect(() => {
-    setDirectPlayFailed(false)
+    setPlaybackSource(null)
     setHlsStartOffset(null)
     setBufferedRange({ start: 0, end: 0 })
     streamSourceOffsetRef.current = 0
@@ -422,6 +549,62 @@ export default function WatchPage() {
       streamSourceOffsetRef.current = 0
     }
   }, [isHlsPlayback])
+
+  // Fallback trigger: detect silent audio decode failure during direct play.
+  // Chrome does NOT fire <video onError> when only the audio track fails to decode
+  // (e.g. AC3/EAC3/DTS unsupported codecs) — video continues playing without sound.
+  // We poll webkitAudioDecodedByteCount; if zero bytes were decoded after a few
+  // seconds of playback, fall back to HLS where backend transcodes audio to AAC.
+  useEffect(() => {
+    // Only run while we're on a non-HLS tier (direct or pretranscode).
+    // HLS tier has audio guaranteed AAC by backend transcode → no need to check.
+    if (playbackSource !== 'direct' && playbackSource !== 'pretranscode') return
+    const v = videoRef.current as
+      | (HTMLVideoElement & { webkitAudioDecodedByteCount?: number })
+      | null
+    if (!v) return
+    if (v.webkitAudioDecodedByteCount === undefined) {
+      log.debug('webkitAudioDecodedByteCount unsupported — skip silent-audio detector')
+      return
+    }
+
+    let zeroChecks = 0
+    const interval = setInterval(() => {
+      if (v.paused || v.currentTime < 2) return
+      const decoded = v.webkitAudioDecodedByteCount ?? 0
+      if (decoded > 0) {
+        log.debug(`audio decode OK — decoded=${decoded} bytes at ${v.currentTime.toFixed(1)}s`)
+        clearInterval(interval)
+        return
+      }
+      zeroChecks++
+      log.debug(`audio decode check ${zeroChecks}/3 — decoded=0 at ${v.currentTime.toFixed(1)}s`)
+      if (zeroChecks >= 3) {
+        clearInterval(interval)
+        advanceFallback(
+          `silent audio: 0 bytes decoded after ${v.currentTime.toFixed(1)}s on ${playbackSource}`,
+        )
+      }
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [playbackSource, advanceFallback])
+
+  // On initial HLS load, use server-side seek for resume position.
+  // startPosition alone doesn't work with EVENT playlists (segments don't exist yet).
+  const hlsResumeApplied = useRef(false)
+  useEffect(() => {
+    if (!isHlsPlayback || hlsResumeApplied.current) return
+    hlsResumeApplied.current = true
+    // Server progress is the cross-device source of truth; local store may be
+    // more recent on the same device. Take whichever is further ahead.
+    const serverPos = playbackInfo?.position ?? 0
+    const localPos = usePlayerStore.getState().lastPositions[mediaId] ?? 0
+    const resumePos = Math.max(serverPos, localPos)
+    if (resumePos > 5) {
+      setHlsStartOffset(resumePos)
+    }
+  }, [isHlsPlayback, mediaId, playbackInfo?.position])
 
   // Seek feedback
   const [seekFeedback, setSeekFeedback] = useState<{ dir: 'back' | 'fwd'; n: number } | null>(null)
@@ -549,6 +732,16 @@ export default function WatchPage() {
   const requestHlsSessionReload = (targetTime: number) => {
     const globalTarget = clampSeekTarget(targetTime, videoRef.current)
     const nextOffset = globalTarget > 0.25 ? globalTarget : null
+    log.info(
+      `sessionReload — target=${targetTime.toFixed(2)}, clamped=${globalTarget.toFixed(2)}, nextOffset=${nextOffset?.toFixed(2) ?? 'null'}`,
+    )
+
+    // Destroy old HLS instance BEFORE setting new offset to prevent the old
+    // instance's pending requests from racing with the new session's FFmpeg.
+    if (hlsRef.current) {
+      hlsRef.current.destroy()
+      hlsRef.current = null
+    }
 
     setLastPosition(mediaId, globalTarget)
     setCurrentTime(globalTarget)
@@ -572,10 +765,10 @@ export default function WatchPage() {
     const localTarget = clampedTime - sessionOffset
     // Session reload (server-side seek) is safe when video is copied (not transcoded):
     // - TranscodeAudio: video copy + audio transcode (lightweight)
-    // - directPlayFailed fallback: video copy via HLS (no transcode slot used)
-    // FullTranscode would tie up a VAAPI/CPU slot for a second concurrent job — clamp seek instead.
-    const isVideoCopy = playbackInfo?.method === 'TranscodeAudio' || directPlayFailed
-    const canReloadSession = isHlsPlayback && isVideoCopy && Boolean(streamUrls?.hls)
+    // - HLS fallback after a failed direct/pretranscode tier: video copy via HLS
+    // HLS V2 architecture cleanly restarts transcoder processes.
+    // We can safely reload the session for both VideoCopy and FullTranscode without resource leakage.
+    const canReloadSession = isHlsPlayback && Boolean(streamUrls?.hls)
     const isBeforeCurrentSession = isHlsPlayback && localTarget < 0
     const isBeyondReadyEdge =
       isHlsPlayback &&
@@ -687,7 +880,8 @@ export default function WatchPage() {
     }
     hlsPlaylistLiveRef.current = false
     const sessionOffset = hlsStartOffset ?? 0
-    streamSourceOffsetRef.current = sessionOffset
+    // Start with 0; FRAG_BUFFERED will set the correct offset once buffer data is available.
+    streamSourceOffsetRef.current = 0
     hlsSeekableEndRef.current = sessionOffset
     setBufferedRange({
       start: sessionOffset,
@@ -695,22 +889,37 @@ export default function WatchPage() {
     })
 
     const useHls = isHlsPlayback
+    // Pick URL by current playback tier — direct, pretranscode, or hls.
     const rawUrl = useHls
       ? sessionOffset > 0.25 && streamUrls.hls
-        ? buildHlsSessionUrl(streamUrls.hls, sessionOffset)
-        : streamUrls.hls
-      : streamUrls.direct
+        ? buildHlsSessionUrl(streamUrls.hls, sessionOffset, forceFullTranscode)
+        : buildHlsSessionUrl(streamUrls.hls || '', 0, forceFullTranscode)
+      : playbackSource === 'pretranscode'
+        ? streamUrls.pretranscode
+        : streamUrls.direct
     if (!rawUrl) return
     setIsBuffering(true)
+    log.info(`player init — source=${playbackSource}, sessionOffset=${sessionOffset.toFixed(2)}s`)
+    const hlsInitTimer = log.time('HLS init → first frame')
     const streamUrl = accessToken
       ? rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(accessToken)
       : rawUrl
 
     if (useHls && streamUrls.hls && Hls.isSupported()) {
+      // Resume is handled via server-side seek (?start=X in the URL).
+      // FFmpeg begins encoding from the resume position, so HLS.js starts
+      // from segment 0 of the offset session — no client-side startPosition needed.
       const hls = new Hls({
-        maxBufferLength: 30,
-        maxMaxBufferLength: 600,
+        // Tuning for high-bitrate live transcodes (BluRay REMUX ~16 Mbps,
+        // ~12-15 MB per 6s segment). Chrome MSE SourceBuffer quota is ~150 MB.
+        // We must limit our buffer limits so that we NEVER hit true QuotaExceededError.
+        maxBufferLength: 10,
+        maxMaxBufferLength: 15,
+        backBufferLength: 5,
+        // Cap physical bytes at 90 MB so hls.js manages memory BEFORE the browser throws error.
+        maxBufferSize: 90 * 1000 * 1000,
         enableWorker: true,
+        startPosition: -1,
         xhrSetup: (xhr) => {
           // Read fresh token on every request — prevents 401 when token refreshes during playback
           const freshToken = useAuthStore.getState().accessToken
@@ -719,6 +928,9 @@ export default function WatchPage() {
       })
       hlsRef.current = hls
       hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
+        log.debug(
+          `MANIFEST_PARSED — ${data.levels.length} levels, ${hls.audioTracks.length} audio tracks`,
+        )
         setAvailableLevels(
           data.levels.map((l, i) => ({ level: i, height: l.height || 0, bitrate: l.bitrate || 0 })),
         )
@@ -737,31 +949,22 @@ export default function WatchPage() {
         const videoDur = v?.duration && isFinite(v.duration) ? v.duration : 0
         const initDur = Math.max(knownDur, sessionOffset + videoDur)
         if (initDur > 0) setDuration(initDur)
-        // Resume position (initial load or after subtitle/quality change)
-        const seekToGlobal = usePlayerStore.getState().lastPositions[mediaId] ?? 0
-        if (seekToGlobal > 0 && v) {
-          const maxSeekableGlobal =
-            hlsPlaylistLiveRef.current && hlsSeekableEndRef.current > 0
-              ? hlsSeekableEndRef.current
-              : Math.max(knownDur, sessionOffset + videoDur)
-          const localMaxSeekable = Math.max(0, maxSeekableGlobal - sessionOffset)
-          const localSeekTo = Math.max(0, seekToGlobal - sessionOffset)
-          const safeSeekTo =
-            localMaxSeekable > 0.25
-              ? Math.min(localSeekTo, localMaxSeekable - 0.25)
-              : Math.min(localSeekTo, localMaxSeekable)
-          if (safeSeekTo > 0) {
-            v.currentTime = safeSeekTo
-          }
-        }
+        // Sync currentTime state to the server-side offset
+        if (sessionOffset > 0) setCurrentTime(sessionOffset)
         // Auto-play when ready
-        v?.play().catch(() => {})
+        log.debug(
+          `MANIFEST_PARSED — initDur=${initDur.toFixed(2)}s, sessionOffset=${sessionOffset}, calling play()`,
+        )
+        v?.play().catch((err) => log.warn(`auto-play blocked: ${err.message}`))
       })
       hls.on(Hls.Events.LEVEL_LOADED, (_e, data) => {
         const playlistDur = data.details?.totalduration ?? 0
         const playlistEdge = data.details?.edge ?? playlistDur
         hlsPlaylistLiveRef.current = data.details?.live ?? false
         hlsSeekableEndRef.current = sessionOffset + playlistEdge
+        log.debug(
+          `LEVEL_LOADED — playlistDur=${playlistDur.toFixed(2)}s, edge=${playlistEdge.toFixed(2)}s, live=${data.details?.live}, fragments=${data.details?.fragments?.length ?? 0}`,
+        )
         // While transcoding in background, the playlist only contains segments
         // encoded so far. Use playback info duration (from ffprobe) if it's larger
         // so the player always shows the correct total duration.
@@ -775,7 +978,13 @@ export default function WatchPage() {
         if (qualityIndicatorTimeout.current) clearTimeout(qualityIndicatorTimeout.current)
         qualityIndicatorTimeout.current = setTimeout(() => setShowQualityIndicator(false), 3000)
       })
+      let consecutiveEmptyBuffers = 0
+
       hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
+        log.debug(
+          `FRAG_LOADED — sn=${data.frag.sn}, start=${data.frag.start.toFixed(2)}s, dur=${data.frag.duration.toFixed(2)}s, size=${((data.frag.stats?.loaded ?? 0) / 1024).toFixed(0)}KB`,
+        )
+
         const stats = data.frag.stats
         if (stats?.loaded && stats?.loading) {
           const dur = stats.loading.end - stats.loading.start
@@ -789,13 +998,124 @@ export default function WatchPage() {
           }
         }
       })
+      // Both video copy (-copyts -start_at_zero) and full transcode reset
+      // timestamps to ~0. Detect the actual buffer start once the first
+      // fragment is buffered and set streamSourceOffsetRef accordingly.
+      const bufferSyncDone = { current: false }
+      hls.on(Hls.Events.FRAG_BUFFERED, (_e, data) => {
+        const v = videoRef.current
+        if (!v) return
+        const bufRanges = []
+        for (let i = 0; i < v.buffered.length; i++) {
+          bufRanges.push(`[${v.buffered.start(i).toFixed(2)}-${v.buffered.end(i).toFixed(2)}]`)
+        }
+        log.debug(
+          `FRAG_BUFFERED — sn=${data.frag.sn}, video.currentTime=${v.currentTime.toFixed(2)}, readyState=${v.readyState}, buffered=${bufRanges.join(',') || 'empty'}, offset=${streamSourceOffsetRef.current.toFixed(2)}`,
+        )
+
+        if (v.buffered.length === 0) {
+          consecutiveEmptyBuffers++
+          if (consecutiveEmptyBuffers >= 5) {
+            log.warn(
+              `Stuck loading segments with 0 valid buffers appended (${consecutiveEmptyBuffers} times). Forcing full transcode recovery.`,
+            )
+            hls.destroy()
+            setForceFullTranscode(true)
+            setHlsStartOffset(
+              streamSourceOffsetRef.current + Math.max(0, sessionOffset, v.currentTime) + 1.0,
+            )
+            return
+          }
+        } else {
+          consecutiveEmptyBuffers = 0
+        }
+
+        if (bufferSyncDone.current) return
+        if (v.buffered.length === 0) return
+        const bufStart = v.buffered.start(0)
+
+        if (sessionOffset > 0) {
+          if (bufStart < sessionOffset * 0.8) {
+            // Timestamps were reset to near 0 for full transcodes.
+            // BE processes seek offset by SegLength chunks (floor(sessionOffset / 6.0) * 6.0).
+            // So the video output natively starts exactly at trueStartOffset, NOT sessionOffset.
+            const segLength = 6.0
+            const trueStartOffset = Math.floor(sessionOffset / segLength) * segLength
+
+            // Set the correct baseline so subtitles sync with the decoded visual frames
+            streamSourceOffsetRef.current = trueStartOffset
+            log.debug(
+              `bufferSync — timestamps reset detected (bufStart=${bufStart.toFixed(2)}). True offset set to ${trueStartOffset.toFixed(2)} (requested=${sessionOffset.toFixed(2)})`,
+            )
+
+            // Seek the video forward to the exact remainder so playback resumes seamlessly
+            const gap = sessionOffset - trueStartOffset
+            const targetTime = bufStart + gap
+            if (gap > 0.1 && Math.abs(v.currentTime - targetTime) > 0.5) {
+              log.debug(
+                `bufferSync — jumping relative gap to resume point: currentTime ${v.currentTime.toFixed(2)} → ${targetTime.toFixed(2)}`,
+              )
+              v.currentTime = targetTime
+            } else if (bufStart > 1 && Math.abs(v.currentTime - bufStart) > 2) {
+              v.currentTime = bufStart + 0.5
+            }
+          } else {
+            // Fallback: timestamps NOT reset — video.currentTime IS the global PTS.
+            // This happens when FFmpeg didn't fully shift timestamps. offset stays 0.
+            log.warn(
+              `bufferSync — timestamps NOT reset (bufStart=${bufStart.toFixed(2)}, sessionOffset=${sessionOffset.toFixed(2)}), globalTime = video.currentTime`,
+            )
+            if (bufStart > 1 && Math.abs(v.currentTime - bufStart) > 2) {
+              // Jump to buffer start (+0.5s to land on a keyframe, avoiding readyState=2 stall).
+              const jumpTo = bufStart + 0.5
+              log.debug(
+                `bufferSync — jumping currentTime ${v.currentTime.toFixed(2)} → ${jumpTo.toFixed(2)} (bufStart=${bufStart.toFixed(2)})`,
+              )
+              v.currentTime = jumpTo
+            }
+          }
+        } else {
+          if (bufStart > 1 && Math.abs(v.currentTime - bufStart) > 2) {
+            // Jump to buffer start (+0.5s to land on a keyframe, avoiding readyState=2 stall).
+            const jumpTo = bufStart + 0.5
+            log.debug(
+              `bufferSync — jumping currentTime ${v.currentTime.toFixed(2)} → ${jumpTo.toFixed(2)} (bufStart=${bufStart.toFixed(2)})`,
+            )
+            v.currentTime = jumpTo
+          }
+        }
+        bufferSyncDone.current = true
+        hlsInitTimer(`readyState=${v.readyState}, bufStart=${bufStart.toFixed(2)}`)
+      })
       hls.on(Hls.Events.ERROR, (_e, data) => {
+        const v = videoRef.current
+        log.error(
+          `[HLS ERROR] fatal=${data.fatal}, type=${data.type}, details=${data.details}, reason=${data.reason}, responseCode=${data.response?.code}, responseText=${data.response?.text?.substring(0, 50)}, readyState=${v?.readyState}, currentTime=${v?.currentTime?.toFixed(2)}, networkState=${v?.networkState}`,
+        )
+
+        // If HLS fails to append a segment, it gets stuck in an infinite loop downloading it again.
+        // Explicitly recover the media source to flush the bad state.
+        if (
+          data.details === Hls.ErrorDetails.BUFFER_APPEND_ERROR ||
+          data.details === Hls.ErrorDetails.BUFFER_APPENDING_ERROR ||
+          data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR ||
+          data.details === Hls.ErrorDetails.FRAG_PARSING_ERROR
+        ) {
+          log.warn(`Forcing hls.recoverMediaError() due to ${data.details}`)
+          hls.recoverMediaError()
+
+          // Nudge timeline forward to jump over the discontinuity gap if we're stalled
+          if (v && data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+            v.currentTime += 0.1
+          }
+          return
+        }
+
         if (data.fatal) {
+          const resumePos = videoRef.current?.currentTime ?? 0
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            setError('Network error...')
-            hls.startLoad()
+            hls.startLoad(resumePos)
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            setError('Media error...')
             hls.recoverMediaError()
           } else {
             setError('Fatal playback error')
@@ -811,8 +1131,11 @@ export default function WatchPage() {
       streamSourceOffsetRef.current = 0
       setBufferedRange({ start: 0, end: 0 })
       video.src = streamUrl
-      // Resume position (initial load or after subtitle/quality change)
-      const seekToGlobal = usePlayerStore.getState().lastPositions[mediaId] ?? 0
+      // Resume: take whichever is further ahead (server = cross-device, local = same device)
+      const seekToGlobal = Math.max(
+        playbackInfo?.position ?? 0,
+        usePlayerStore.getState().lastPositions[mediaId] ?? 0,
+      )
       if (seekToGlobal > 0) {
         const nativeDuration =
           Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0
@@ -840,7 +1163,15 @@ export default function WatchPage() {
     // playbackInfo.duration and clampSeekTarget intentionally excluded so
     // progressive duration updates do not recreate the HLS instance mid-playback.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioLanguage, buildHlsSessionUrl, hlsStartOffset, isHlsPlayback, streamUrls])
+  }, [
+    audioLanguage,
+    buildHlsSessionUrl,
+    hlsStartOffset,
+    isHlsPlayback,
+    playbackSource,
+    streamUrls,
+    forceFullTranscode,
+  ])
 
   // Stop backend transcode when leaving the page or switching media.
   // Uses beforeunload for hard reload / tab close.
@@ -873,18 +1204,31 @@ export default function WatchPage() {
     const video = videoRef.current
     if (!video) return
     // Native <track> is only for iOS native fullscreen (webkitEnterFullscreen).
-    // Normal rendering is handled by DualSubtitleOverlay.
-    // Use 'hidden' (cues available to JS but NOT rendered) instead of 'showing'
-    // to prevent double subtitle display.
+    // - SRT/ASS (text): DualSubtitleOverlay renders → track.mode = 'disabled'
+    // - PGS/VobSub (image): browser renders via <track> → track.mode = 'hidden'
     const suppressTracks = () => {
+      if (!primarySub) {
+        // No subtitle selected — disable all tracks
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const track = video.textTracks[i]
+          if (track.kind === 'subtitles' || track.kind === 'captions') {
+            track.mode = 'disabled'
+          }
+        }
+        return
+      }
+      // A subtitle is selected — only enable tracks matching the selected subtitle
       for (let i = 0; i < video.textTracks.length; i++) {
         const track = video.textTracks[i]
         if (track.kind === 'subtitles' || track.kind === 'captions') {
-          track.mode = !subtitleLanguage
-            ? 'disabled'
-            : track.language === subtitleLanguage
-              ? 'hidden'
-              : 'disabled'
+          const isMatch = track.language === effectiveSubtitleLanguage
+          if (primarySub.is_image) {
+            // Image subtitle: browser renders it → 'hidden' so cues are available
+            track.mode = isMatch ? 'hidden' : 'disabled'
+          } else {
+            // Text subtitle: DualSubtitleOverlay renders it → 'disabled' to prevent double
+            track.mode = 'disabled'
+          }
         }
       }
     }
@@ -894,7 +1238,7 @@ export default function WatchPage() {
     return () => {
       video.textTracks.removeEventListener('addtrack', suppressTracks)
     }
-  }, [subtitleLanguage])
+  }, [effectiveSubtitleLanguage, primarySub])
 
   useEffect(() => {
     const video = videoRef.current as HTMLVideoElement & {
@@ -956,10 +1300,49 @@ export default function WatchPage() {
     if (!video) return
     const onTimeUpdate = () => handleVideoTimeUpdate(video)
     const onProgress = () => handleVideoProgress(video)
-    const onWaiting = () => setIsBuffering(true)
-    const onPlaying = () => setIsBuffering(false)
-    const onCanPlay = () => setIsBuffering(false)
+    const onWaiting = () => {
+      const bufRanges = []
+      for (let i = 0; i < video.buffered.length; i++) {
+        bufRanges.push(
+          `[${video.buffered.start(i).toFixed(2)}-${video.buffered.end(i).toFixed(2)}]`,
+        )
+      }
+      log.debug(
+        `EVENT waiting — readyState=${video.readyState}, currentTime=${video.currentTime.toFixed(2)}, buffered=${bufRanges.join(',') || 'empty'}, networkState=${video.networkState}`,
+      )
+      setIsBuffering(true)
+    }
+    const onPlaying = () => {
+      log.debug(
+        `EVENT playing — readyState=${video.readyState}, currentTime=${video.currentTime.toFixed(2)}, paused=${video.paused}`,
+      )
+      setIsBuffering(false)
+    }
+    const onCanPlay = () => {
+      log.debug(
+        `EVENT canplay — readyState=${video.readyState}, currentTime=${video.currentTime.toFixed(2)}, paused=${video.paused}`,
+      )
+      setIsBuffering(false)
+    }
     const onDurationChange = () => syncVideoDuration(video)
+    const onSeeking = () =>
+      log.debug(
+        `EVENT seeking — to ${video.currentTime.toFixed(2)}, readyState=${video.readyState}`,
+      )
+    const onSeeked = () =>
+      log.debug(`EVENT seeked — at ${video.currentTime.toFixed(2)}, readyState=${video.readyState}`)
+    const onStalled = () =>
+      log.warn(
+        `EVENT stalled — currentTime=${video.currentTime.toFixed(2)}, readyState=${video.readyState}, networkState=${video.networkState}`,
+      )
+    const onSuspend = () =>
+      log.debug(
+        `EVENT suspend — currentTime=${video.currentTime.toFixed(2)}, readyState=${video.readyState}`,
+      )
+    const onLoadedData = () =>
+      log.debug(
+        `EVENT loadeddata — readyState=${video.readyState}, videoSize=${video.videoWidth}x${video.videoHeight}`,
+      )
     video.addEventListener('timeupdate', onTimeUpdate)
     video.addEventListener('progress', onProgress)
     video.addEventListener('waiting', onWaiting)
@@ -967,7 +1350,11 @@ export default function WatchPage() {
     video.addEventListener('canplay', onCanPlay)
     video.addEventListener('loadedmetadata', onDurationChange)
     video.addEventListener('durationchange', onDurationChange)
-    video.addEventListener('loadeddata', onDurationChange)
+    video.addEventListener('loadeddata', onLoadedData)
+    video.addEventListener('seeking', onSeeking)
+    video.addEventListener('seeked', onSeeked)
+    video.addEventListener('stalled', onStalled)
+    video.addEventListener('suspend', onSuspend)
     return () => {
       video.removeEventListener('timeupdate', onTimeUpdate)
       video.removeEventListener('progress', onProgress)
@@ -976,7 +1363,11 @@ export default function WatchPage() {
       video.removeEventListener('canplay', onCanPlay)
       video.removeEventListener('loadedmetadata', onDurationChange)
       video.removeEventListener('durationchange', onDurationChange)
-      video.removeEventListener('loadeddata', onDurationChange)
+      video.removeEventListener('loadeddata', onLoadedData)
+      video.removeEventListener('seeking', onSeeking)
+      video.removeEventListener('seeked', onSeeked)
+      video.removeEventListener('stalled', onStalled)
+      video.removeEventListener('suspend', onSuspend)
     }
   }, [streamUrls])
 
@@ -1078,12 +1469,19 @@ export default function WatchPage() {
           setIsPlaying(false)
           updateProgress({ mediaId, data: { position: duration, completed: true } })
         }}
-        onError={() => {
-          if (!isHlsPlayback && streamUrls?.hls) {
-            // Direct play failed — fallback to HLS (pretranscode or transcode online)
-            setDirectPlayFailed(true)
+        onError={(e) => {
+          const rawErr = videoRef.current?.error
+          log.error(
+            `[Native <video> ERROR] code=${rawErr?.code}, message=${rawErr?.message}, source=${playbackSource}`,
+          )
+          // Try the next tier in the fallback chain (direct → pretranscode → hls).
+          // If the chain is exhausted (already on hls and it failed), surface the error.
+          if (playbackSource === 'hls') {
+            setError(`Video playback error (Code: ${rawErr?.code || 'unknown'})`)
           } else {
-            setError('Video playback error')
+            advanceFallback(
+              `<video> onError on ${playbackSource ?? 'unknown'} (code=${rawErr?.code})`,
+            )
           }
         }}
       >

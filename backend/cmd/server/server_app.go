@@ -7,6 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/thawng/velox/internal/auth"
@@ -19,6 +20,7 @@ import (
 	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/service"
 	"github.com/thawng/velox/internal/storage"
+	"github.com/thawng/velox/internal/streamv2"
 	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/internal/trickplay"
 	"github.com/thawng/velox/internal/websocket"
@@ -86,6 +88,7 @@ type serverServices struct {
 	cinema         *service.CinemaService
 	series         *service.SeriesService
 	stream         *service.StreamService
+	streamV2       *streamv2.Manager
 	auth           *service.AuthService
 	userData       *service.UserDataService
 	subtitle       *service.SubtitleService
@@ -105,6 +108,7 @@ type serverHandlers struct {
 	library        *handler.LibraryHandler
 	media          *handler.MediaHandler
 	stream         *handler.StreamHandler
+	streamV2       *handler.StreamV2Handler
 	streamURL      *handler.StreamURLHandler
 	setup          *handler.SetupHandler
 	auth           *handler.AuthHandler
@@ -266,6 +270,10 @@ func (app *serverApp) initServices() error {
 	)
 	app.services.series = service.NewSeriesService(repos.series, repos.season, repos.episode)
 	app.services.stream = service.NewStreamService(repos.mediaFile, repos.audioTrack, app.services.transcoder)
+
+	outDir := filepath.Join(app.cfg.DataDir, "hls")
+	app.services.streamV2 = streamv2.NewManager(outDir, app.hwAccel)
+
 	app.services.auth = service.NewAuthService(repos.user, repos.refreshToken, repos.session, app.jwtManager, app.db)
 	app.services.userData = service.NewUserDataService(repos.userData)
 	app.services.subtitle = service.NewSubtitleService(app.db, repos.subtitle, repos.mediaFile)
@@ -357,6 +365,7 @@ func (app *serverApp) initHandlers() {
 	app.handlers.library = handler.NewLibraryHandler(services.library)
 	app.handlers.media = handler.NewMediaHandler(services.media)
 	app.handlers.stream = handler.NewStreamHandler(services.stream)
+	app.handlers.streamV2 = handler.NewStreamV2Handler(services.stream, services.streamV2)
 	app.handlers.streamURL = handler.NewStreamURLHandler(app.apiKeyStore)
 	app.handlers.setup = handler.NewSetupHandler(services.setup)
 	app.handlers.auth = handler.NewAuthHandler(services.auth)

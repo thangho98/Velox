@@ -2,7 +2,9 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -10,16 +12,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thawng/velox/internal/logger"
 	"github.com/thawng/velox/internal/playback"
 	"github.com/thawng/velox/internal/service"
 )
 
 type StreamHandler struct {
 	svc *service.StreamService
+	log *slog.Logger
 }
 
 func NewStreamHandler(svc *service.StreamService) *StreamHandler {
-	return &StreamHandler{svc: svc}
+	return &StreamHandler{svc: svc, log: logger.New("stream")}
 }
 
 // DirectPlay routes the request to the appropriate streaming method based on the
@@ -66,6 +70,13 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 	}
 
 	decision := playback.PlaybackDecision{Method: explicitPlaybackMethod(r.URL.Query().Get("pm"))}
+	h.log.Debug("DirectPlay request",
+		"media_id", id,
+		"file_id", fileID,
+		"explicit_method", r.URL.Query().Get("pm"),
+		"codec", mf.VideoCodec+"/"+mf.AudioCodec,
+		"resolution", fmt.Sprintf("%dx%d", mf.Width, mf.Height),
+	)
 	if decision.Method == "" {
 		// Fallback for callers that hit /api/stream directly without going through
 		// POST /api/playback/{id}/info first.
@@ -100,7 +111,7 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 	// Check for pre-transcoded file (Plan P: instant playback).
 	// Only when no explicit playback method is set — explicit direct play always serves the original.
 	if r.URL.Query().Get("pm") == "" {
-		if ptFile, err := h.svc.FindPretranscode(r.Context(), mf.ID, 0); err == nil && ptFile != nil {
+		if ptFile, err := h.svc.FindPretranscode(r.Context(), mf.ID, 0); err == nil && ptFile != nil && ptFile.Status == "ready" {
 			f, err := os.Open(ptFile.FilePath)
 			if err == nil {
 				defer f.Close()
@@ -190,6 +201,16 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 			maxHeight = n
 		}
 	}
+	h.log.Debug("HLSMaster request",
+		"media_id", id,
+		"file_id", hlsFileID,
+		"session", streamSessionID,
+		"start_offset", startOffset,
+		"video_copy", videoCopy,
+		"max_height", maxHeight,
+		"subtitle_si", subtitleStreamIndex,
+	)
+	hlsStart := time.Now()
 	playlistPath, err := h.svc.PrepareHLS(
 		r.Context(),
 		id,
@@ -200,9 +221,34 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 		startOffset,
 		maxHeight,
 	)
+	h.log.Debug("PrepareHLS completed",
+		"media_id", id,
+		"session", streamSessionID,
+		"duration", time.Since(hlsStart),
+		"playlist", playlistPath,
+		"error", err,
+	)
 	if err != nil {
+		// Transcode cancelled (superseded by a seek) — tell hls.js to retry
+		// instead of treating it as a fatal error that triggers an error loop.
+		if r.Context().Err() != nil || strings.Contains(err.Error(), "cancel") {
+			w.Header().Set("Retry-After", "1")
+			respondError(w, http.StatusServiceUnavailable, "transcode restarting")
+			return
+		}
 		respondError(w, http.StatusInternalServerError, "transcoding failed: "+err.Error())
 		return
+	}
+
+	// For video copy: project remaining segments into a VOD playlist so the
+	// player can seek anywhere without polling. Duration comes from the HLS
+	// cache (populated by PrepareHLS, no extra DB query).
+	if videoCopy {
+		totalDuration := h.svc.HLSCachedDuration(id, streamSessionID, startOffset)
+		if totalDuration > 0 {
+			serveProjectedHLSPlaylist(w, r, playlistPath, totalDuration, startOffset)
+			return
+		}
 	}
 	serveHLSPlaylist(w, r, playlistPath)
 }
@@ -260,15 +306,26 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		// If a transcode is in progress, wait for the segment to appear.
-		// Video copy transcodes finish quickly (~60-90s for a full movie) but
-		// process sequentially — a seek to the end needs to wait for FFmpeg to
-		// catch up. WaitForSegment exits early once the job completes, so this
-		// timeout is just an upper bound.
+		h.log.Debug("segment not ready, waiting",
+			"media_id", id,
+			"segment", segment,
+			"session", streamSessionID,
+		)
+		waitStart := time.Now()
 		if !h.svc.WaitForSegment(streamSessionID, path, 90*time.Second) {
+			h.log.Warn("segment wait timeout",
+				"media_id", id,
+				"segment", segment,
+				"waited", time.Since(waitStart),
+			)
 			respondError(w, http.StatusNotFound, "segment not found")
 			return
 		}
+		h.log.Debug("segment ready",
+			"media_id", id,
+			"segment", segment,
+			"waited", time.Since(waitStart),
+		)
 	}
 
 	if strings.HasSuffix(segment, ".m3u8") {
@@ -279,7 +336,11 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 	// Update last activity so abandoned transcode sessions are killed after a timeout.
 	h.svc.TouchTranscodeActivity(id, streamSessionID)
 
-	w.Header().Set("Content-Type", "video/mp2t")
+	if strings.HasSuffix(segment, ".mp4") || strings.HasSuffix(segment, ".m4s") {
+		w.Header().Set("Content-Type", "video/mp4")
+	} else {
+		w.Header().Set("Content-Type", "video/mp2t")
+	}
 	// Allow browser to cache segments for 5 minutes to avoid re-downloading
 	// the same segment on seek/rebuffer. Segments are immutable once written.
 	w.Header().Set("Cache-Control", "public, max-age=300")
@@ -312,12 +373,12 @@ func (h *StreamHandler) StopTranscodeBySession(w http.ResponseWriter, r *http.Re
 
 // isValidSegmentName validates that a segment filename is safe to serve.
 // Only alphanumeric, underscore, hyphen, and dot are allowed; no path separators.
-// Accepts .ts (video/audio segments) and .m3u8 (audio sub-playlists).
+// Accepts .ts (MPEG-TS segments), .m3u8 (audio sub-playlists), and .mp4 (fMP4 init segments).
 func isValidSegmentName(name string) bool {
 	if name == "" {
 		return false
 	}
-	if !strings.HasSuffix(name, ".ts") && !strings.HasSuffix(name, ".m3u8") {
+	if !strings.HasSuffix(name, ".ts") && !strings.HasSuffix(name, ".m4s") && !strings.HasSuffix(name, ".m3u8") && !strings.HasSuffix(name, ".mp4") {
 		return false
 	}
 	for _, c := range name {
@@ -353,6 +414,107 @@ func explicitPlaybackMethod(raw string) playback.PlaybackMethod {
 	default:
 		return ""
 	}
+}
+
+// serveProjectedHLSPlaylist reads the FFmpeg-generated EVENT playlist, projects
+// remaining segments based on total duration, adds #EXT-X-ENDLIST, and serves
+// it as a VOD playlist. This lets hls.js seek to any position without polling
+// and without restarting FFmpeg (Jellyfin-style projected playlist).
+//
+// If the playlist is already complete (has ENDLIST), it's served as-is.
+func serveProjectedHLSPlaylist(w http.ResponseWriter, r *http.Request, playlistPath string, totalDuration, startOffset float64) {
+	content, err := os.ReadFile(playlistPath)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "cannot read playlist")
+		return
+	}
+
+	projected := projectPlaylistToVOD(content, totalDuration-startOffset)
+
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(rewriteHLSPlaylist(projected, r.URL.Query()))
+}
+
+// projectPlaylistToVOD takes an EVENT playlist (possibly incomplete) and appends
+// projected segments + #EXT-X-ENDLIST so hls.js treats it as VOD.
+// If the playlist already has ENDLIST, returns it unchanged.
+func projectPlaylistToVOD(content []byte, adjustedDuration float64) []byte {
+	text := string(content)
+
+	// Already complete — nothing to project.
+	if strings.Contains(text, "#EXT-X-ENDLIST") {
+		return content
+	}
+
+	lines := strings.Split(text, "\n")
+
+	// Parse existing segments: count them, sum their durations, extract naming prefix.
+	var coveredTime float64
+	var lastSegNum int
+	var segPrefix string // e.g. "ss12345_vcf163_off5000_"
+	var segExt string    // ".ts" or ".m4s" — detected from first segment
+	const defaultSegDur = 6.0
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#EXTINF:") {
+			durStr := strings.TrimSuffix(strings.TrimPrefix(trimmed, "#EXTINF:"), ",")
+			if d, err := strconv.ParseFloat(durStr, 64); err == nil {
+				coveredTime += d
+			}
+		}
+		// Accept both .ts (MPEG-TS) and .m4s (fMP4) segment extensions.
+		if strings.HasSuffix(trimmed, ".ts") || strings.HasSuffix(trimmed, ".m4s") {
+			if segExt == "" {
+				if strings.HasSuffix(trimmed, ".m4s") {
+					segExt = ".m4s"
+				} else {
+					segExt = ".ts"
+				}
+			}
+			if idx := strings.Index(trimmed, "seg_"); idx >= 0 {
+				segPrefix = trimmed[:idx]
+				numStr := trimmed[idx+4 : len(trimmed)-len(segExt)] // between "seg_" and extension
+				if n, err := strconv.Atoi(numStr); err == nil {
+					lastSegNum = n
+				}
+			}
+			// Remove trailing empty lines after last segment for clean append.
+			_ = i
+		}
+	}
+
+	if segPrefix == "" || adjustedDuration <= 0 {
+		return content
+	}
+
+	remaining := adjustedDuration - coveredTime
+	if remaining < 1.0 {
+		// Nearly done — just close the playlist.
+		return []byte(text + "#EXT-X-ENDLIST\n")
+	}
+
+	// Project remaining segments with estimated 6-second durations.
+	var sb strings.Builder
+	sb.WriteString(text)
+	nextSeg := lastSegNum + 1
+	for remaining > 0 {
+		dur := defaultSegDur
+		if remaining < defaultSegDur {
+			dur = remaining
+		}
+		sb.WriteString(fmt.Sprintf("#EXTINF:%.6f,\n", dur))
+		sb.WriteString(fmt.Sprintf("%sseg_%04d%s\n", segPrefix, nextSeg, segExt))
+		remaining -= dur
+		nextSeg++
+	}
+	sb.WriteString("#EXT-X-ENDLIST\n")
+
+	// Change playlist type from EVENT to VOD so hls.js doesn't poll.
+	result := strings.Replace(sb.String(), "#EXT-X-PLAYLIST-TYPE:EVENT", "#EXT-X-PLAYLIST-TYPE:VOD", 1)
+
+	return []byte(result)
 }
 
 func serveHLSPlaylist(w http.ResponseWriter, r *http.Request, playlistPath string) {

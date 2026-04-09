@@ -33,25 +33,36 @@ export function useStreamUrls(mediaId: number, request: PlaybackInfoRequest = {}
     queryKey: streamingKeys.playbackInfo(mediaId, request),
     queryFn: () => streamingApi.getPlaybackInfo(mediaId, request),
     select: (info: PlaybackInfo): StreamUrls => {
-      const isHLS = info.stream_url.includes('/hls/')
-      // Always build an HLS fallback URL so the client can fall back from direct play.
-      // When backend already chose HLS, use that. Otherwise derive from the stream URL.
-      let hlsUrl: string | undefined
-      if (isHLS) {
-        hlsUrl = info.stream_url
-      } else {
-        // Build HLS URL: /api/stream/{id}/hls/master.m3u8 + same query params (minus pm=)
-        const [path, qs] = info.stream_url.split('?')
-        const params = new URLSearchParams(qs || '')
-        params.delete('pm')
-        if (request.max_height && request.max_height > 0) {
-          params.set('mh', String(request.max_height))
+      // Backend now provides three explicit URLs (direct/pretranscode/hls) plus
+      // a `prefer` hint. Client owns the actual fallback chain — see WatchPage.
+      // Legacy fallback: derive HLS URL from stream_url if backend didn't include hls_url
+      // (older backend without the v2 fields).
+      let hlsUrl = info.hls_url
+      if (!hlsUrl) {
+        const isHLS = info.stream_url.includes('/hls/')
+        if (isHLS) {
+          hlsUrl = info.stream_url
+        } else {
+          const [path, qs] = info.stream_url.split('?')
+          const params = new URLSearchParams(qs || '')
+          params.delete('pm')
+          if (request.max_height && request.max_height > 0) {
+            params.set('mh', String(request.max_height))
+          }
+          hlsUrl =
+            path + '/hls/master.m3u8' + (params.toString() ? '?' + params.toString() : '')
         }
-        hlsUrl = path + '/hls/master.m3u8' + (params.toString() ? '?' + params.toString() : '')
       }
+
+      // direct: always the file-gốc with pm=direct (forces bypass of pretranscode).
+      // Falls back to stream_url for older backends.
+      const directUrl = info.direct_url || info.stream_url
+
       return {
-        direct: info.direct_url || info.stream_url,
+        direct: directUrl,
+        pretranscode: info.pretranscode_url,
         hls: hlsUrl,
+        prefer: info.prefer,
         primary_file_id: info.primary_file_id,
         stream_session_id: info.stream_session_id,
       }
@@ -65,7 +76,9 @@ export function useStreamUrls(mediaId: number, request: PlaybackInfoRequest = {}
       if (
         p &&
         p.direct === n.direct &&
+        p.pretranscode === n.pretranscode &&
         p.hls === n.hls &&
+        p.prefer === n.prefer &&
         p.primary_file_id === n.primary_file_id &&
         p.stream_session_id === n.stream_session_id
       ) {

@@ -174,6 +174,12 @@ func All() []Migration {
 			Up:      up028,
 			Down:    down028,
 		},
+		{
+			Version: 29,
+			Name:    "pretranscode_audio_meta",
+			Up:      up029,
+			Down:    down029,
+		},
 	}
 }
 

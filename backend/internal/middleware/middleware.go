@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
@@ -28,13 +30,32 @@ func CORS(origin string) func(http.Handler) http.Handler {
 }
 
 func Logger(next http.Handler) http.Handler {
+	httpLog := slog.Default().With("component", "http")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(sw, r)
 
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, sw.status, time.Since(start))
+		dur := time.Since(start)
+		path := r.URL.Path
+
+		// Skip noisy segment requests at info level — only log at debug
+		if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".m3u8") || strings.HasSuffix(path, ".vtt") {
+			httpLog.Debug("request",
+				"method", r.Method,
+				"path", path,
+				"status", sw.status,
+				"duration", dur,
+			)
+		} else {
+			httpLog.Info("request",
+				"method", r.Method,
+				"path", path,
+				"status", sw.status,
+				"duration", dur,
+			)
+		}
 	})
 }
 

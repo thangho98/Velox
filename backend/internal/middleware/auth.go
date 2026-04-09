@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -22,11 +23,17 @@ type AuthConfig struct {
 func RequireAuth(jwtManager *auth.JWTManager, apiKeyStore *auth.APIKeyStore, skipPaths ...string) func(http.Handler) http.Handler {
 	skipMap := make(map[string]bool)
 	var skipPrefixes []string
-	for _, path := range skipPaths {
-		if strings.HasSuffix(path, "/*") {
-			skipPrefixes = append(skipPrefixes, strings.TrimSuffix(path, "*"))
+	var skipPatterns []string
+	for _, p := range skipPaths {
+		trimmed := strings.TrimSuffix(p, "/*")
+		if strings.Contains(trimmed, "*") {
+			// Mid-path glob pattern like "/api/media/*/trickplay/*"
+			skipPatterns = append(skipPatterns, p)
+		} else if strings.HasSuffix(p, "/*") {
+			// Simple prefix like "/api/images/*"
+			skipPrefixes = append(skipPrefixes, strings.TrimSuffix(p, "*"))
 		} else {
-			skipMap[path] = true
+			skipMap[p] = true
 		}
 	}
 
@@ -40,6 +47,13 @@ func RequireAuth(jwtManager *auth.JWTManager, apiKeyStore *auth.APIKeyStore, ski
 			// Check prefix matches
 			for _, prefix := range skipPrefixes {
 				if strings.HasPrefix(r.URL.Path, prefix) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			// Check glob patterns (e.g. "/api/media/*/trickplay/*")
+			for _, pattern := range skipPatterns {
+				if matched, _ := path.Match(pattern, r.URL.Path); matched {
 					next.ServeHTTP(w, r)
 					return
 				}

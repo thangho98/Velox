@@ -6,14 +6,25 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/thawng/velox/internal/logger"
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/transcoder"
 )
+
+// hlsCacheEntry caches PrepareHLS results so subsequent playlist polls
+// skip DB queries entirely (Jellyfin-style: master playlist is cheap to serve).
+type hlsCacheEntry struct {
+	playlistPath string
+	duration     float64 // total media duration (seconds) for VOD projection
+}
 
 type StreamService struct {
 	mediaFileRepo   *repository.MediaFileRepo
@@ -21,6 +32,12 @@ type StreamService struct {
 	transcoder      *transcoder.Transcoder
 	notificationSvc *NotificationService
 	pretranscodeSvc *PretranscodeService
+	log             *slog.Logger
+
+	// hlsCache maps "mediaID:streamSessionID:startOffset" → cached playlist info.
+	// Avoids 2 DB queries per playlist poll (~150-250ms savings on NAS HDD).
+	hlsCache   map[string]*hlsCacheEntry
+	hlsCacheMu sync.RWMutex
 }
 
 func NewStreamService(mediaFileRepo *repository.MediaFileRepo, audioTrackRepo *repository.AudioTrackRepo, transcoder *transcoder.Transcoder) *StreamService {
@@ -28,6 +45,8 @@ func NewStreamService(mediaFileRepo *repository.MediaFileRepo, audioTrackRepo *r
 		mediaFileRepo:  mediaFileRepo,
 		audioTrackRepo: audioTrackRepo,
 		transcoder:     transcoder,
+		log:            logger.New("stream-svc"),
+		hlsCache:       make(map[string]*hlsCacheEntry),
 	}
 }
 
@@ -61,6 +80,7 @@ func (s *StreamService) FindPretranscodeProfile(ctx context.Context, profileID i
 // StopTranscode kills active FFmpeg transcode processes for a viewer stream
 // session when available, otherwise falls back to media-wide cancellation.
 func (s *StreamService) StopTranscode(mediaID int64, streamSessionID string) int {
+	s.InvalidateHLSCache(streamSessionID)
 	if streamSessionID != "" {
 		return s.transcoder.CancelTranscodeByStreamSessionID(streamSessionID)
 	}
@@ -117,6 +137,19 @@ func (s *StreamService) FindAllPretranscodesWithProfiles(ctx context.Context, me
 // videoCopy: if true, copy the video stream unchanged (only transcode audio).
 // startOffset: if > 0, begin the HLS session at that global timeline position.
 func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, streamSessionID string, fileID int64, subtitleStreamIndex int, videoCopy bool, startOffset float64, maxHeight int) (string, error) {
+	// Fast path: return cached playlist path (skips 2 DB queries per poll).
+	if streamSessionID != "" {
+		cacheKey := hlsCacheKey(mediaID, streamSessionID, startOffset)
+		s.hlsCacheMu.RLock()
+		entry, ok := s.hlsCache[cacheKey]
+		s.hlsCacheMu.RUnlock()
+		if ok {
+			s.log.Debug("PrepareHLS cache hit", "media_id", mediaID, "session", streamSessionID)
+			return entry.playlistPath, nil
+		}
+	}
+	s.log.Debug("PrepareHLS starting", "media_id", mediaID, "session", streamSessionID, "start_offset", startOffset, "video_copy", videoCopy)
+
 	var mf *model.MediaFile
 	var err error
 	if fileID > 0 {
@@ -144,6 +177,13 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, streamSes
 	// Use multi-audio HLS if more than one track.
 	// Pass mf.ID so the cache key is (mediaID, fileID, subtitleStreamIndex) — avoids
 	// version collisions when multiple file versions exist for the same media.
+	s.log.Debug("PrepareHLS transcoding",
+		"media_id", mediaID,
+		"file", mf.FilePath,
+		"audio_tracks", len(audioTracks),
+		"duration", mf.Duration,
+	)
+	transcodeStart := time.Now()
 	if len(audioTracks) > 1 {
 		if err := s.transcoder.GenerateHLSWithAudio(mediaID, streamSessionID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
 			return "", err
@@ -153,8 +193,55 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, streamSes
 			return "", err
 		}
 	}
+	s.log.Debug("PrepareHLS transcode ready", "media_id", mediaID, "session", streamSessionID, "took", time.Since(transcodeStart))
 
-	return s.transcoder.MasterPlaylistPath(mediaID, streamSessionID, mf.ID, subtitleStreamIndex, videoCopy, startOffset), nil
+	playlistPath := s.transcoder.MasterPlaylistPath(mediaID, streamSessionID, mf.ID, subtitleStreamIndex, videoCopy, startOffset)
+
+	// Cache for subsequent polls (same session+offset = same playlist).
+	if streamSessionID != "" {
+		s.hlsCacheMu.Lock()
+		s.hlsCache[hlsCacheKey(mediaID, streamSessionID, startOffset)] = &hlsCacheEntry{
+			playlistPath: playlistPath,
+			duration:     mf.Duration,
+		}
+		s.hlsCacheMu.Unlock()
+	}
+
+	return playlistPath, nil
+}
+
+// HLSCachedDuration returns the cached total duration for a session's HLS playlist.
+// Used by the handler to project remaining segments into a VOD playlist.
+func (s *StreamService) HLSCachedDuration(mediaID int64, streamSessionID string, startOffset float64) float64 {
+	if streamSessionID == "" {
+		return 0
+	}
+	s.hlsCacheMu.RLock()
+	defer s.hlsCacheMu.RUnlock()
+	if entry, ok := s.hlsCache[hlsCacheKey(mediaID, streamSessionID, startOffset)]; ok {
+		return entry.duration
+	}
+	return 0
+}
+
+// InvalidateHLSCache removes all cached playlist paths for a stream session.
+// Called when a session is stopped or replaced by a seek.
+func (s *StreamService) InvalidateHLSCache(streamSessionID string) {
+	if streamSessionID == "" {
+		return
+	}
+	needle := ":" + streamSessionID + ":"
+	s.hlsCacheMu.Lock()
+	for k := range s.hlsCache {
+		if strings.Contains(k, needle) {
+			delete(s.hlsCache, k)
+		}
+	}
+	s.hlsCacheMu.Unlock()
+}
+
+func hlsCacheKey(mediaID int64, streamSessionID string, startOffset float64) string {
+	return fmt.Sprintf("%d:%s:%.3f", mediaID, streamSessionID, startOffset)
 }
 
 // SegmentPath returns the path to an HLS segment.
@@ -198,6 +285,11 @@ func (s *StreamService) GetAudioTrackForMediaFile(ctx context.Context, mediaFile
 		return nil, ErrNotFound
 	}
 	return track, nil
+}
+
+// ListAudioTracksForMediaFile returns all audio tracks for a given media file.
+func (s *StreamService) ListAudioTracksForMediaFile(ctx context.Context, mediaFileID int64) ([]model.AudioTrack, error) {
+	return s.audioTrackRepo.ListByMediaFileID(ctx, mediaFileID)
 }
 
 // PrepareABRHLS triggers multi-quality adaptive bitrate HLS transcoding and

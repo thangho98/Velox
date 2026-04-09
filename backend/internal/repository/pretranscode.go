@@ -117,10 +117,12 @@ func (r *PretranscodeRepo) GetFileByMediaAndProfile(ctx context.Context, mediaFi
 	var errMsg, startedAt, completedAt sql.NullString
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, media_file_id, profile_id, file_path, file_size, duration_secs, status,
-		       error_message, started_at, completed_at, created_at
+		       error_message, started_at, completed_at, created_at,
+		       audio_codec, audio_channels, audio_bitrate, audio_sample_rate
 		FROM pretranscode_files WHERE media_file_id = ? AND profile_id = ?`, mediaFileID, profileID).Scan(
 		&f.ID, &f.MediaFileID, &f.ProfileID, &f.FilePath, &f.FileSize, &f.DurationSecs, &f.Status,
-		&errMsg, &startedAt, &completedAt, &f.CreatedAt)
+		&errMsg, &startedAt, &completedAt, &f.CreatedAt,
+		&f.AudioCodec, &f.AudioChannels, &f.AudioBitrate, &f.AudioSampleRate)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -137,7 +139,8 @@ func (r *PretranscodeRepo) GetFileByMediaAndProfile(ctx context.Context, mediaFi
 func (r *PretranscodeRepo) ListReadyFilesByMedia(ctx context.Context, mediaFileID int64) ([]model.PretranscodeFile, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT pf.id, pf.media_file_id, pf.profile_id, pf.file_path, pf.file_size, pf.duration_secs,
-		       pf.status, pf.error_message, pf.started_at, pf.completed_at, pf.created_at
+		       pf.status, pf.error_message, pf.started_at, pf.completed_at, pf.created_at,
+		       pf.audio_codec, pf.audio_channels, pf.audio_bitrate, pf.audio_sample_rate
 		FROM pretranscode_files pf
 		JOIN pretranscode_profiles pp ON pp.id = pf.profile_id
 		WHERE pf.media_file_id = ? AND pf.status = 'ready'
@@ -152,7 +155,8 @@ func (r *PretranscodeRepo) ListReadyFilesByMedia(ctx context.Context, mediaFileI
 		var f model.PretranscodeFile
 		var errMsg, startedAt, completedAt sql.NullString
 		if err := rows.Scan(&f.ID, &f.MediaFileID, &f.ProfileID, &f.FilePath, &f.FileSize, &f.DurationSecs,
-			&f.Status, &errMsg, &startedAt, &completedAt, &f.CreatedAt); err != nil {
+			&f.Status, &errMsg, &startedAt, &completedAt, &f.CreatedAt,
+			&f.AudioCodec, &f.AudioChannels, &f.AudioBitrate, &f.AudioSampleRate); err != nil {
 			return nil, err
 		}
 		f.ErrorMessage = errMsg.String
@@ -175,6 +179,7 @@ func (r *PretranscodeRepo) ListReadyFilesWithProfiles(ctx context.Context, media
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT pf.id, pf.media_file_id, pf.profile_id, pf.file_path, pf.file_size, pf.duration_secs,
 		       pf.status, pf.error_message, pf.started_at, pf.completed_at, pf.created_at,
+		       pf.audio_codec, pf.audio_channels, pf.audio_bitrate, pf.audio_sample_rate,
 		       pp.id, pp.name, pp.height, pp.video_bitrate, pp.audio_bitrate, pp.video_codec, pp.audio_codec, pp.enabled, pp.created_at
 		FROM pretranscode_files pf
 		JOIN pretranscode_profiles pp ON pp.id = pf.profile_id
@@ -193,6 +198,7 @@ func (r *PretranscodeRepo) ListReadyFilesWithProfiles(ctx context.Context, media
 		if err := rows.Scan(
 			&f.ID, &f.MediaFileID, &f.ProfileID, &f.FilePath, &f.FileSize, &f.DurationSecs,
 			&f.Status, &errMsg, &startedAt, &completedAt, &f.CreatedAt,
+			&f.AudioCodec, &f.AudioChannels, &f.AudioBitrate, &f.AudioSampleRate,
 			&p.ID, &p.Name, &p.Height, &p.VideoBitrate, &p.AudioBitrate, &p.VideoCodec, &p.AudioCodec, &p.Enabled, &p.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -208,8 +214,8 @@ func (r *PretranscodeRepo) ListReadyFilesWithProfiles(ctx context.Context, media
 // UpsertFile inserts or updates a pre-transcode file record.
 func (r *PretranscodeRepo) UpsertFile(ctx context.Context, f *model.PretranscodeFile) (int64, error) {
 	res, err := r.db.ExecContext(ctx, `
-		INSERT INTO pretranscode_files (media_file_id, profile_id, file_path, file_size, duration_secs, status, error_message, started_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO pretranscode_files (media_file_id, profile_id, file_path, file_size, duration_secs, status, error_message, started_at, completed_at, audio_codec, audio_channels, audio_bitrate, audio_sample_rate)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (media_file_id, profile_id) DO UPDATE SET
 			file_path = excluded.file_path,
 			file_size = excluded.file_size,
@@ -217,9 +223,14 @@ func (r *PretranscodeRepo) UpsertFile(ctx context.Context, f *model.Pretranscode
 			status = excluded.status,
 			error_message = excluded.error_message,
 			started_at = excluded.started_at,
-			completed_at = excluded.completed_at`,
+			completed_at = excluded.completed_at,
+			audio_codec = excluded.audio_codec,
+			audio_channels = excluded.audio_channels,
+			audio_bitrate = excluded.audio_bitrate,
+			audio_sample_rate = excluded.audio_sample_rate`,
 		f.MediaFileID, f.ProfileID, f.FilePath, f.FileSize, f.DurationSecs, f.Status,
-		nullStr(f.ErrorMessage), nullStr(f.StartedAt), nullStr(f.CompletedAt))
+		nullStr(f.ErrorMessage), nullStr(f.StartedAt), nullStr(f.CompletedAt),
+		f.AudioCodec, f.AudioChannels, f.AudioBitrate, f.AudioSampleRate)
 	if err != nil {
 		return 0, err
 	}
@@ -234,6 +245,19 @@ func (r *PretranscodeRepo) UpdateFileStatus(ctx context.Context, id int64, statu
 		WHERE id = ?`, status, nullStr(errMsg), nullStr(startedAt), nullStr(completedAt), id)
 	if err != nil {
 		return fmt.Errorf("updating file status for %d: %w", id, err)
+	}
+	return nil
+}
+
+// UpdateFileAudioMeta stores ffprobed audio metadata for a pre-transcode file
+// so the playback overlay can show what is actually being streamed.
+func (r *PretranscodeRepo) UpdateFileAudioMeta(ctx context.Context, id int64, codec string, channels, bitrate, sampleRate int) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE pretranscode_files
+		SET audio_codec = ?, audio_channels = ?, audio_bitrate = ?, audio_sample_rate = ?
+		WHERE id = ?`, codec, channels, bitrate, sampleRate, id)
+	if err != nil {
+		return fmt.Errorf("updating file audio meta for %d: %w", id, err)
 	}
 	return nil
 }

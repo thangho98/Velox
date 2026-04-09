@@ -9,6 +9,7 @@ export {
   setSessionExpiredCallback,
   getDirectStreamUrl,
   getHlsMasterUrl,
+  refreshAccessToken,
 } from './client'
 
 export type { ApiErrorResponse, ApiResponse } from '../types/index'

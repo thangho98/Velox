@@ -59,7 +59,7 @@ function onTokenRefreshFailed(error: Error) {
   refreshSubscribers = []
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+export async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = getRefreshToken()
   if (!refreshToken) return null
 

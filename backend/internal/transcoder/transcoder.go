@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"math"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/thawng/velox/internal/logger"
 )
 
 // transcodeJob tracks a background FFmpeg transcode.
@@ -37,6 +40,7 @@ type Transcoder struct {
 	mu        sync.Mutex
 	active    map[string]*transcodeJob // masterPath → in-progress job
 	stopCh    chan struct{}            // closed when the transcoder is closed
+	log       *slog.Logger
 }
 
 // New creates a Transcoder.
@@ -59,6 +63,7 @@ func New(outputDir string, hwAccel string, maxConcurrent int) *Transcoder {
 		semaphore: sem,
 		active:    make(map[string]*transcodeJob),
 		stopCh:    make(chan struct{}),
+		log:       logger.New("transcoder"),
 	}
 	go t.cleanupStaleJobs()
 	return t
@@ -346,6 +351,12 @@ func isHLSComplete(path string) bool {
 // Returns nil as soon as the first segment appears (FFmpeg still running in background).
 // Returns job.err if FFmpeg exits before the segment appears.
 func (t *Transcoder) waitForFirstSegment(job *transcodeJob, segPath string) error {
+	t.log.Debug("waiting for first segment",
+		"segment", filepath.Base(segPath),
+		"media_id", job.mediaID,
+		"session", job.streamSessionID,
+	)
+	start := time.Now()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	timeout := time.After(3 * time.Minute)
@@ -354,12 +365,37 @@ func (t *Transcoder) waitForFirstSegment(job *transcodeJob, segPath string) erro
 		select {
 		case <-job.done:
 			// FFmpeg exited — either finished OK (all segments written) or failed.
+			if job.err != nil {
+				t.log.Error("FFmpeg exited before first segment",
+					"media_id", job.mediaID,
+					"session", job.streamSessionID,
+					"waited", time.Since(start),
+					"error", job.err,
+				)
+			} else {
+				t.log.Debug("FFmpeg completed (all segments written)",
+					"media_id", job.mediaID,
+					"session", job.streamSessionID,
+					"waited", time.Since(start),
+				)
+			}
 			return job.err
 		case <-ticker.C:
 			if _, err := os.Stat(segPath); err == nil {
+				t.log.Debug("first segment ready",
+					"segment", filepath.Base(segPath),
+					"media_id", job.mediaID,
+					"session", job.streamSessionID,
+					"waited", time.Since(start),
+				)
 				return nil // first segment ready; FFmpeg continues in background
 			}
 		case <-timeout:
+			t.log.Error("first segment timeout after 3min",
+				"segment", filepath.Base(segPath),
+				"media_id", job.mediaID,
+				"session", job.streamSessionID,
+			)
 			return fmt.Errorf("transcode start timeout: first segment not ready after 3 minutes")
 		}
 	}
@@ -379,15 +415,29 @@ func (t *Transcoder) WaitForSegment(streamSessionID, path string, timeout time.D
 	}
 
 	segDir := filepath.Dir(path)
+	segName := filepath.Base(path)
 	sessionScoped := streamSessionID != ""
 	if sessionScoped {
 		if !t.hasActiveJobForStreamSession(streamSessionID) {
+			t.log.Debug("WaitForSegment — no active job for session",
+				"segment", segName,
+				"session", streamSessionID,
+			)
 			return false
 		}
 	} else if !t.hasActiveJobInDir(segDir) {
+		t.log.Debug("WaitForSegment — no active job in dir",
+			"segment", segName,
+		)
 		return false
 	}
 
+	start := time.Now()
+	t.log.Debug("WaitForSegment — polling",
+		"segment", segName,
+		"session", streamSessionID,
+		"timeout", timeout,
+	)
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 	deadline := time.After(timeout)
@@ -396,6 +446,11 @@ func (t *Transcoder) WaitForSegment(streamSessionID, path string, timeout time.D
 		select {
 		case <-ticker.C:
 			if _, err := os.Stat(path); err == nil {
+				t.log.Debug("WaitForSegment — found",
+					"segment", segName,
+					"session", streamSessionID,
+					"waited", time.Since(start),
+				)
 				return true
 			}
 			active := t.hasActiveJobInDir(segDir)
@@ -403,10 +458,24 @@ func (t *Transcoder) WaitForSegment(streamSessionID, path string, timeout time.D
 				active = t.hasActiveJobForStreamSession(streamSessionID)
 			}
 			if !active {
-				_, err := os.Stat(path)
-				return err == nil
+				exists := false
+				if _, err := os.Stat(path); err == nil {
+					exists = true
+				}
+				t.log.Debug("WaitForSegment — job finished",
+					"segment", segName,
+					"session", streamSessionID,
+					"found", exists,
+					"waited", time.Since(start),
+				)
+				return exists
 			}
 		case <-deadline:
+			t.log.Warn("WaitForSegment — timeout",
+				"segment", segName,
+				"session", streamSessionID,
+				"waited", time.Since(start),
+			)
 			return false
 		}
 	}

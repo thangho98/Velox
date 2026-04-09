@@ -15,17 +15,21 @@ type PretranscodeProfile struct {
 
 // PretranscodeFile represents a single pre-transcoded output file.
 type PretranscodeFile struct {
-	ID           int64   `json:"id"`
-	MediaFileID  int64   `json:"media_file_id"`
-	ProfileID    int64   `json:"profile_id"`
-	FilePath     string  `json:"file_path"`
-	FileSize     int64   `json:"file_size"`
-	DurationSecs float64 `json:"duration_secs"`
-	Status       string  `json:"status"` // pending, encoding, ready, failed
-	ErrorMessage string  `json:"error_message,omitempty"`
-	StartedAt    string  `json:"started_at,omitempty"`
-	CompletedAt  string  `json:"completed_at,omitempty"`
-	CreatedAt    string  `json:"created_at"`
+	ID              int64   `json:"id"`
+	MediaFileID     int64   `json:"media_file_id"`
+	ProfileID       int64   `json:"profile_id"`
+	FilePath        string  `json:"file_path"`
+	FileSize        int64   `json:"file_size"`
+	DurationSecs    float64 `json:"duration_secs"`
+	Status          string  `json:"status"` // pending, encoding, ready, failed
+	ErrorMessage    string  `json:"error_message,omitempty"`
+	StartedAt       string  `json:"started_at,omitempty"`
+	CompletedAt     string  `json:"completed_at,omitempty"`
+	CreatedAt       string  `json:"created_at"`
+	AudioCodec      string  `json:"audio_codec,omitempty"`
+	AudioChannels   int     `json:"audio_channels,omitempty"`
+	AudioBitrate    int     `json:"audio_bitrate,omitempty"` // bps
+	AudioSampleRate int     `json:"audio_sample_rate,omitempty"`
 }
 
 // PretranscodeQueueItem represents a pending encode job.

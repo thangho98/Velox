@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/thawng/velox/internal/model"
+	"github.com/thawng/velox/pkg/ffprobe"
 )
 
 // pickAudioRemuxJob picks the next queued job for the audio-remux profile (video_codec='copy').
@@ -176,17 +177,43 @@ func (s *PretranscodeService) processJob(ctx context.Context, job *model.Pretran
 		fileSize = stat.Size()
 	}
 	completed := time.Now().UTC().Format(time.RFC3339)
+
+	// Probe encoded output for actual audio metadata so the playback overlay
+	// shows what is really being streamed (AAC stereo) instead of source AC3 5.1.
+	var audioCodec string
+	var audioChannels, audioBitrate, audioSampleRate int
+	if probeResult, probeErr := ffprobe.Probe(outputPath); probeErr != nil {
+		log.Printf("pretranscode: ffprobe %s failed (non-fatal): %v", filepath.Base(outputPath), probeErr)
+	} else if len(probeResult.AudioTracks) > 0 {
+		// Use the default track if marked, otherwise the first one.
+		picked := probeResult.AudioTracks[0]
+		for _, t := range probeResult.AudioTracks {
+			if t.IsDefault {
+				picked = t
+				break
+			}
+		}
+		audioCodec = picked.Codec
+		audioChannels = picked.Channels
+		audioBitrate = picked.Bitrate
+		audioSampleRate = picked.SampleRate
+	}
+
 	_ = s.repo.UpdateFileStatus(ctx, fileID, "ready", "", "", completed)
-	// Update file_size
+	// Update file_size + audio metadata
 	s.repo.UpsertFile(ctx, &model.PretranscodeFile{
-		MediaFileID:  mf.ID,
-		ProfileID:    profile.ID,
-		FilePath:     outputPath,
-		FileSize:     fileSize,
-		DurationSecs: mf.Duration,
-		Status:       "ready",
-		StartedAt:    now,
-		CompletedAt:  completed,
+		MediaFileID:     mf.ID,
+		ProfileID:       profile.ID,
+		FilePath:        outputPath,
+		FileSize:        fileSize,
+		DurationSecs:    mf.Duration,
+		Status:          "ready",
+		StartedAt:       now,
+		CompletedAt:     completed,
+		AudioCodec:      audioCodec,
+		AudioChannels:   audioChannels,
+		AudioBitrate:    audioBitrate,
+		AudioSampleRate: audioSampleRate,
 	})
 	_ = s.repo.CompleteJob(ctx, job.ID, "done")
 
