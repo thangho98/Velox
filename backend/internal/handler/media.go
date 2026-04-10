@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/thawng/velox/internal/auth"
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/service"
 )
@@ -18,7 +19,9 @@ func NewMediaHandler(svc *service.MediaService) *MediaHandler {
 
 func (h *MediaHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Always use ListFiltered — returns MediaListItem[] (superset of Media[])
+	userID, _, _ := auth.UserFromContext(r.Context())
 	filter := model.MediaListFilter{
+		UserID:    userID,
 		LibraryID: int64(parseIntQuery(r, "library_id", 0)),
 		MediaType: r.URL.Query().Get("type"),
 		Search:    r.URL.Query().Get("search"),

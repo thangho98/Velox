@@ -36,6 +36,7 @@ export function ContinueWatchingCard({ item }: ContinueWatchingCardProps) {
 
   // Use backdrop if available, fallback to poster
   const imageUrl =
+    tmdbImage((item as any).still_path, 'w780') ||
     tmdbImage(item.backdrop_path, 'w780') ||
     tmdbImage(item.poster_path, 'w500') ||
     '/placeholder-backdrop.png'

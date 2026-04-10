@@ -26,6 +26,7 @@ export function SubtitlesSection() {
   const setUsername = (v: string) => setEditedUsername(v)
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
   const [saved, setSaved] = useState(false)
 
   const handleSave = (e: React.FormEvent) => {
@@ -75,14 +76,21 @@ export function SubtitlesSection() {
               </span>
             </div>
             <p className="pl-7 text-[11px] text-gray-500">{t('providers.opensubtitles.getKey')}</p>
-            <div className="pl-7">
+            <div className="pl-7 relative">
               <input
-                type="text"
+                type={showApiKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={t('providers.opensubtitles.apiKey')}
-                className={inputClass}
+                className={`${inputClass} pr-10`}
               />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              >
+                {showApiKey ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+              </button>
             </div>
           </div>
 
@@ -186,6 +194,7 @@ function SubdlCard() {
   const { mutate: updateSettings, isPending: isSaving } = useUpdateSubdlSettings()
   const [editedApiKey, setEditedApiKey] = useState<string | null>(null)
   const apiKey = editedApiKey ?? settings?.api_key ?? ''
+  const [showApiKey, setShowApiKey] = useState(false)
   const [saved, setSaved] = useState(false)
 
   const handleSave = (e: React.FormEvent) => {
@@ -239,9 +248,9 @@ function SubdlCard() {
       </p>
 
       <form onSubmit={handleSave} className="space-y-4">
-        <div>
+        <div className="relative">
           <input
-            type="text"
+            type={showApiKey ? 'text' : 'password'}
             value={apiKey}
             onChange={(e) => setEditedApiKey(e.target.value)}
             placeholder={
@@ -249,8 +258,15 @@ function SubdlCard() {
                 ? t('providers.subdl.placeholderOptional')
                 : t('providers.subdl.placeholderRequired')
             }
-            className={inputClass}
+            className={`${inputClass} pr-10`}
           />
+          <button
+            type="button"
+            onClick={() => setShowApiKey(!showApiKey)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+          >
+            {showApiKey ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+          </button>
         </div>
         <button
           type="submit"
@@ -278,6 +294,7 @@ function DeepLCard() {
   const { mutate: updateSettings, isPending: isSaving } = useUpdateDeepLSettings()
   const [editedApiKey, setEditedApiKey] = useState<string | null>(null)
   const apiKey = editedApiKey ?? settings?.api_key ?? ''
+  const [showApiKey, setShowApiKey] = useState(false)
   const [saved, setSaved] = useState(false)
 
   const handleSave = (e: React.FormEvent) => {
@@ -310,13 +327,22 @@ function DeepLCard() {
           <span className="mb-1.5 block text-xs font-medium text-gray-300">
             {t('providers.deepl.getKey')}
           </span>
-          <input
-            type="text"
-            value={apiKey}
-            onChange={(e) => setEditedApiKey(e.target.value)}
-            placeholder="Leave empty to use Google Translate"
-            className={inputClass}
-          />
+          <div className="relative">
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(e) => setEditedApiKey(e.target.value)}
+              placeholder="Leave empty to use Google Translate"
+              className={`${inputClass} pr-10`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey(!showApiKey)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            >
+              {showApiKey ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+            </button>
+          </div>
           <p className="mt-1.5 text-[11px] text-gray-500">{t('providers.deepl.getKey')}</p>
         </div>
         <button

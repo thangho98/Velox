@@ -205,7 +205,7 @@ func (r *SeriesRepo) List(ctx context.Context, libraryID int64, limit, offset in
 	}
 	defer rows.Close()
 
-	var items []model.Series
+	items := []model.Series{}
 	for rows.Next() {
 		var s model.Series
 		if err := rows.Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
@@ -281,7 +281,7 @@ func (r *SeriesRepo) Search(ctx context.Context, query string, limit int) ([]mod
 	}
 	defer rows.Close()
 
-	var items []model.Series
+	items := []model.Series{}
 	for rows.Next() {
 		var s model.Series
 		if err := rows.Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
@@ -374,7 +374,7 @@ func (r *SeriesRepo) ListFiltered(ctx context.Context, f model.SeriesListFilter)
 	}
 	defer rows.Close()
 
-	var results []model.SeriesListItem
+	results := []model.SeriesListItem{}
 	for rows.Next() {
 		var item model.SeriesListItem
 		var genreNames sql.NullString
@@ -499,7 +499,7 @@ func (r *SeasonRepo) ListBySeriesID(ctx context.Context, seriesID int64) ([]mode
 	}
 	defer rows.Close()
 
-	var items []model.Season
+	items := []model.Season{}
 	for rows.Next() {
 		var s model.Season
 		if err := rows.Scan(&s.ID, &s.SeriesID, &s.SeasonNumber, &s.Title,
@@ -633,21 +633,25 @@ func (r *EpisodeRepo) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ListBySeasonID retrieves all episodes for a season
+// ListBySeasonID retrieves all episodes for a season, with duration from primary media_file
 func (r *EpisodeRepo) ListBySeasonID(ctx context.Context, seasonID int64) ([]model.Episode, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, series_id, season_id, media_id,
-		episode_number, title, overview, still_path, air_date, created_at
-		FROM episodes WHERE season_id = ? ORDER BY episode_number`, seasonID)
+	rows, err := r.db.QueryContext(ctx, `SELECT e.id, e.series_id, e.season_id, e.media_id,
+		e.episode_number, e.title, e.overview, e.still_path, e.air_date, e.created_at,
+		COALESCE(mf.duration, 0)
+		FROM episodes e
+		LEFT JOIN media_files mf ON mf.media_id = e.media_id AND mf.is_primary = 1
+		WHERE e.season_id = ? ORDER BY e.episode_number`, seasonID)
 	if err != nil {
 		return nil, fmt.Errorf("listing episodes: %w", err)
 	}
 	defer rows.Close()
 
-	var items []model.Episode
+	items := []model.Episode{}
 	for rows.Next() {
 		var e model.Episode
 		if err := rows.Scan(&e.ID, &e.SeriesID, &e.SeasonID, &e.MediaID,
-			&e.EpisodeNumber, &e.Title, &e.Overview, &e.StillPath, &e.AirDate, &e.CreatedAt); err != nil {
+			&e.EpisodeNumber, &e.Title, &e.Overview, &e.StillPath, &e.AirDate, &e.CreatedAt,
+			&e.Duration); err != nil {
 			return nil, fmt.Errorf("scanning episode: %w", err)
 		}
 		items = append(items, e)
@@ -655,24 +659,30 @@ func (r *EpisodeRepo) ListBySeasonID(ctx context.Context, seasonID int64) ([]mod
 	return items, rows.Err()
 }
 
-// ListBySeriesID retrieves all episodes for a series
+// ListBySeriesID retrieves all episodes for a series, with duration from primary media_file
 func (r *EpisodeRepo) ListBySeriesID(ctx context.Context, seriesID int64) ([]model.Episode, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, series_id, season_id, media_id,
-		episode_number, title, overview, still_path, air_date, created_at
-		FROM episodes WHERE series_id = ? ORDER BY season_id, episode_number`, seriesID)
+	rows, err := r.db.QueryContext(ctx, `SELECT e.id, e.series_id, e.season_id, e.media_id,
+		e.episode_number, e.title, e.overview, e.still_path, e.air_date, e.created_at,
+		COALESCE(mf.duration, 0)
+		FROM episodes e
+		LEFT JOIN media_files mf ON mf.media_id = e.media_id AND mf.is_primary = 1
+		WHERE e.series_id = ? ORDER BY e.season_id, e.episode_number`, seriesID)
 	if err != nil {
 		return nil, fmt.Errorf("listing episodes by series: %w", err)
 	}
 	defer rows.Close()
 
-	var items []model.Episode
+	items := []model.Episode{}
 	for rows.Next() {
 		var e model.Episode
 		if err := rows.Scan(&e.ID, &e.SeriesID, &e.SeasonID, &e.MediaID,
-			&e.EpisodeNumber, &e.Title, &e.Overview, &e.StillPath, &e.AirDate, &e.CreatedAt); err != nil {
+			&e.EpisodeNumber, &e.Title, &e.Overview, &e.StillPath, &e.AirDate, &e.CreatedAt,
+			&e.Duration); err != nil {
 			return nil, fmt.Errorf("scanning episode: %w", err)
 		}
 		items = append(items, e)
 	}
 	return items, rows.Err()
 }
+
+// cache bust 1

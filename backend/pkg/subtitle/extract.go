@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 // ExtractSubtitle extracts an embedded subtitle stream from a video file and
@@ -35,7 +37,7 @@ func ExtractSubtitle(videoPath string, streamIndex int, outputDir string) (strin
 
 	// Use absolute stream index (-map 0:N) — consistent with how AudioTrack and
 	// Subtitle rows are populated by the scanner (absolute FFprobe stream index).
-	cmd := exec.Command("ffmpeg",
+	cmd := exec.Command(ffmpegbin.FFmpeg(),
 		"-i", videoPath,
 		"-map", fmt.Sprintf("0:%d", streamIndex),
 		"-c:s", "webvtt",

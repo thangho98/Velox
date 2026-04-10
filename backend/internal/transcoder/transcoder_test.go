@@ -3,6 +3,8 @@ package transcoder
 import (
 	"strings"
 	"testing"
+
+	"github.com/thawng/velox/internal/hls"
 )
 
 func TestHlsPrefixIncludesSeekOffset(t *testing.T) {
@@ -54,5 +56,61 @@ func TestCancelTranscodeByStreamSessionIDExcept(t *testing.T) {
 	}
 	if len(cancelled) != 1 || cancelled[0] != "old" {
 		t.Fatalf("unexpected cancelled jobs: %#v", cancelled)
+	}
+}
+
+func TestManagerCancelByStreamSessionID(t *testing.T) {
+	mgr := &Manager{
+		sessions: make(map[hls.SessionKey]*Session),
+	}
+
+	viewerA := hls.SessionKey{StreamSessionID: "viewer-a", MediaID: 42, FileID: 7}
+	viewerAOtherQuality := hls.SessionKey{StreamSessionID: "viewer-a", MediaID: 42, FileID: 7, MaxHeight: 720}
+	viewerB := hls.SessionKey{StreamSessionID: "viewer-b", MediaID: 42, FileID: 7}
+
+	mgr.sessions[viewerA] = &Session{}
+	mgr.sessions[viewerAOtherQuality] = &Session{}
+	mgr.sessions[viewerB] = &Session{}
+
+	killed := mgr.CancelByStreamSessionID("viewer-a")
+	if killed != 2 {
+		t.Fatalf("CancelByStreamSessionID killed %d sessions, want 2", killed)
+	}
+	if _, ok := mgr.sessions[viewerA]; ok {
+		t.Fatalf("viewer-a session was not removed")
+	}
+	if _, ok := mgr.sessions[viewerAOtherQuality]; ok {
+		t.Fatalf("viewer-a quality session was not removed")
+	}
+	if _, ok := mgr.sessions[viewerB]; !ok {
+		t.Fatalf("viewer-b session should remain")
+	}
+}
+
+func TestManagerCancelByMediaID(t *testing.T) {
+	mgr := &Manager{
+		sessions: make(map[hls.SessionKey]*Session),
+	}
+
+	media42 := hls.SessionKey{StreamSessionID: "viewer-a", MediaID: 42, FileID: 7}
+	media42OtherViewer := hls.SessionKey{StreamSessionID: "viewer-b", MediaID: 42, FileID: 7}
+	media43 := hls.SessionKey{StreamSessionID: "viewer-c", MediaID: 43, FileID: 8}
+
+	mgr.sessions[media42] = &Session{}
+	mgr.sessions[media42OtherViewer] = &Session{}
+	mgr.sessions[media43] = &Session{}
+
+	killed := mgr.CancelByMediaID(42)
+	if killed != 2 {
+		t.Fatalf("CancelByMediaID killed %d sessions, want 2", killed)
+	}
+	if _, ok := mgr.sessions[media42]; ok {
+		t.Fatalf("media 42 session was not removed")
+	}
+	if _, ok := mgr.sessions[media42OtherViewer]; ok {
+		t.Fatalf("media 42 second session was not removed")
+	}
+	if _, ok := mgr.sessions[media43]; !ok {
+		t.Fatalf("media 43 session should remain")
 	}
 }

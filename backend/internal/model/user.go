@@ -1,5 +1,7 @@
 package model
 
+import "encoding/json"
+
 // User represents a system user
 type User struct {
 	ID           int64  `json:"id"`
@@ -10,6 +12,18 @@ type User struct {
 	AvatarPath   string `json:"avatar_path"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
+}
+
+type userJSON User
+
+func (u User) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		userJSON
+		ProfilePath string `json:"profile_path,omitempty"`
+	}{
+		userJSON:    userJSON(u),
+		ProfilePath: u.AvatarPath,
+	})
 }
 
 // UserPreferences stores user-specific settings

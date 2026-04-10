@@ -92,6 +92,16 @@ export default function MoviesPage() {
                   type={movie.media_type === 'episode' ? 'series' : 'movie'}
                   year={movie.release_date ? new Date(movie.release_date).getFullYear() : undefined}
                   rating={movie.rating}
+                  progress={
+                    movie.position !== undefined
+                      ? {
+                          position: movie.position,
+                          duration: movie.duration || 1,
+                          completed: !!movie.completed,
+                          is_favorite: false,
+                        }
+                      : undefined
+                  }
                 />
               </div>
             )

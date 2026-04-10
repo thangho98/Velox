@@ -10,6 +10,24 @@
 
 ---
 
+## Screenshots
+
+<details>
+<summary>Click to view screenshots</summary>
+
+<p align="center">
+  <img src="./screenshot/webapp/tablet/home-768x1024.png" width="48%" alt="Home Screen">
+  <img src="./screenshot/webapp/tablet/movie-detail-768x1024.png" width="48%" alt="Movie Details">
+</p>
+<p align="center">
+  <img src="./screenshot/webapp/tablet/watch-768x1024.png" width="48%" alt="Video Player">
+  <img src="./screenshot/webapp/tablet/settings-dashboard-768x1024.png" width="48%" alt="Admin Dashboard">
+</p>
+
+</details>
+
+---
+
 ## Features
 
 **Playback**
@@ -45,11 +63,12 @@
 - WebSocket notifications (real-time)
 - Webhook support
 
-**UI**
+**Clients & UI**
 - Netflix-inspired dark theme
 - Cinema Mode — trailer autoplay before main feature
 - Multi-language support (English, Vietnamese)
-- Responsive design (desktop + mobile)
+- Responsive web design (desktop + mobile)
+- Native Android app (Kotlin + Jetpack Compose + Media3 ExoPlayer)
 
 ---
 
@@ -177,6 +196,7 @@ services:
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 19, TypeScript, Vite 8, TailwindCSS 4 |
+| Android App | Kotlin, Jetpack Compose, Dagger Hilt, Media3 (ExoPlayer) |
 | Backend | Go 1.26, stdlib `net/http` (Go 1.22+ routing) |
 | Database | SQLite (WAL mode, 27 migrations) |
 | Transcoding | FFmpeg 8.0 with HW acceleration |
@@ -259,6 +279,13 @@ npm run build     # Production build
 npm run lint      # ESLint
 ```
 
+### Android App
+```bash
+cd android
+./gradlew build          # Compile app
+./gradlew installDebug   # Install debug APK to emulator/device
+```
+
 ### Docker
 ```bash
 docker build -t velox:latest .
@@ -298,5 +325,5 @@ Contributions are welcome! Please open an issue first to discuss what you'd like
 ---
 
 <p align="center">
-  Built with Go + React + FFmpeg
+  Built with Go + React + Android + FFmpeg
 </p>

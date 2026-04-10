@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 // ProbeResult contains basic media file metadata
@@ -124,7 +126,7 @@ type ChapterTags struct {
 
 // Probe runs ffprobe on the given file and returns parsed metadata.
 func Probe(path string) (*ProbeResult, error) {
-	cmd := exec.Command("ffprobe",
+	cmd := exec.Command(ffmpegbin.FFprobe(),
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",

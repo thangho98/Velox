@@ -1,271 +1,30 @@
 {
-  "meta": {
-    "schema_version": "1.1.0",
-    "updated_at": "2026-04-04",
-    "plan_status": {
-      "A": "✅ Done — Core Domain & Ingestion (all 5 phases 100%)",
-      "B": "✅ Done — Auth & Sessions",
-      "C": "✅ Done — Web App MVP (frontend build clean)",
-      "D": "✅ Done — Playback Decision Engine",
-      "E": "✅ Done — Streaming Enhancement (HW transcode, ABR HLS, Trickplay)",
-      "F": "✅ Done — Admin Operations (Activity Logging, Dashboard, Scheduler, Webhooks)",
-      "G": "⬜ Pending — Nice-to-have",
-      "J": "✅ Done — Netflix-style Series Grouping + URL Routing (4 phases)",
-      "K": "✅ Done — Intro/Credits Skip (4 phases: chapter regex, chromaprint, blackframe)",
-      "L": "✅ Done — Metadata Editor (4 phases: PATCH API, image upload, editor UI, NFO write)",
-      "M": "🟡 Designed — Search, Filter & Folder Browser (3 phases, plan + design reviewed)",
-      "N": "🟡 In Progress — Multi-language Support (i18n infrastructure ✅, SettingsPage ✅, remaining pages pending)",
-      "O": "✅ Done — WebSocket Notification System",
-      "P": "✅ Done — Pre-transcode / Offline Encoding (5 phases all complete, Docker verified)",
-      "Q": "✅ Done — Refactor God Files (backend: 5 god files split + audit P1-P4/P6 fixes)",
-      "R": "✅ Done — Refactor Frontend (SettingsPage→17 sections, useMedia→9 modules, useSettings→4+factory, types→7 modules, WatchPage hooks extracted, React 19 patterns)",
-      "S": "🟡 In Progress — Expo Mobile App (video playback ✅, series detail ✅, subtitles ✅, skip intro/up next ✅, app icon ✅, YouTube-style gestures ✅, player controls polish ✅, series/movies screens ✅, remaining: movie detail, settings, search)"
-    }
+  "meta": { "schema_version": "1.1.0", "awf_version": "3.3.0" },
+  "project": { "name": "Velox", "type": "Media Server", "status": "active" },
+  "tech_stack": { 
+      "frontend": { "web": "React", "android": "Jetpack Compose" }, 
+      "backend": { "lang": "Go", "framework": "Standard Library / Custom" }, 
+      "database": { "main": "SQLite / Postgres?" } 
   },
-  "project": {
-    "name": "Velox",
-    "type": "Home Media Server",
-    "status": "development",
-    "description": "Self-hosted media server like Jellyfin/Emby but lighter. Go backend + React frontend."
-  },
-  "tech_stack": {
-    "backend": {
-      "language": "Go 1.26",
-      "framework": "stdlib net/http (Go 1.22+ routing)",
-      "database": "SQLite (WAL mode, foreign_keys=on, busy_timeout=5000, MaxOpenConns=1 per handle, 2 handles: main + background scheduler)",
-      "driver": "mattn/go-sqlite3 v1.14.34",
-      "transcoding": "FFmpeg 8.0 / FFprobe",
-      "file_watcher": "fsnotify v1.9.0",
-      "chromaprint": "fpcalc CLI (brew install chromaprint / apk add chromaprint)",
-      "imaging": "github.com/disintegration/imaging (pure Go, image resize)"
-    },
-    "frontend": {
-      "framework": "React 19",
-      "language": "TypeScript 5.9",
-      "bundler": "Vite 8",
-      "styling": "TailwindCSS 4",
-      "compiler": "React Compiler (babel-plugin-react-compiler)",
-      "state": "TanStack Query + Zustand (persist → localStorage)"
-    },
-    "deployment": {
-      "container": "Docker (multi-stage: Node→Go→Alpine)",
-      "web_server": "nginx (SPA + API reverse proxy)",
-      "process_manager": "tini (PID 1)",
-      "user_mapping": "su-exec (PUID/PGID for NAS)"
-    },
-    "tooling": {
-      "backend_linter": "golangci-lint (errcheck, staticcheck, sqlclosecheck, misspell, bodyclose)",
-      "backend_formatter": "gofmt",
-      "frontend_linter": "ESLint flat config (TS + React Hooks + React Refresh)",
-      "frontend_formatter": "Prettier (no semi, single quotes, 100 chars)",
-      "git_hooks": "Husky + lint-staged (root package.json)",
-      "path_alias": "@/ → src/"
-    }
-  },
-  "database_schema": {
-    "summary": "27 tables across 27 migrations. Media server stores: libraries, movies/episodes (logical), video files (physical), series/seasons, genres, people/credits, subtitles, audio tracks, users, watch progress, favorites, sessions, app settings, media markers (skip intro/credits), audio fingerprints (chromaprint cache), notifications, pre-transcode profiles/files/queue. Migration 027 adds 1440p+4K pretranscode profiles.",
-    "design_doc": "docs/database-design.md",
-    "tables_by_migration": {
-      "001_initial": ["libraries", "media (old)", "progress (old)"],
-      "002_core_media": ["libraries (ALTER +type)", "media (RECREATE +imdb_id)", "media_files"],
-      "003_series": ["series (+imdb_id)", "seasons", "episodes"],
-      "004_genres_people": ["genres", "media_genres", "people", "credits"],
-      "005_scan_jobs": ["scan_jobs"],
-      "006_subtitles_audio": ["subtitles", "audio_tracks"],
-      "007_users": ["users", "user_preferences", "user_library_access"],
-      "008_auth": ["refresh_tokens", "sessions"],
-      "009_user_state": ["user_data", "user_series_data"],
-      "010_activity": ["activity_log", "task_history", "webhooks"],
-      "011_app_settings": ["app_settings"],
-      "012_omdb_ratings": ["media (ALTER +imdb_rating, rt_score, metacritic_score)"],
-      "013_tvdb_id": ["media (ALTER +tvdb_id)", "series (ALTER +tvdb_id, imdb_id)"],
-      "014_fanart_logo": ["media (ALTER +logo_path, thumb_path)", "series (ALTER +logo_path, thumb_path)"],
-      "015_series_network": ["series (ALTER +network)"],
-      "016_subtitle_search": ["app_settings used for OpenSubtitles/Podnapisi API keys"],
-      "017_metadata_providers": ["app_settings used for OMDb/TVDB/Fanart.tv API keys"],
-      "018_media_file_video_details": ["media_files (ALTER +video_profile, video_level, video_fps)", "audio_tracks (ALTER +sample_rate)"],
-      "019_media_markers": ["media_markers (intro/credits skip segments)"],
-      "020_audio_fingerprints": ["audio_fingerprints (chromaprint cache per file+region)"],
-      "021_metadata_lock": ["media (ALTER +tagline, +metadata_locked)", "series (ALTER +metadata_locked)"],
-      "026_pretranscode": ["pretranscode_profiles (seed: 480p/720p/1080p)", "pretranscode_files (status: pending/encoding/ready/failed)", "pretranscode_queue (status: queued/encoding/done/failed/cancelled)"],
-      "027_pretranscode_4k": ["pretranscode_profiles (add: 1440p@16Mbps, 4K@40Mbps)"]
-    },
-    "key_patterns": [
-      "Logical vs Physical: media (content) ↔ media_files (file on disk)",
-      "Multi-version: 1 media → N media_files (720p, 1080p, 4K)",
-      "Series chain: series → seasons → episodes → media → media_files",
-      "Unified user_data: progress + favorites + rating in 1 table (Emby pattern)",
-      "Fingerprint: {file_size}:{xxhash64_first_64KB} for rename detection",
-      "XOR polymorphic: media_genres/credits CHECK exactly one of media_id/series_id",
-      "Provider IDs: tmdb_id + imdb_id + tvdb_id indexed directly",
-      "App settings: key-value JSON store for provider API keys + admin config + cinema settings + pretranscode settings",
-      "Media markers: per media_file, source priority manual(3) > chapter(2) > fingerprint(1)",
-      "Audio fingerprints: BLOB cache per (media_file_id, region), ON DELETE CASCADE",
-      "Metadata lock: metadata_locked flag prevents rescan override, auto-set on edit",
-      "Pre-transcode: profiles (quality presets) → files (encoded outputs) → queue (job scheduling). CASCADE delete on media_file removal."
-    ]
-  },
-  "metadata_editor": {
-    "api": "PATCH /api/media|series/{id}/metadata — partial update (pointer fields, nil=don't change). PATCH /api/episodes/{id}/metadata for episodes.",
-    "image_upload": "POST /api/media|series/{id}/images — multipart upload, resize via imaging lib, local:// path prefix in DB. GET /api/images/local/{type}/{id}/{filename} to serve.",
-    "nfo_write": "POST /api/media|series/{id}/nfo — XML generation (movie/tvshow/episodedetails). Atomic write + .nfo.bak backup.",
-    "metadata_lock": "metadata_locked flag on media + series. Rescan skips locked items. Identify auto-unlocks. RowsAffected check on all update repos.",
-    "ui": "MetadataEditor slide-over panel, GenreEditor tag input, CreditEditor cast/crew list, ImageUploader drag-drop. EpisodeEditDialog for per-episode edit."
-  },
-  "streaming": {
-    "stream_url": "POST /api/stream/{id}/url — generates Jellyfin-style api_key (32-char hex, 2h expiry, in-memory store). URL: /api/stream/{id}?api_key=xxx",
-    "api_key_store": "auth/apikey.go — in-memory map with background cleanup every 10min. Auth middleware checks api_key query param before JWT.",
-    "chromecast": "useChromecast hook + WatchTopBar Cast button. Uses Google Cast SDK (Default Media Receiver). Loads stream URL with api_key for Chromecast to fetch directly.",
-    "cinema_mode": "Netflix-style: trailer autoplay muted in detail page backdrop via YouTube IFrame API (YouTubeBackground component). Hover media card 2s → trailer preview. GET /api/media|series/{id}/cinema returns trailer list from TMDb videos. Admin settings: cinema_mode_enabled, cinema_max_trailers, cinema_intro_path."
-  },
-  "pretranscode": {
-    "overview": "Netflix-style offline encoding. Background scheduler encodes media into H.264+AAC MP4 at configurable quality (480p/720p/1080p/1440p/4K). Playback engine serves pre-encoded files instantly (http.ServeContent, <100ms) with fallback to realtime transcode.",
-    "storage": "Output: {VELOX_PRETRANSCODE_DIR}/{media_file_id}/{profile_name}.mp4. Configurable via VELOX_PRETRANSCODE_DIR env var (default: $VELOX_DATA_DIR/pretranscode). Allows separate volume mount for large pretranscode output.",
-    "scheduler": "Background goroutine. Schedule modes: always, night (00:00-06:00), idle. Configurable concurrency (1-4). Auto-pause on disk low. Yields to realtime transcode (ActiveCount check).",
-    "audio_remux_profile": "Profile video_codec='copy' (migration 028). Auto-enqueues on startup for all non-AAC files. Runs regardless of pretranscode_enabled. Smart codec handling: H.264 sources → audio-only remux (fast, ~1x). HEVC/VP9/AV1 sources → universal transcode to H.264+AAC at source resolution (VAAPI HW accel, slower but browser-universal).",
-    "skip_logic": "No upscale (source < profile height). Skip if source already H.264+AAC at ≤ profile resolution. Audio-remux skips if audio already AAC.",
-    "hw_accel": "Try HW first (vaapi/nvenc/qsv/videotoolbox), auto-fallback to software libx264.",
-    "playback_integration": "MethodPreTranscode in playback engine. Validates pretranscode file exists on disk AND video codec is browser-compatible before using (NormalizeCodec + SupportsVideoCodec check). Stream handler falls back to HLS redirect when pretranscode file missing. Playback info returns available_qualities with ⚡ instant indicator.",
-    "transcode_slot_management": "Semaphore-based (VELOX_MAX_TRANSCODES). Realtime HLS: tryAcquireSlot(30s) — fail fast instead of 3min timeout. ABR background: tryAcquireSlotIfSpare() — only if ≥2 slots free, never starves realtime. Video copy HLS: skips semaphore (lightweight). ABR generation not started from playback info handler to avoid slot contention.",
-    "on_demand_remux": "When user triggers realtime transcode at a resolution with a pretranscode profile, auto-remux HLS segments → MP4 (ffmpeg -c copy, near instant). Only when pretranscode_enabled=true. 'Transcode once, instant forever.'",
-    "stop_behavior": "Stop kills FFmpeg process immediately (ctx cancel), waits for scheduler loop exit, resets interrupted jobs to queued for retry, restarts scheduler in paused state.",
-    "recovery": "On startup, reset interrupted encoding jobs back to queued.",
-    "api_endpoints": [
-      "GET /api/admin/pretranscode/status — overall progress (total/done/encoding/failed/queued/disk_used/current_file)",
-      "POST /api/admin/pretranscode/start — enqueue all libraries + start scheduler",
-      "POST /api/admin/pretranscode/stop — cancel queued + pause",
-      "POST /api/admin/pretranscode/resume — resume scheduler",
-      "GET /api/admin/pretranscode/estimate?library_id=N — storage estimation per profile + disk free",
-      "POST /api/admin/pretranscode/cleanup-files — delete all pre-transcode files + disable",
-      "GET /api/admin/pretranscode/profiles — list quality profiles",
-      "PUT /api/admin/pretranscode/profiles/{id} — toggle profile enabled/disabled",
-      "GET /api/admin/settings/pretranscode — get settings (enabled/schedule/concurrency)",
-      "PUT /api/admin/settings/pretranscode — update settings"
-    ],
-    "settings_keys": ["pretranscode_enabled", "pretranscode_schedule", "pretranscode_concurrency"],
-    "ui": "PretranscodeSection in SettingsPage.tsx: toggle, profile checkboxes, schedule/concurrency selects, storage estimation panel, real-time progress dashboard (5s poll), pause/stop/start controls, cleanup with confirmation modal."
-  },
-  "metadata_providers": {
-    "TMDb": "Primary — movies + TV. Env-based API key (VELOX_TMDB_API_KEY). Rate-limited (40req/10s token bucket). Fetches videos (trailers) via append_to_response.",
-    "OMDb": "Enrichment — IMDb rating, Rotten Tomatoes %, Metacritic score. Env-based API key (VELOX_OMDB_API_KEY).",
-    "TheTVDB": "TV enrichment — TVDB IDs, IMDb cross-reference, series status. Env-based API key (VELOX_TVDB_API_KEY).",
-    "Fanart.tv": "Artwork enrichment — HD clearlogos, thumbnails. Env-based API key (VELOX_FANART_API_KEY).",
-    "TVmaze": "TV enrichment — network, status, external ID cross-reference. Free, no key needed.",
-    "NFO": "Local override — NFO files take priority over TMDb search. NFO write support added (Plan L).",
-    "config": "All provider API keys configurable via: 1) Environment variables (server admin) → 2) Admin Settings UI (custom override). UI shows has_builtin status."
-  },
-  "subtitle_providers": {
-    "OpenSubtitles_v2": "REST v2 API. Requires API key + username + password. Rate limited 1req/sec (throttle added).",
-    "OpenSubtitles_legacy": "Legacy REST API (rest.opensubtitles.org). Free, no key needed. Rate limited 1req/sec (throttle added). Default when v2 not configured.",
-    "Subdl": "REST API. Env-based API key (VELOX_SUBDL_API_KEY) or custom via admin settings. Rate limited 1req/sec (throttle added). Daily quota limit on free tier.",
-    "BSPlayer": "SOAP/XML API. Anonymous auth (no API key). Rate limited 1req/sec (throttle added).",
-    "Podnapisi": "XML API. No API key. Rate limited 1req/sec (throttle added). Often returns 429.",
-    "Subscene": "Web scraper via Python (DrissionPage + Chrome). Bypasses Cloudflare. Slowest (~30s). Used in AutoDownload Phase 2 fallback only.",
-    "throttle": "All providers share subprovider.Throttle (1 req/sec per provider). Prevents rate limiting during bulk auto-download."
-  },
-  "intro_credits_detection": {
-    "tier1_chapter": "Enhanced regex (Jellyfin patterns: OP/ED, recap, cold open, outro). Timing: intro 15-120s, credits 15-450s.",
-    "tier2_chromaprint": "Audio fingerprint via fpcalc CLI. Per-season pairwise comparison. Confidence 0.7-0.9.",
-    "tier3_blackframe": "FFmpeg blackframe + silencedetect filters. Credits only. Confidence 0.55-0.75.",
-    "source_priority": "manual(3) > chapter(2) > fingerprint(1).",
-    "admin_api": [
-      "GET /api/admin/markers/stats — aggregate counts (total, intro, credits, by source, coverage %)",
-      "GET /api/admin/markers/detectors — list available detectors",
-      "POST /api/admin/markers/detect — run detector on single file",
-      "POST /api/admin/markers/backfill — bulk detection (file_ids, season_id, or library_id). Library backfill runs async with WebSocket progress."
-    ],
-    "websocket_progress": "BroadcastToAdmins('marker_progress', {status, total, current, processed, skipped, failed, file_name}). Frontend: useMarkerProgress hook opens dedicated WS connection, reads token from Zustand velox-auth store."
-  },
-  "subtitle_translation": {
-    "primary": "DeepL API (free tier 500K chars/month).",
-    "fallback": "Google Translate (unofficial, free, unlimited).",
-    "flow": "On-demand: POST /api/subtitles/{id}/translate."
-  },
-  "architecture": {
-    "layers": [
-      "handler (HTTP) → service (business logic) → repository (SQL) → model (structs)",
-      "Migrations via internal/database/migrate/registry.go (28 migrations)",
-      "DBTX interface (repository/db.go) — repos accept *sql.DB or *sql.Tx",
-      "repository.ErrNotFound sentinel — 35 repo Get methods wrap sql.ErrNoRows, 35 update/delete methods check RowsAffected",
-      "service.ErrNotFound sentinel wrapping repository.ErrNotFound (not raw sql.ErrNoRows)",
-      "Backend god files split (Plan Q): service/{browse,catalog,cinema,settings,setup,profile,series,playback_config}.go, subtitle split into {subtitle,subtitle_helpers,subtitle_tracks,subtitle_search_providers,subtitle_search_ranking}.go, metadata_editor→metadata_editor_operations.go, handler/playback_info.go, repository/admin.go",
-      "respondJSON wraps success in {\"data\": ...}, logs encode errors",
-      "storage/image.go — local image storage + resize via disintegration/imaging",
-      "auth/apikey.go — in-memory API key store for external player stream URLs"
-    ],
-    "scan_pipeline": "Pipeline (scanner/pipeline.go). Stages: discover → fingerprint → probe → parse → persist. Respects metadata_locked flag.",
-    "file_watcher": "watcher/watcher.go — fsnotify recursive, 5s debounce, rename tracking.",
-    "playback_strategy": "Direct Play (best) → PreTranscode ⚡ (if user requests lower res or codec incompatible) → Direct Stream → Transcode Audio → Full Transcode. Quality selector: resolution-based Netflix-style (Original → 1080p⚡ → 720p → 480p → Auto). available_qualities in playback info response. GetPlaybackInfo parallelizes DB queries (prefs+progress+subtitles+audio in goroutines, quality+markers in goroutines). buildQualityOptions uses single JOIN query (ListReadyFilesWithProfiles) instead of N+1.",
-    "auth": "JWT (15min access + 7-day refresh + session_id), bcrypt cost 12. API key (2h, 32-char hex) for external players. Change-password returns 403 (not 401) for wrong old password to avoid triggering token refresh loop. Frontend fetch interceptor skips auto-refresh for /auth/change-password.",
-    "activity_logging": "ActivityService (async, buffered 50 entries / 5s flush). Injected into AuthHandler (login), LibraryHandler (library_scan), PlaybackHandler (play_start) via SetActivityService setter. Activity page uses invalidateQueries on mount for fresh data.",
-    "subtitle_search": "Multi-provider: OpenSubtitles (v2 if configured, legacy fallback) → Subdl → Podnapisi → BSPlayer.",
-    "docker": "Multi-stage Dockerfile: Node 22 → Go 1.24 → Alpine 3.21. Nginx + chromaprint + Xvfb.",
-    "auto_sub_on_rescan": "Force rescan triggers auto-download subtitles for media missing text-based subs (SRT/ASS/VTT). PGS/VobSub don't count — always download SRT.",
-    "gpu_docker": "Intel: libva + intel-media-driver + libva-intel-driver (VAAPI). AMD: mesa-dri-gallium (VAAPI). NVIDIA: host nvidia-container-toolkit (NVENC). LIBVA_DRIVER_NAME=iHD default in entrypoint. HW detect at startup: auto → probe ffmpeg -hwaccels + device check.",
-    "websocket_nginx": "Separate location /api/ws with Upgrade + Connection headers. Main /api/ location uses Connection '' for streaming. statusWriter implements http.Hijacker for WebSocket upgrade through middleware.",
-    "transcode_cleanup": "Scheduler task: every 1h, delete HLS cache > 2h old. Prevents disk fill from realtime transcode sessions.",
-    "live_transcode_optimizations": "Separation of Concerns: BE (FFmpeg) chunks segments into deterministic multiples (e.g., 6.0s) avoiding fractional frame start errors and HW Decoder stalls. FE calculates precisely `trueStartOffset = Math.floor(request / 6.0)*6` to align baseline PTS with subtitle streams (fixing 'subtitles ahead of video' issue). FE then issues a secondary gap jump via `v.currentTime = targetTime` spanning the remainder (e.g., 0.5s) to guarantee sub-millisecond resume precision. On BUFFER_FULL_ERROR, FE intelligently flushes segments. Network/Media stalls kickstart play incrementally via 0.1s boosts, and 5 consecutive empty buffer loads forcefully reset state to Full Transcode.",
-    "hls_transcoding": "Single FFmpeg process for multi-audio HLS (video + all audio outputs in one pass via multi-output syntax). Master playlist written before encoding starts. Audio playlists namespaced with variant prefix ({prefix}audio_{streamIdx}.m3u8) to prevent cache collision. HLS EVENT mode on all realtime transcode paths. WaitForSegment waits for ALL active jobs in directory before 404 (prevents wrong-variant match). Job lifecycle: close(done) before delete(active). First-segment timeout: 3 minutes. HW accel fallback to software on failure."
-  },
-  "ui_components": {
-    "action_menu": "ActionMenu.tsx — reusable dropdown (portal-based, z-9999). Used in EpisodeCard + MediaDetailPage.",
-    "metadata_editor": "MetadataEditor.tsx — slide-over panel. GenreEditor, CreditEditor, ImageUploader sub-components.",
-    "youtube_background": "YouTubeBackground.tsx — YouTube IFrame API wrapper. Programmatic mute/unmute (no YouTube UI visible).",
-    "cinema_overlay": "CinemaOverlay.tsx — fullscreen intro/trailer player (kept for potential future use).",
-    "i18n": "Full i18n support: react-i18next + i18next-browser-languagedetector. Namespaces: common, auth, navigation, settings, media, watch, errors. SettingsPage fully translated (en/vi).",
-    "settings_page": "SettingsPage split into 17 section components under pages/settings/components/ (Plan R). Each section is independent: ProfileSection, PreferencesSection, SecuritySection, SessionsSection, NotificationsSection, MetadataSection, SubtitlesSection, PlaybackSection, GeneralSection, LibrariesSection, UsersSection, ActivitySection, TasksSection, WebhooksSection, CinemaSection, MarkersSection, PretranscodeSection. Shared UI in shared.tsx. Query-param navigation (?section=X).",
-    "frontend_modularization": "Plan R: useMedia.ts→barrel re-export from hooks/stores/media/ (9 modules). useSettings.ts→barrel from hooks/stores/settings/ (4 modules + createSettingsHooks factory). types/api.ts→barrel from types/{common,auth,media,series,playback,admin}.ts. WatchPage: extracted useFullscreen + useKeyboardShortcuts hooks, useEffectEvent for event handlers. All pages use default exports, Router uses direct lazy imports. SubtitlePicker: language utils extracted to lib/languages.ts, SubtitleTranslate extracted to own component.",
-    "toggle_component": "ui/Toggle.tsx — reusable toggle switch (h-6 w-11, netflix-red when enabled). Used in Cinema Mode + Pre-transcode settings.",
-    "cinema_mode_guard": "useCinemaMode.ts hooks check cinemaSettings.enabled before fetching trailers. MediaCard hover preview also gated. When cinema disabled: no YouTube embeds, no trailer fetches.",
-    "select_component": "ui/Select.tsx — reusable select with custom SVG chevron (appearance-none). Sizes: sm/md. Used in all SettingsPage selects. Replaces native browser select arrow.",
-    "markers_section": "MarkersSection in SettingsPage — /settings?section=markers. Stats overview (total/intro/credits, coverage bars, source breakdown), Run Detection with library selector, WebSocket realtime progress (useMarkerProgress hook), How it works info.",
-    "quality_selector": "Netflix-style resolution menu in WatchPage player. Options from playback info available_qualities (dynamic). Pretranscode files show ⚡ icon. Auto option at bottom with border separator.",
-    "subtitle_letterbox": "DualSubtitleOverlay.tsx — useLetterboxBottom hook calculates bottom letterbox height for portrait viewing. Subtitle bottom = letterboxBottom + BASE_BOTTOM (112px). Recalculates on resize/orientation change/loadedmetadata. Prevents subtitles from appearing in black bars on portrait tablets.",
-    "watch_page_layout": "WatchPage container uses fixed inset-0 (not h-screen) to prevent scroll on portrait tablets with 16:10 aspect ratio.",
-    "scheduler_tasks_ui": "TasksSection sorts by name (prevent row jumping). Polling every 2s when task running. Local running state + server state combined. Button shows 'Running...' during execution."
-  },
-  "deployment": {
-    "dockerfile": "Dockerfile (root)",
-    "compose": "docker-compose.yml (root)",
-    "ports": { "80": "nginx", "8080": "Go backend" },
-    "volumes": { "/data": "VELOX_DATA_DIR", "/media": "Media library", "/pretranscode": "VELOX_PRETRANSCODE_DIR (optional, separate volume)" },
-    "env_vars": {
-      "PUID": "Host user ID", "PGID": "Host group ID",
-      "VELOX_DATA_DIR": "/data", "VELOX_HW_ACCEL": "auto|vaapi|nvenc|qsv|videotoolbox|none",
-      "VELOX_PRETRANSCODE_DIR": "Separate pretranscode output dir (default: $VELOX_DATA_DIR/pretranscode). Allows mounting to a different volume.",
-      "VELOX_MAX_TRANSCODES": "2", "VELOX_FILE_WATCHER": "true",
-      "VELOX_TMDB_API_KEY": "TMDb v4 Read Access Token (optional)",
-      "VELOX_OMDB_API_KEY": "OMDb API key (optional)",
-      "VELOX_TVDB_API_KEY": "TheTVDB API key (optional)",
-      "VELOX_FANART_API_KEY": "Fanart.tv API key (optional)",
-      "VELOX_SUBDL_API_KEY": "Subdl API key (optional)",
-      "TZ": "Asia/Ho_Chi_Minh", "SUBSCENE_ENABLED": "true"
-    }
-  },
-  "plans": {
-    "A": "Core Domain & Ingestion (5 phases)",
-    "B": "Auth & Sessions (3 phases)",
-    "C": "Web App MVP (4 phases)",
-    "D": "Playback Decision Engine (3 phases)",
-    "E": "Streaming Enhancement (3 phases)",
-    "F": "Admin Operations (3 phases)",
-    "G": "Nice-to-have (3 phases)",
-    "J": "Netflix-style Series Grouping + URL Routing (4 phases)",
-    "K": "Intro/Credits Skip (4 phases)",
-    "L": "Metadata Editor (4 phases: PATCH API, image upload, editor UI, NFO write)",
-    "M": "Search, Filter & Folder Browser (3 phases: backend API, frontend filter, folder browser)",
-    "N": "Multi-language Support (5 phases: i18n setup, English strings, Vietnamese, switcher, polish)",
-    "O": "WebSocket Notification System (i18n support)",
-    "P": "Pre-transcode / Offline Encoding (5 phases: DB+settings, engine, playback integration, UI, testing)",
-    "Q": "Refactor God Files (backend: split 5 files >800 lines + audit P1-P4/P6)",
-    "R": "Refactor Frontend (SettingsPage→17 sections, stores→domain modules, types→domain modules, WatchPage hook extraction)",
-    "S": "Expo Mobile App (18 phases: 01-08 monorepo+shared package, 09-18 Expo app. pnpm workspaces, @velox/shared, dev build+CNG, ExoPlayer Direct Play)"
-  },
-  "conventions": {
-    "language": "Vietnamese in plans, English in code/commits",
-    "api_response": "{\"data\": ...} for success, {\"error\": \"message\"} for errors",
-    "timestamps": "ISO 8601",
-    "file_paths_in_db": "Always absolute paths",
-    "image_paths": "TMDb: /hash.jpg (proxied). Local: local://{id}/poster.jpg"
+  "database_schema": { "tables": ["media_markers", "users", "media_files"], "relationships": ["One media_file has many media_markers"] },
+  "api_endpoints": [
+      { "path": "/api/admin/markers/stats", "method": "GET", "explained": "Get statistics on intro/credit markers for admin dashboard." },
+      { "path": "/api/admin/markers/backfill", "method": "POST", "explained": "Trigger background audio fingerprint detection for a library." }
+  ],
+  "business_rules": [
+      "Marker detection triggers a background task and broadcasts progress to admins via websocket.",
+      "Admin features like backfilling markers are guarded by admin checks in both frontend apps.",
+      "User subjective preferences for auto-skipping segments belong in general user preferences."
+  ],
+  "features": [
+      "Skip Intro / Credits",
+      "Media Scanner",
+      "Live Transcoding",
+      "User Management"
+  ],
+  "knowledge_items": { 
+      "patterns": ["Use ViewModel to bind Jetpack Compose state."], 
+      "gotchas": ["Android app lacks websocket implementation; polling/fire-and-forget is required for background tasks for now."], 
+      "conventions": ["Use Netflix theme colors (NetflixRed, NetflixWhite, NetflixDarkGray) across Android app UI."] 
   }
 }

@@ -13,8 +13,8 @@ export function NextUpCard({ item }: NextUpCardProps) {
   // Use still image if available, fallback to series poster, then backdrop
   const imageUrl =
     tmdbImage(item.still_path, 'w780') ||
-    tmdbImage(item.series_poster, 'w500') ||
     tmdbImage(item.backdrop_path, 'w780') ||
+    tmdbImage(item.series_poster, 'w500') ||
     '/placeholder.png'
 
   return (

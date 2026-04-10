@@ -95,10 +95,15 @@ type MediaListItem struct {
 	ReleaseDate string   `json:"release_date,omitempty"`
 	Rating      float64  `json:"rating,omitempty"`
 	Overview    string   `json:"overview,omitempty"`
+	// Progress (from user_data, populated when UserID filter is set)
+	Position  *float64 `json:"position,omitempty"`
+	Duration  *float64 `json:"duration,omitempty"`
+	Completed *bool    `json:"completed,omitempty"`
 }
 
 // MediaListFilter represents filter parameters for media list queries
 type MediaListFilter struct {
+	UserID    int64 // populated from auth context for progress join
 	LibraryID int64
 	MediaType string // "movie" | "episode" | ""
 	Search    string // LIKE on title + sort_title

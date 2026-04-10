@@ -50,16 +50,17 @@ type Season struct {
 
 // Episode represents a single episode linking to a media item
 type Episode struct {
-	ID            int64  `json:"id"`
-	SeriesID      int64  `json:"series_id"`
-	SeasonID      int64  `json:"season_id"`
-	MediaID       int64  `json:"media_id"`
-	EpisodeNumber int    `json:"episode_number"`
-	Title         string `json:"title"`
-	Overview      string `json:"overview"`
-	StillPath     string `json:"still_path"`
-	AirDate       string `json:"air_date"` // YYYY-MM-DD
-	CreatedAt     string `json:"created_at"`
+	ID            int64   `json:"id"`
+	SeriesID      int64   `json:"series_id"`
+	SeasonID      int64   `json:"season_id"`
+	MediaID       int64   `json:"media_id"`
+	EpisodeNumber int     `json:"episode_number"`
+	Title         string  `json:"title"`
+	Overview      string  `json:"overview"`
+	StillPath     string  `json:"still_path"`
+	AirDate       string  `json:"air_date"`           // YYYY-MM-DD
+	Duration      float64 `json:"duration,omitempty"` // seconds, from primary media_file
+	CreatedAt     string  `json:"created_at"`
 }
 
 // EpisodeWithMedia combines episode with its media and media file

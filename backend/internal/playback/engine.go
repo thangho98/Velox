@@ -226,6 +226,10 @@ func normalizeCodec(codec string) string {
 // normalizeContainer normalizes container names
 func normalizeContainer(container string) string {
 	container = strings.ToLower(container)
+	// FFprobe returns compound format names like "matroska,webm" — take the first part
+	if idx := strings.IndexByte(container, ','); idx > 0 {
+		container = container[:idx]
+	}
 	switch container {
 	case "mp4", "mpeg4", "m4v":
 		return ContainerMP4

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 // ABRVariant describes a single quality level for adaptive bitrate HLS.
@@ -165,7 +167,7 @@ func (t *Transcoder) generateABRVariant(inputPath, playlistPath, segPattern stri
 		playlistPath,
 	)
 
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(ffmpegbin.FFmpeg(), args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

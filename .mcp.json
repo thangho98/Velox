@@ -3,7 +3,17 @@
     "playwright": {
       "command": "npx",
       "args": [
-        "@playwright/mcp@latest"
+        "@playwright/mcp@latest",
+        "--isolated",
+        "--no-sandbox"
+      ]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--wsEndpoint=ws://127.0.0.1:54313/devtools/browser/"
       ]
     }
   }

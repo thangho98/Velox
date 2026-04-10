@@ -180,6 +180,12 @@ func All() []Migration {
 			Up:      up029,
 			Down:    down029,
 		},
+		{
+			Version: 30,
+			Name:    "app_versions",
+			Up:      up030,
+			Down:    down030,
+		},
 	}
 }
 

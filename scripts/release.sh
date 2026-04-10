@@ -28,6 +28,7 @@ fail()  { echo -e "${RED}✗${NC} $1"; exit 1; }
 # ── Pre-flight checks ───────────────────────────────────────────────
 command -v docker >/dev/null || fail "docker not found"
 command -v git >/dev/null    || fail "git not found"
+command -v gh >/dev/null     || fail "gh (GitHub CLI) not found"
 
 # Must be in repo root
 cd "$(git rev-parse --show-toplevel)" || fail "not a git repository"
@@ -117,6 +118,38 @@ ok "Pushed ${DOCKER_REPO}:latest"
 # ── Step 3: Push git tag ─────────────────────────────────────────────
 info "Pushing tag to remote..."
 git push origin "$NEW_VERSION" 2>/dev/null || warn "Failed to push tag (no remote or auth issue)"
+
+# ── Step 4: Build Android APK ────────────────────────────────────────
+info "Building Android APK..."
+APK_DEST="velox-${NEW_VERSION}.apk"
+if [[ -d "android" ]]; then
+    pushd android > /dev/null
+    chmod +x gradlew
+    ./gradlew assembleRelease || warn "Failed to build Android APK"
+    popd > /dev/null
+    
+    APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
+    if [[ -f "$APK_SRC" ]]; then
+        cp "$APK_SRC" "$APK_DEST"
+        ok "Built APK: $APK_DEST"
+    else
+        warn "APK file not found at $APK_SRC"
+    fi
+else
+    warn "android directory not found, skipping APK build"
+fi
+
+# ── Step 5: Upload to GitHub Release ─────────────────────────────────
+info "Creating GitHub Release..."
+if [[ -f "$APK_DEST" ]]; then
+    # Create release and upload APK artifact
+    gh release create "$NEW_VERSION" "$APK_DEST" --title "Release $NEW_VERSION" --generate-notes || warn "Failed to create GitHub Release"
+    ok "GitHub Release $NEW_VERSION created with APK"
+else
+    # Create release without artifact
+    gh release create "$NEW_VERSION" --title "Release $NEW_VERSION" --generate-notes || warn "Failed to create GitHub Release"
+    ok "GitHub Release $NEW_VERSION created"
+fi
 
 # ── Done ─────────────────────────────────────────────────────────────
 echo ""

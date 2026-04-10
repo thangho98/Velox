@@ -19,6 +19,7 @@ var authSkipPaths = []string{
 	"/api/auth/logout",
 	"/api/images/*",
 	"/api/media/*/trickplay/*",
+	"/api/app-versions/latest",
 }
 
 func (app *serverApp) newHTTPServer() *http.Server {
@@ -71,6 +72,7 @@ func (app *serverApp) newMux() *http.ServeMux {
 	app.registerSubtitleRoutes(mux)
 	app.registerNotificationRoutes(mux)
 	app.registerAudioTrackRoutes(mux)
+	app.registerAppVersionRoutes(mux)
 
 	return mux
 }
@@ -239,9 +241,6 @@ func (app *serverApp) registerStreamRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stream/{id}/hls/abr.m3u8", app.handlers.stream.HLSABRMaster)
 	mux.HandleFunc("GET /api/stream/{id}/hls/{segment}", app.handlers.stream.HLSSegment)
 
-	// Stream V2 Engine Routes
-	mux.HandleFunc("GET /api/stream/v2/{id}/hls/master.m3u8", app.handlers.streamV2.HLSMaster)
-	mux.HandleFunc("GET /api/stream/v2/{id}/hls/{segment}", app.handlers.streamV2.HLSMedia)
 	mux.HandleFunc("DELETE /api/stream/sessions/{ssid}", app.handlers.stream.StopTranscodeBySession)
 	mux.HandleFunc("DELETE /api/stream/by-id/{id}/session", app.handlers.stream.StopTranscode)
 	mux.HandleFunc("GET /api/media/{id}/trickplay/manifest.vtt", app.handlers.trickplay.ServeVTT)
@@ -283,4 +282,8 @@ func (app *serverApp) registerAudioTrackRoutes(mux *http.ServeMux) {
 	mux.Handle("PATCH /api/audio-tracks/{id}", middleware.RequireAdmin(http.HandlerFunc(app.handlers.audioTrack.Update)))
 	mux.Handle("DELETE /api/audio-tracks/{id}", middleware.RequireAdmin(http.HandlerFunc(app.handlers.audioTrack.Delete)))
 	mux.Handle("POST /api/media-files/{media_file_id}/audio-tracks/{track_id}/default", middleware.RequireAdmin(http.HandlerFunc(app.handlers.audioTrack.SetDefault)))
+}
+
+func (app *serverApp) registerAppVersionRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/app-versions/latest", app.handlers.appVersion.GetLatest)
 }

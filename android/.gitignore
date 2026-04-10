@@ -1,0 +1,75 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+build/
+.gradle/
+.cxx/
+.kotlin/
+*.hprof
+
+# Gradle files
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# IntelliJ
+*.iml
+.idea/
+!.idea/runConfigurations/
+!.idea/codeStyles/
+!.idea/inspectionProfiles/
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# Android Studio
+captures/
+.externalNativeBuild/
+.intermediates/
+.gradient/
+.local.properties
+*.log
+
+# Keystore files
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+
+# Gradle wrapper
+!gradle/wrapper/gradle-wrapper.jar
+
+# Crashlytics
+crashlytics.properties
+crashlytics-build.gradle
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# VCS
+*.orig
+*.rej
+
+# OS
+.DS_Store
+Thumbs.db

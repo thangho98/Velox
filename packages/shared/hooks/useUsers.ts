@@ -21,14 +21,14 @@ export const userKeys = {
 export function useUsers() {
   return useQuery({
     queryKey: userKeys.list(),
-    queryFn: () => api.get<User[]>('/admin/users'),
+    queryFn: () => api.get<User[]>('/users'),
   })
 }
 
 export function useCreateUser() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (data: CreateUserRequest) => api.post<User>('/admin/users', data),
+    mutationFn: (data: CreateUserRequest) => api.post<User>('/users', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userKeys.list() })
     },
@@ -39,7 +39,7 @@ export function useUpdateUser() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: UpdateUserRequest }) =>
-      api.put<User>(`/admin/users/${id}`, data),
+      api.patch<User>(`/users/${id}`, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: userKeys.list() })
       queryClient.invalidateQueries({ queryKey: userKeys.detail(variables.id) })
@@ -50,7 +50,7 @@ export function useUpdateUser() {
 export function useDeleteUser() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => api.delete(`/admin/users/${id}`),
+    mutationFn: (id: number) => api.delete(`/users/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userKeys.list() })
     },
@@ -60,7 +60,7 @@ export function useDeleteUser() {
 export function useLibraryAccess(userId: number) {
   return useQuery({
     queryKey: userKeys.libraryAccess(userId),
-    queryFn: () => api.get<{ library_id: number; access_type: string }[]>(`/admin/users/${userId}/libraries`),
+    queryFn: () => api.get<{ library_id: number; access_type: string }[]>(`/users/${userId}/libraries`),
   })
 }
 
@@ -68,7 +68,7 @@ export function useSetLibraryAccess() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ userId, libraryId, accessType }: { userId: number; libraryId: number; accessType: string }) =>
-      api.put(`/admin/users/${userId}/libraries/${libraryId}`, { access_type: accessType }),
+      api.put(`/users/${userId}/library-access`, { library_ids: [libraryId] }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: userKeys.libraryAccess(variables.userId) })
     },

@@ -1,0 +1,44 @@
+#!/bin/sh
+
+#
+# Gradle wrapper script for POSIX-compliant systems.
+#
+
+# Determine the Java command to use to start the JVM.
+if [ -n "$JAVA_HOME" ] ; then
+    if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
+        JAVACMD="$JAVA_HOME/jre/sh/java"
+    else
+        JAVACMD="$JAVA_HOME/bin/java"
+    fi
+    if [ ! -x "$JAVACMD" ] ; then
+        die "ERROR: JAVA_HOME is set to an invalid directory: $JAVA_HOME"
+    fi
+else
+    JAVACMD="java"
+    which java >/dev/null 2>&1 || die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH."
+fi
+
+# Gradle wrapper JAR location
+APP_HOME="$(cd "$(dirname "$0")" && pwd)"
+WRAPPER_JAR="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+
+# Check if wrapper JAR exists, if not download it
+if [ ! -f "$WRAPPER_JAR" ]; then
+    echo "Downloading Gradle wrapper JAR..."
+    WRAPPER_URL="https://raw.githubusercontent.com/gradle/gradle/v8.10.2/gradle/wrapper/gradle-wrapper.jar"
+    if command -v curl > /dev/null 2>&1; then
+        curl -sL "$WRAPPER_URL" -o "$WRAPPER_JAR"
+    elif command -v wget > /dev/null 2>&1; then
+        wget -q "$WRAPPER_URL" -O "$WRAPPER_JAR"
+    else
+        echo "ERROR: Neither curl nor wget found. Please install Gradle manually or ensure the wrapper JAR is present."
+        exit 1
+    fi
+fi
+
+# Execute Gradle
+exec "$JAVACMD" \
+    -classpath "$WRAPPER_JAR" \
+    org.gradle.wrapper.GradleWrapperMain \
+    "$@"

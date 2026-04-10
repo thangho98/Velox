@@ -5,25 +5,57 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/thawng/velox/internal/hls"
 	"github.com/thawng/velox/internal/logger"
+	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/playback"
 	"github.com/thawng/velox/internal/service"
+	"github.com/thawng/velox/internal/transcoder"
 )
 
 type StreamHandler struct {
 	svc *service.StreamService
+	mgr *transcoder.Manager
 	log *slog.Logger
 }
 
-func NewStreamHandler(svc *service.StreamService) *StreamHandler {
-	return &StreamHandler{svc: svc, log: logger.New("stream")}
+func NewStreamHandler(svc *service.StreamService, mgr *transcoder.Manager) *StreamHandler {
+	return &StreamHandler{svc: svc, mgr: mgr, log: logger.New("stream")}
+}
+
+// pickAudioTracks returns only the audio track matching the given track ID query
+// param. Encoding ALL audio streams simultaneously is fragile — a single
+// corrupt/unsupported stream can crash the whole ffmpeg process. When no ID is
+// provided (or it doesn't match), we fall back to the default track or the first
+// one so we always encode exactly one stream.
+func pickAudioTracks(all []model.AudioTrack, atParam string) []model.AudioTrack {
+	if len(all) == 0 {
+		return all
+	}
+	if atParam != "" {
+		if atID, err := strconv.ParseInt(atParam, 10, 64); err == nil {
+			for _, t := range all {
+				if t.ID == atID {
+					return []model.AudioTrack{t}
+				}
+			}
+		}
+	}
+	for _, t := range all {
+		if t.IsDefault {
+			return []model.AudioTrack{t}
+		}
+	}
+	return all[:1]
 }
 
 // DirectPlay routes the request to the appropriate streaming method based on the
@@ -165,7 +197,8 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HLSMaster serves the HLS master playlist. Triggers transcoding if needed.
+// HLSMaster serves the realtime HLS master playlist using the merged session engine.
+// It is mounted at /api/stream/{id}/hls/master.m3u8.
 func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
@@ -173,84 +206,87 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ?fid=N: specific file ID (forwarded from GetPlaybackInfo)
-	var hlsFileID int64
+	if h.mgr == nil {
+		respondError(w, http.StatusInternalServerError, "stream manager not configured")
+		return
+	}
+
+	ss := streamSessionIDFromValues(r.URL.Query())
+	if ss == "" {
+		ss = newStreamSessionID()
+	}
+
+	var fileID int64
 	if fid := r.URL.Query().Get("fid"); fid != "" {
 		if n, err := strconv.ParseInt(fid, 10, 64); err == nil {
-			hlsFileID = n
+			fileID = n
 		}
 	}
 
-	// ?si=N: subtitle stream index for burn-in (set by GetPlaybackInfo for PGS/VobSub)
-	subtitleStreamIndex := -1
+	subtitleIdx := -1
 	if si := r.URL.Query().Get("si"); si != "" {
 		if n, err := strconv.Atoi(si); err == nil {
-			subtitleStreamIndex = n
+			subtitleIdx = n
 		}
 	}
 
 	videoCopy := r.URL.Query().Get("vcopy") == "1"
-	streamSessionID := streamSessionIDFromValues(r.URL.Query())
-	if streamSessionID == "" {
-		streamSessionID = newStreamSessionID()
-	}
-	startOffset := parseStartOffset(r.URL.Query().Get("start"))
+
 	maxHeight := 0
 	if mh := r.URL.Query().Get("mh"); mh != "" {
 		if n, err := strconv.Atoi(mh); err == nil {
 			maxHeight = n
 		}
 	}
-	h.log.Debug("HLSMaster request",
-		"media_id", id,
-		"file_id", hlsFileID,
-		"session", streamSessionID,
-		"start_offset", startOffset,
-		"video_copy", videoCopy,
-		"max_height", maxHeight,
-		"subtitle_si", subtitleStreamIndex,
-	)
-	hlsStart := time.Now()
-	playlistPath, err := h.svc.PrepareHLS(
-		r.Context(),
-		id,
-		streamSessionID,
-		hlsFileID,
-		subtitleStreamIndex,
-		videoCopy,
-		startOffset,
-		maxHeight,
-	)
-	h.log.Debug("PrepareHLS completed",
-		"media_id", id,
-		"session", streamSessionID,
-		"duration", time.Since(hlsStart),
-		"playlist", playlistPath,
-		"error", err,
-	)
+
+	mf, err := h.svc.GetPrimaryFile(r.Context(), id, fileID)
 	if err != nil {
-		// Transcode cancelled (superseded by a seek) — tell hls.js to retry
-		// instead of treating it as a fatal error that triggers an error loop.
-		if r.Context().Err() != nil || strings.Contains(err.Error(), "cancel") {
-			w.Header().Set("Retry-After", "1")
-			respondError(w, http.StatusServiceUnavailable, "transcode restarting")
-			return
-		}
-		respondError(w, http.StatusInternalServerError, "transcoding failed: "+err.Error())
+		respondError(w, http.StatusNotFound, "media file not found")
 		return
 	}
 
-	// For video copy: project remaining segments into a VOD playlist so the
-	// player can seek anywhere without polling. Duration comes from the HLS
-	// cache (populated by PrepareHLS, no extra DB query).
-	if videoCopy {
-		totalDuration := h.svc.HLSCachedDuration(id, streamSessionID, startOffset)
-		if totalDuration > 0 {
-			serveProjectedHLSPlaylist(w, r, playlistPath, totalDuration, startOffset)
-			return
+	audioTracks, _ := h.svc.ListAudioTracksForMediaFile(r.Context(), mf.ID)
+	audioTracks = pickAudioTracks(audioTracks, r.URL.Query().Get("at"))
+
+	key := hls.SessionKey{
+		StreamSessionID:   ss,
+		MediaID:           id,
+		FileID:            mf.ID,
+		SubtitleStreamIdx: subtitleIdx,
+		VideoCopy:         videoCopy,
+		MaxHeight:         maxHeight,
+	}
+
+	sess, err := h.mgr.GetOrCreate(r.Context(), key, mf.FilePath, mf.Duration, audioTracks)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "cannot create session")
+		return
+	}
+
+	startSeg := 0
+	if so := r.URL.Query().Get("start"); so != "" {
+		if n, err := strconv.ParseFloat(so, 64); err == nil && n > 0 {
+			startSeg = int(math.Floor(n / sess.SegLength))
 		}
 	}
-	serveHLSPlaylist(w, r, playlistPath)
+
+	if err := sess.PrimeFromSegment(r.Context(), startSeg); err != nil {
+		h.log.Error("Failed to prime ffmpeg on master m3u8 request", "err", err)
+		respondError(w, http.StatusServiceUnavailable, "transcoder failed to start")
+		return
+	}
+
+	bw := mf.Bitrate
+	if bw == 0 {
+		bw = 4000000
+	}
+
+	masterStr := hls.GenerateMasterPlaylist(audioTracks, sess.Prefix(), bw)
+	masterBytes := rewriteHLSPlaylist([]byte(masterStr), r.URL.Query())
+
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(masterBytes)
 }
 
 // HLSABRMaster serves the adaptive bitrate HLS master playlist.
@@ -288,6 +324,84 @@ func (h *StreamHandler) HLSABRMaster(w http.ResponseWriter, r *http.Request) {
 
 // HLSSegment serves individual HLS .ts segments.
 func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
+	if h.mgr != nil && h.serveV2HLSMedia(w, r) {
+		return
+	}
+	h.serveLegacyHLSSegment(w, r)
+}
+
+// serveV2HLSMedia handles v2 fMP4 playlists and segments. It returns false
+// when the segment filename is not a v2 session filename, allowing legacy
+// MPEG-TS segments from older playlist URLs to continue working.
+func (h *StreamHandler) serveV2HLSMedia(w http.ResponseWriter, r *http.Request) bool {
+	filename := r.PathValue("segment")
+
+	key, kind, segNum, err := hls.ParseFilename(filename)
+	if err != nil {
+		return false
+	}
+
+	mf, err := h.svc.GetPrimaryFile(r.Context(), key.MediaID, key.FileID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "media file not found")
+		return true
+	}
+	audioTracks, _ := h.svc.ListAudioTracksForMediaFile(r.Context(), mf.ID)
+	audioTracks = pickAudioTracks(audioTracks, r.URL.Query().Get("at"))
+
+	sess, err := h.mgr.GetOrCreate(r.Context(), key, mf.FilePath, mf.Duration, audioTracks)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "cannot retrieve session")
+		return true
+	}
+
+	if strings.HasSuffix(filename, ".m3u8") {
+		startSeg := sess.SessionStartSegment()
+		if _, ok := sess.GetExtinfSnapshot(kind)[startSeg]; !ok {
+			_ = sess.RequestSegment(r.Context(), kind, startSeg)
+		}
+
+		snapshot := sess.GetExtinfSnapshot(kind)
+		playlist := hls.RenderMediaPlaylist(hls.RenderOpts{
+			ExtinfMap:       snapshot,
+			SessionStartSeg: startSeg,
+			TotalDuration:   mf.Duration,
+			SegLength:       sess.SegLength,
+			Prefix:          sess.Prefix(),
+			Kind:            kind,
+		})
+
+		playlistBytes := rewriteHLSPlaylist([]byte(playlist), r.URL.Query())
+
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Write(playlistBytes)
+		return true
+	}
+
+	if strings.HasSuffix(filename, ".mp4") && segNum == -1 {
+		if err := sess.RequestInitSegment(r.Context(), kind); err != nil {
+			respondError(w, http.StatusNotFound, err.Error())
+			return true
+		}
+		serveStaticSegment(w, r, filepath.Join(sess.OutputDir, filename))
+		return true
+	}
+
+	if strings.HasSuffix(filename, ".m4s") {
+		if err := sess.RequestSegment(r.Context(), kind, segNum); err != nil {
+			respondError(w, http.StatusNotFound, err.Error())
+			return true
+		}
+		serveStaticSegment(w, r, filepath.Join(sess.OutputDir, filename))
+		return true
+	}
+
+	respondError(w, http.StatusBadRequest, "unsupported extension")
+	return true
+}
+
+func (h *StreamHandler) serveLegacyHLSSegment(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid id")
@@ -347,6 +461,16 @@ func (h *StreamHandler) HLSSegment(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, path)
 }
 
+func serveStaticSegment(w http.ResponseWriter, r *http.Request, path string) {
+	if strings.HasSuffix(path, ".mp4") || strings.HasSuffix(path, ".m4s") {
+		w.Header().Set("Content-Type", "video/mp4")
+	} else {
+		w.Header().Set("Content-Type", "video/mp2t")
+	}
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	http.ServeFile(w, r, path)
+}
+
 // StopTranscode kills active FFmpeg transcode processes for a media item.
 // Called by the client when leaving the watch page or switching media/quality.
 func (h *StreamHandler) StopTranscode(w http.ResponseWriter, r *http.Request) {
@@ -355,7 +479,15 @@ func (h *StreamHandler) StopTranscode(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	killed := h.svc.StopTranscode(id, streamSessionIDFromValues(r.URL.Query()))
+	streamSessionID := streamSessionIDFromValues(r.URL.Query())
+	killed := h.svc.StopTranscode(id, streamSessionID)
+	if h.mgr != nil {
+		if streamSessionID != "" {
+			killed += h.mgr.CancelByStreamSessionID(streamSessionID)
+		} else {
+			killed += h.mgr.CancelByMediaID(id)
+		}
+	}
 	respondJSON(w, http.StatusOK, map[string]int{"killed": killed})
 }
 
@@ -368,6 +500,9 @@ func (h *StreamHandler) StopTranscodeBySession(w http.ResponseWriter, r *http.Re
 		return
 	}
 	killed := h.svc.StopTranscode(0, streamSessionID)
+	if h.mgr != nil {
+		killed += h.mgr.CancelByStreamSessionID(streamSessionID)
+	}
 	respondJSON(w, http.StatusOK, map[string]int{"killed": killed})
 }
 

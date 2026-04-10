@@ -199,19 +199,22 @@ export default function SettingsPage() {
   const setSection = (id: string) => setSearchParams({ section: id })
 
   const sections = ALL_SECTIONS.filter((s) => !s.adminOnly || isAdmin)
+  const isAllowed = sections.some((s) => s.id === activeSection)
+  const actualSection = isAllowed ? activeSection : 'profile'
+
   const groups = sections.reduce<Record<string, Section[]>>((acc, s) => {
     ;(acc[s.group] ??= []).push(s)
     return acc
   }, {})
 
-  const ActiveComponent = SECTION_COMPONENTS[activeSection]
+  const ActiveComponent = SECTION_COMPONENTS[actualSection]
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col md:flex-row">
       {/* Mobile: dropdown navigation */}
       <div className="border-b border-netflix-gray/50 bg-netflix-black/50 p-3 md:hidden">
         <select
-          value={activeSection}
+          value={actualSection}
           onChange={(e) => setSection(e.target.value)}
           className="w-full appearance-none rounded-lg border border-gray-700 bg-[#1a1a1a] px-4 py-3 text-sm font-medium text-white outline-none focus:border-netflix-red"
         >
@@ -243,7 +246,7 @@ export default function SettingsPage() {
                   key={item.id}
                   onClick={() => setSection(item.id)}
                   className={`flex w-full items-center gap-2.5 px-4 py-2 text-[13px] transition-colors ${
-                    activeSection === item.id
+                    actualSection === item.id
                       ? 'bg-netflix-red/90 text-white font-medium'
                       : 'text-gray-400 hover:bg-netflix-gray/40 hover:text-white'
                   }`}

@@ -40,7 +40,7 @@ func (r *MediaRepo) List(ctx context.Context, libraryID int64, mediaType string,
 	}
 	defer rows.Close()
 
-	var items []model.Media
+	items := []model.Media{}
 	for rows.Next() {
 		m, err := scanMedia(rows)
 		if err != nil {
@@ -63,7 +63,7 @@ func (r *MediaRepo) Search(ctx context.Context, query string, limit int) ([]mode
 	}
 	defer rows.Close()
 
-	var items []model.Media
+	items := []model.Media{}
 	for rows.Next() {
 		m, err := scanMedia(rows)
 		if err != nil {
@@ -94,7 +94,7 @@ func (r *MediaRepo) ListWithIMDbID(ctx context.Context) ([]model.Media, error) {
 	}
 	defer rows.Close()
 
-	var items []model.Media
+	items := []model.Media{}
 	for rows.Next() {
 		m, err := scanMedia(rows)
 		if err != nil {
@@ -134,7 +134,7 @@ func (r *MediaRepo) ListWithGenres(ctx context.Context, libraryID int64, mediaTy
 	}
 	defer rows.Close()
 
-	var results []model.MediaListItem
+	results := []model.MediaListItem{}
 	for rows.Next() {
 		var item model.MediaListItem
 		var genreNames sql.NullString
@@ -158,13 +158,16 @@ func (r *MediaRepo) ListFiltered(ctx context.Context, f model.MediaListFilter) (
 	query := `SELECT m.id, m.title, m.sort_title, m.poster_path, m.media_type,
 		m.release_date, m.rating, m.overview,
 		GROUP_CONCAT(DISTINCT g.name) as genre_names,
-		COALESCE(e.series_id, 0) as series_id
+		COALESCE(e.series_id, 0) as series_id,
+		ud.position, mf.duration, ud.completed
 		FROM media m
 		LEFT JOIN media_genres mg ON mg.media_id = m.id
 		LEFT JOIN genres g ON g.id = mg.genre_id
 		LEFT JOIN episodes e ON e.media_id = m.id
+		LEFT JOIN user_data ud ON ud.media_id = m.id AND ud.user_id = ?
+		LEFT JOIN media_files mf ON mf.media_id = m.id AND mf.is_primary = 1
 		WHERE 1=1`
-	args := []any{}
+	args := []any{f.UserID}
 
 	// Library filter
 	if f.LibraryID > 0 {
@@ -234,18 +237,32 @@ func (r *MediaRepo) ListFiltered(ctx context.Context, f model.MediaListFilter) (
 	}
 	defer rows.Close()
 
-	var results []model.MediaListItem
+	results := []model.MediaListItem{}
 	for rows.Next() {
 		var item model.MediaListItem
 		var genreNames sql.NullString
+		var position, duration sql.NullFloat64
+		var completed sql.NullBool
 		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.PosterPath, &item.MediaType,
-			&item.ReleaseDate, &item.Rating, &item.Overview, &genreNames, &item.SeriesID); err != nil {
+			&item.ReleaseDate, &item.Rating, &item.Overview, &genreNames, &item.SeriesID,
+			&position, &duration, &completed); err != nil {
 			return nil, fmt.Errorf("scanning filtered media: %w", err)
 		}
 
 		// Handle NULL or empty genre list
 		if genreNames.Valid && genreNames.String != "" {
 			item.Genres = strings.Split(genreNames.String, ",")
+		}
+
+		// Progress fields
+		if position.Valid {
+			item.Position = &position.Float64
+		}
+		if duration.Valid {
+			item.Duration = &duration.Float64
+		}
+		if completed.Valid {
+			item.Completed = &completed.Bool
 		}
 
 		results = append(results, item)

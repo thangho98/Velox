@@ -8,6 +8,7 @@ import type {
   StreamUrls,
   PlaybackInfo,
   PlaybackInfoRequest,
+  StreamURLResponse,
   PlaybackSubtitleTrack,
   PlaybackAudioTrack,
 } from '../../types'
@@ -35,8 +36,7 @@ export function useStreamUrls(mediaId: number, request: PlaybackInfoRequest = {}
     select: (info: PlaybackInfo): StreamUrls => {
       // Backend now provides three explicit URLs (direct/pretranscode/hls) plus
       // a `prefer` hint. Client owns the actual fallback chain — see WatchPage.
-      // Legacy fallback: derive HLS URL from stream_url if backend didn't include hls_url
-      // (older backend without the v2 fields).
+      // Legacy fallback: derive the v1 HLS URL from stream_url if backend didn't include hls_url.
       let hlsUrl = info.hls_url
       if (!hlsUrl) {
         const isHLS = info.stream_url.includes('/hls/')
@@ -122,10 +122,6 @@ export function usePlaybackInfo(mediaId: number, request: PlaybackInfoRequest = 
 
 export function useStreamUrl(mediaId: number) {
   return useMutation({
-    mutationFn: () =>
-      api.post<{ direct_url: string; hls_url: string; token: string; api_key: string; expires_in: number }>(
-        `/stream/${mediaId}/url`,
-        {},
-      ),
+    mutationFn: () => api.post<StreamURLResponse>(`/stream/${mediaId}/url`, {}),
   })
 }

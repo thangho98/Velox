@@ -74,7 +74,7 @@ type PlaybackInfoResponse struct {
 	// Set when a ready pre-transcode file exists for this media+quality.
 	PreTranscodeURL string `json:"pretranscode_url,omitempty"`
 	// HLSURL is the realtime HLS transcode endpoint, always available as last-resort fallback.
-	HLSURL string `json:"hls_url,omitempty"`
+	HLSURL string `json:"hls_url"`
 	// Prefer is the backend's hint of which URL the client should try FIRST.
 	// Values: "direct" | "pretranscode" | "hls". Client owns the actual fallback chain.
 	Prefer             string              `json:"prefer,omitempty"`

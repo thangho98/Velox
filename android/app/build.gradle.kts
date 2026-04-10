@@ -1,0 +1,136 @@
+import java.util.Properties
+
+plugins {
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.hilt.android)
+}
+
+android {
+    namespace = "com.velox.app"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.velox.app"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0.0"
+
+        vectorDrawables {
+            useSupportLibrary = true
+        }
+
+        // Read server URL from local.properties
+        val localProperties = Properties()
+        val localPropertiesFile = rootProject.file("../local.properties")
+        if (localPropertiesFile.exists()) {
+            localProperties.load(localPropertiesFile.inputStream())
+        }
+        val serverUrl = localProperties.getProperty("server.url") ?: "http://192.168.1.1:8098/api/"
+
+        buildConfigField("String", "BASE_URL", "\"$serverUrl\"")
+    }
+
+    buildTypes {
+        debug {
+            isDebuggable = true
+            applicationIdSuffix = ".debug"
+        }
+        release {
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+        )
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+dependencies {
+    // Core Android
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.activity.compose)
+
+    // Compose
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.ui)
+    implementation(libs.androidx.ui.graphics)
+    implementation(libs.androidx.ui.tooling.preview)
+    implementation(libs.androidx.material3)
+    implementation(libs.androidx.material.icons.extended)
+    debugImplementation(libs.androidx.ui.tooling)
+    debugImplementation(libs.androidx.ui.test.manifest)
+
+    // Navigation
+    implementation(libs.androidx.navigation.compose)
+
+    // Hilt
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.android.compiler)
+    implementation(libs.hilt.navigation.compose)
+
+    // Network
+    implementation(libs.retrofit)
+    implementation(libs.okhttp)
+    implementation(libs.retrofit.kotlinx.serialization.converter)
+    implementation(libs.okhttp.logging)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
+
+    // Image loading
+    implementation(libs.coil.compose)
+
+    // Media3 ExoPlayer
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.session)
+
+    // DataStore
+    implementation(libs.datastore.preferences)
+
+    // WebView for YouTube
+    implementation(libs.webkit)
+
+    // Google Cast
+    implementation(libs.cast.framework)
+
+    // Testing
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation(libs.androidx.runner)
+}

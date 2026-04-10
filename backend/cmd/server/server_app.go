@@ -20,7 +20,6 @@ import (
 	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/service"
 	"github.com/thawng/velox/internal/storage"
-	"github.com/thawng/velox/internal/streamv2"
 	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/internal/trickplay"
 	"github.com/thawng/velox/internal/websocket"
@@ -71,6 +70,7 @@ type serverRepos struct {
 	notification       *repository.NotificationRepo
 	appSettings        *repository.AppSettingsRepo
 	pretranscodeStatus *repository.PretranscodeRepo
+	appVersion         *repository.AppVersionRepo
 }
 
 type serverServices struct {
@@ -88,7 +88,7 @@ type serverServices struct {
 	cinema         *service.CinemaService
 	series         *service.SeriesService
 	stream         *service.StreamService
-	streamV2       *streamv2.Manager
+	streamManager  *transcoder.Manager
 	auth           *service.AuthService
 	userData       *service.UserDataService
 	subtitle       *service.SubtitleService
@@ -108,7 +108,6 @@ type serverHandlers struct {
 	library        *handler.LibraryHandler
 	media          *handler.MediaHandler
 	stream         *handler.StreamHandler
-	streamV2       *handler.StreamV2Handler
 	streamURL      *handler.StreamURLHandler
 	setup          *handler.SetupHandler
 	auth           *handler.AuthHandler
@@ -134,6 +133,7 @@ type serverHandlers struct {
 	pretranscode   *handler.PretranscodeHandler
 	ws             *handler.WebSocketHandler
 	scheduler      *handler.SchedulerHandler
+	appVersion     *handler.AppVersionHandler
 }
 
 func newServerApp(cfg *config.Config) (*serverApp, error) {
@@ -231,6 +231,7 @@ func newServerRepos(db *sql.DB) serverRepos {
 		notification:       repository.NewNotificationRepo(db),
 		appSettings:        repository.NewAppSettingsRepo(db),
 		pretranscodeStatus: repository.NewPretranscodeRepo(db),
+		appVersion:         repository.NewAppVersionRepo(db),
 	}
 }
 
@@ -272,7 +273,7 @@ func (app *serverApp) initServices() error {
 	app.services.stream = service.NewStreamService(repos.mediaFile, repos.audioTrack, app.services.transcoder)
 
 	outDir := filepath.Join(app.cfg.DataDir, "hls")
-	app.services.streamV2 = streamv2.NewManager(outDir, app.hwAccel)
+	app.services.streamManager = transcoder.NewManager(outDir, app.hwAccel)
 
 	app.services.auth = service.NewAuthService(repos.user, repos.refreshToken, repos.session, app.jwtManager, app.db)
 	app.services.userData = service.NewUserDataService(repos.userData)
@@ -364,8 +365,7 @@ func (app *serverApp) initHandlers() {
 
 	app.handlers.library = handler.NewLibraryHandler(services.library)
 	app.handlers.media = handler.NewMediaHandler(services.media)
-	app.handlers.stream = handler.NewStreamHandler(services.stream)
-	app.handlers.streamV2 = handler.NewStreamV2Handler(services.stream, services.streamV2)
+	app.handlers.stream = handler.NewStreamHandler(services.stream, services.streamManager)
 	app.handlers.streamURL = handler.NewStreamURLHandler(app.apiKeyStore)
 	app.handlers.setup = handler.NewSetupHandler(services.setup)
 	app.handlers.auth = handler.NewAuthHandler(services.auth)
@@ -400,6 +400,7 @@ func (app *serverApp) initHandlers() {
 	app.handlers.pretranscode = handler.NewPretranscodeHandler(services.pretranscode)
 	app.handlers.ws = handler.NewWebSocketHandler(app.wsHub, app.jwtManager, slog.Default())
 	app.handlers.scheduler = handler.NewSchedulerHandler(services.scheduler)
+	app.handlers.appVersion = handler.NewAppVersionHandler(app.repos.appVersion)
 
 	app.handlers.auth.SetActivityService(services.activity)
 	app.handlers.library.SetActivityService(services.activity)

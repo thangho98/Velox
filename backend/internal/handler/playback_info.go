@@ -324,7 +324,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	// ?fid= is always included so stream handlers serve the exact file used for this decision.
 	// Other user selections (audio track, subtitle) are forwarded as query params.
 	baseURL := "/api/stream/" + strconv.FormatInt(mediaID, 10)
-	v2BaseURL := "/api/stream/v2/" + strconv.FormatInt(mediaID, 10)
+	hlsURL := baseURL + "/hls/master.m3u8"
 	apiKey := ""
 	if h.apiKeyStore != nil {
 		apiKey = h.apiKeyStore.Generate(userID, isAdmin)
@@ -376,7 +376,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	}
 
 	// 3. hls_url — realtime HLS transcode endpoint, always available as last-resort.
-	resp.HLSURL = buildURLWithQuery(v2BaseURL+"/hls/master.m3u8", hlsQuery)
+	resp.HLSURL = buildURLWithQuery(hlsURL, hlsQuery)
 
 	// === Pick the legacy stream_url + Prefer hint based on backend decision ===
 	switch decision.Method {
@@ -386,7 +386,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		if !slices.Contains(clientCaps.Containers, "mp4") && slices.Contains(clientCaps.Containers, "hls") {
 			query := cloneValues(baseQuery)
 			query.Set("vcopy", "1")
-			resp.StreamURL = buildURLWithQuery(v2BaseURL+"/hls/master.m3u8", query)
+			resp.StreamURL = buildURLWithQuery(hlsURL, query)
 			resp.Prefer = "hls"
 		} else {
 			resp.StreamURL = buildURLWithQuery(baseURL, cloneValues(baseQuery))
@@ -407,7 +407,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		}
 		resp.Prefer = "direct"
 	case playback.MethodTranscodeAudio, playback.MethodFullTranscode:
-		resp.StreamURL = buildURLWithQuery(v2BaseURL+"/hls/master.m3u8", hlsQuery)
+		resp.StreamURL = buildURLWithQuery(hlsURL, hlsQuery)
 		resp.Prefer = "hls"
 		// Session-scoped playback must remain isolated per viewer. The current
 		// ABR cache is shared by mediaID+fileID, so advertising abr_url here
@@ -417,7 +417,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 			go h.streamSvc.RemuxToPretranscode(context.Background(), primaryFile.ID, mediaID, clientCaps.MaxHeight)
 		}
 	default:
-		resp.StreamURL = buildURLWithQuery(v2BaseURL+"/hls/master.m3u8", hlsQuery)
+		resp.StreamURL = buildURLWithQuery(hlsURL, hlsQuery)
 		resp.Prefer = "hls"
 	}
 

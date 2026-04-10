@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 const (
@@ -227,7 +229,7 @@ func (g *Generator) extractFrameAt(inputPath string, timestampSec int, outputPat
 	args = append(args, "-vf", vf)
 	args = append(args, "-frames:v", "1", "-q:v", "5", "-y", outputPath)
 
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(ffmpegbin.FFmpeg(), args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -263,7 +265,7 @@ func (g *Generator) buildFrameFilter(isHDR bool) string {
 // isHDRFile returns true if the input file uses HDR color transfer (PQ/SMPTE2084)
 // or BT.2020 color primaries.
 func isHDRFile(inputPath string) bool {
-	cmd := exec.Command("ffprobe",
+	cmd := exec.Command(ffmpegbin.FFprobe(),
 		"-v", "quiet",
 		"-select_streams", "v:0",
 		"-show_entries", "stream=color_transfer,color_primaries",
@@ -353,7 +355,7 @@ func (g *Generator) tileFrames(frames []string, outputPath string) error {
 		"-q:v", "5", "-y", outputPath,
 	}
 
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(ffmpegbin.FFmpeg(), args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

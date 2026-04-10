@@ -3,9 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/thawng/velox/internal/auth"
+	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/service"
 )
 
@@ -39,6 +41,7 @@ type userInfo struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	IsAdmin     bool   `json:"is_admin"`
+	ProfilePath string `json:"profile_path,omitempty"`
 }
 
 // Login validates credentials and returns tokens
@@ -78,12 +81,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		ExpiresIn:    900, // 15 minutes
-		User: userInfo{
-			ID:          user.ID,
-			Username:    user.Username,
-			DisplayName: user.DisplayName,
-			IsAdmin:     user.IsAdmin,
-		},
+		User:         newUserInfo(user),
 	})
 }
 
@@ -189,7 +187,18 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		Username:    user.Username,
 		DisplayName: user.DisplayName,
 		IsAdmin:     isAdmin,
+		ProfilePath: user.AvatarPath,
 	})
+}
+
+func newUserInfo(user *model.User) userInfo {
+	return userInfo{
+		ID:          user.ID,
+		Username:    user.Username,
+		DisplayName: user.DisplayName,
+		IsAdmin:     user.IsAdmin,
+		ProfilePath: user.AvatarPath,
+	}
 }
 
 // Logout invalidates the refresh token
@@ -197,18 +206,42 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 		respondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if req.RefreshToken == "" {
-		respondError(w, http.StatusBadRequest, "refresh_token is required")
+	if req.RefreshToken != "" {
+		if err := h.authSvc.Logout(r.Context(), req.RefreshToken); err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]string{"message": "logged out"})
 		return
 	}
 
-	if err := h.authSvc.Logout(r.Context(), req.RefreshToken); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		respondError(w, http.StatusBadRequest, "refresh_token is required when no access token is provided")
+		return
+	}
+
+	sessionID := auth.SessionIDFromContext(r.Context())
+	if sessionID == 0 {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.authSvc.RevokeSession(r.Context(), sessionID, userID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrNotFound):
+			respondError(w, http.StatusNotFound, "session not found")
+		case errors.Is(err, service.ErrNotOwner):
+			respondError(w, http.StatusForbidden, "session does not belong to you")
+		default:
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 

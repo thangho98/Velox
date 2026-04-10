@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 // SilenceRange represents a detected silence period.
@@ -112,7 +113,7 @@ func (d *BlackFrameDetector) Detect(ctx context.Context, fileID int64, filePath 
 
 // detectBlackFrames runs FFmpeg blackframe filter and returns timestamps of black frames.
 func detectBlackFrames(ctx context.Context, filePath string, startSec, durationSec float64) ([]float64, error) {
-	cmd := exec.CommandContext(ctx, "ffmpeg",
+	cmd := exec.CommandContext(ctx, ffmpegbin.FFmpeg(),
 		"-ss", strconv.FormatFloat(startSec, 'f', 2, 64),
 		"-i", filePath,
 		"-t", strconv.FormatFloat(durationSec, 'f', 2, 64),
@@ -134,7 +135,7 @@ func detectBlackFrames(ctx context.Context, filePath string, startSec, durationS
 
 // detectSilence runs FFmpeg silencedetect filter and returns silence ranges.
 func detectSilence(ctx context.Context, filePath string, startSec, durationSec float64) ([]SilenceRange, error) {
-	cmd := exec.CommandContext(ctx, "ffmpeg",
+	cmd := exec.CommandContext(ctx, ffmpegbin.FFmpeg(),
 		"-ss", strconv.FormatFloat(startSec, 'f', 2, 64),
 		"-i", filePath,
 		"-t", strconv.FormatFloat(durationSec, 'f', 2, 64),

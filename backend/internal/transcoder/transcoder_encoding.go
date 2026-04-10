@@ -6,6 +6,8 @@ import (
 	"log"
 	"os/exec"
 	"strings"
+
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 // hasSubtitlesFilter is set once at init — true when FFmpeg was built with libass.
@@ -17,7 +19,7 @@ func SupportsSubtitleBurnIn() bool {
 }
 
 func detectSubtitlesFilter() bool {
-	out, err := exec.Command("ffmpeg", "-filters").CombinedOutput()
+	out, err := exec.Command(ffmpegbin.FFmpeg(), "-filters").CombinedOutput()
 	if err != nil {
 		return false
 	}
@@ -220,7 +222,7 @@ func escapeFFmpegSubtitlePath(path string) string {
 // isHDRFile returns true if the input file's primary video stream uses HDR
 // color transfer (PQ/SMPTE2084) or BT.2020 color primaries.
 func isHDRFile(inputPath string) bool {
-	cmd := exec.Command("ffprobe",
+	cmd := exec.Command(ffmpegbin.FFprobe(),
 		"-v", "quiet",
 		"-select_streams", "v:0",
 		"-show_entries", "stream=color_transfer,color_primaries",

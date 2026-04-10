@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LuSave, LuCheck, LuRefreshCw } from 'react-icons/lu'
+import { LuSave, LuCheck, LuRefreshCw, LuEye, LuEyeOff } from 'react-icons/lu'
 import {
   useTMDbSettings,
   useUpdateTMDbSettings,
@@ -33,12 +33,16 @@ export function MetadataSection() {
 
   const [tmdbEdited, setTmdbEdited] = useState<string | null>(null)
   const [tmdbSaved, setTmdbSaved] = useState(false)
+  const [showTmdb, setShowTmdb] = useState(false)
   const [omdbEdited, setOmdbEdited] = useState<string | null>(null)
   const [omdbSaved, setOmdbSaved] = useState(false)
+  const [showOmdb, setShowOmdb] = useState(false)
   const [tvdbEdited, setTvdbEdited] = useState<string | null>(null)
   const [tvdbSaved, setTvdbSaved] = useState(false)
+  const [showTvdb, setShowTvdb] = useState(false)
   const [fanartEdited, setFanartEdited] = useState<string | null>(null)
   const [fanartSaved, setFanartSaved] = useState(false)
+  const [showFanart, setShowFanart] = useState(false)
 
   const tmdbKey = tmdbEdited ?? tmdbSettings?.api_key ?? ''
   const omdbKey = omdbEdited ?? omdbSettings?.api_key ?? ''
@@ -154,17 +158,26 @@ export function MetadataSection() {
                 ? t('providers.tmdb.optional')
                 : t('providers.tmdb.required')}
             </p>
-            <input
-              type="text"
-              value={tmdbKey}
-              onChange={(e) => setTmdbEdited(e.target.value)}
-              placeholder={
-                tmdbSettings?.has_builtin
-                  ? t('providers.tmdb.placeholderOptional')
-                  : t('providers.tmdb.placeholderRequired')
-              }
-              className={inputClass}
-            />
+            <div className="relative">
+              <input
+                type={showTmdb ? 'text' : 'password'}
+                value={tmdbKey}
+                onChange={(e) => setTmdbEdited(e.target.value)}
+                placeholder={
+                  tmdbSettings?.has_builtin
+                    ? t('providers.tmdb.placeholderOptional')
+                    : t('providers.tmdb.placeholderRequired')
+                }
+                className={`${inputClass} pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowTmdb(!showTmdb)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              >
+                {showTmdb ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+              </button>
+            </div>
           </div>
 
           <div className="pt-1">
@@ -229,13 +242,22 @@ export function MetadataSection() {
                 ? t('providers.omdb.optional')
                 : t('providers.omdb.required')}
             </p>
-            <input
-              type="text"
-              value={omdbKey}
-              onChange={(e) => setOmdbEdited(e.target.value)}
-              placeholder={t('providers.omdb.placeholder')}
-              className={inputClass}
-            />
+            <div className="relative">
+              <input
+                type={showOmdb ? 'text' : 'password'}
+                value={omdbKey}
+                onChange={(e) => setOmdbEdited(e.target.value)}
+                placeholder={t('providers.omdb.placeholder')}
+                className={`${inputClass} pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowOmdb(!showOmdb)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              >
+                {showOmdb ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+              </button>
+            </div>
           </div>
 
           <div className="pt-1">
@@ -300,13 +322,22 @@ export function MetadataSection() {
                 ? t('providers.tvdb.optional')
                 : t('providers.tvdb.required')}
             </p>
-            <input
-              type="text"
-              value={tvdbKey}
-              onChange={(e) => setTvdbEdited(e.target.value)}
-              placeholder={t('providers.tvdb.placeholder')}
-              className={inputClass}
-            />
+            <div className="relative">
+              <input
+                type={showTvdb ? 'text' : 'password'}
+                value={tvdbKey}
+                onChange={(e) => setTvdbEdited(e.target.value)}
+                placeholder={t('providers.tvdb.placeholder')}
+                className={`${inputClass} pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowTvdb(!showTvdb)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              >
+                {showTvdb ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+              </button>
+            </div>
           </div>
 
           <div className="pt-1">
@@ -371,13 +402,22 @@ export function MetadataSection() {
                 ? t('providers.fanart.optional')
                 : t('providers.fanart.required')}
             </p>
-            <input
-              type="text"
-              value={fanartKey}
-              onChange={(e) => setFanartEdited(e.target.value)}
-              placeholder={t('providers.fanart.placeholder')}
-              className={inputClass}
-            />
+            <div className="relative">
+              <input
+                type={showFanart ? 'text' : 'password'}
+                value={fanartKey}
+                onChange={(e) => setFanartEdited(e.target.value)}
+                placeholder={t('providers.fanart.placeholder')}
+                className={`${inputClass} pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowFanart(!showFanart)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              >
+                {showFanart ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+              </button>
+            </div>
           </div>
 
           <div className="pt-1">

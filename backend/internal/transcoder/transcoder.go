@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/thawng/velox/internal/logger"
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 // transcodeJob tracks a background FFmpeg transcode.
@@ -524,7 +525,7 @@ func (t *Transcoder) RemuxSelectedAudioToWriter(inputPath string, audioStreamInd
 		"pipe:1",
 	)
 
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(ffmpegbin.FFmpeg(), args...)
 	cmd.Stdout = w
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

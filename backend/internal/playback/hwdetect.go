@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 // hwAccelPriority defines the preference order for hardware accelerators.
@@ -64,7 +66,7 @@ func detectFFmpegCapabilities() (ffmpegCapabilities, bool) {
 }
 
 func runFFmpegProbe(args ...string) (string, bool) {
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(ffmpegbin.FFmpeg(), args...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -146,7 +148,7 @@ func hwAccelProbeOK(accel string) bool {
 // Returns false if the driver reports "No usable encoding profile found"
 // or any other encoder initialisation error.
 func vaAPIEncodeProbe() bool {
-	cmd := exec.Command("ffmpeg",
+	cmd := exec.Command(ffmpegbin.FFmpeg(),
 		"-hide_banner", "-loglevel", "error",
 		"-f", "lavfi", "-i", "color=black:s=64x64:d=0.1",
 		"-vf", "format=nv12,hwupload",
@@ -162,7 +164,7 @@ func vaAPIEncodeProbe() bool {
 // AMF is encoder-based, so we only need to prove that FFmpeg can initialize
 // the encoder successfully on this host.
 func amfEncodeProbe() bool {
-	cmd := exec.Command("ffmpeg",
+	cmd := exec.Command(ffmpegbin.FFmpeg(),
 		"-hide_banner", "-loglevel", "error",
 		"-f", "lavfi", "-i", "color=black:s=64x64:d=0.1",
 		"-c:v", "h264_amf",

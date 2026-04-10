@@ -10,6 +10,7 @@ import (
 
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 // AdminService provides admin dashboard functionality.
@@ -94,7 +95,7 @@ func (s *AdminService) GetLibraryStats(ctx context.Context) ([]model.LibraryStat
 }
 
 func detectFFmpegVersion() string {
-	out, err := exec.Command("ffmpeg", "-version").Output()
+	out, err := exec.Command(ffmpegbin.FFmpeg(), "-version").Output()
 	if err != nil {
 		return "not found"
 	}

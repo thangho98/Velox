@@ -1,0 +1,38 @@
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/ActionMenu.kt:74:79 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/GestureFeedbackOverlay.kt:86:68 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/GestureFeedbackOverlay.kt:86:100 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:488:13 Unresolved reference 'path'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:494:15 Unresolved reference 'close'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:496:17 Unresolved reference 'moveTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:497:17 Unresolved reference 'lineTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:499:17 Unresolved reference 'moveTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:500:17 Unresolved reference 'lineTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:502:17 Unresolved reference 'moveTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:503:17 Unresolved reference 'lineTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:505:17 Unresolved reference 'moveTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:506:17 Unresolved reference 'lineTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:508:17 Unresolved reference 'moveTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:509:17 Unresolved reference 'lineTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:510:17 Unresolved reference 'arcToRelative'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:511:17 Unresolved reference 'lineTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:512:17 Unresolved reference 'arcToRelative'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:513:17 Unresolved reference 'lineTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:514:17 Unresolved reference 'arcToRelative'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:515:17 Unresolved reference 'lineTo'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:516:17 Unresolved reference 'arcToRelative'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/LucideIcons.kt:517:17 Unresolved reference 'close'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/SeekFeedbackOverlay.kt:76:32 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/SeekFeedbackOverlay.kt:77:32 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/SeekFeedbackOverlay.kt:78:32 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/SubtitleMenuPopup.kt:117:40 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/SubtitleMenuPopup.kt:152:39 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/SubtitleSearchModal.kt:225:33 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/VeloxBottomTabBar.kt:27:54 Unresolved reference 'Film'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/VeloxBottomTabBar.kt:29:54 Unresolved reference 'FolderOpen'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/VeloxBottomTabBar.kt:30:60 Unresolved reference 'Heart'.
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/VideoPlayer.kt:592:37 None of the following candidates is applicable:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/VideoPlayer.kt:884:56 None of the following candidates is applicable:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/VideoPlayer.kt:885:74 None of the following candidates is applicable:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/VideoPlayer.kt:885:106 None of the following candidates is applicable:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/components/VideoPlayer.kt:1149:70 None of the following candidates is applicable:
+e: file:///Users/thawng/Desktop/source/go/Velox/android-native/app/src/main/java/com/velox/app/presentation/ui/screens/detail/MediaDetailScreen.kt:489:79 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:

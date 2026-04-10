@@ -6,11 +6,19 @@ export interface StreamUrls {
   /** Pre-encoded MP4 endpoint (no pm), only set when a ready pre-transcode file exists. */
   pretranscode?: string
   /** Realtime HLS transcode endpoint, always present. */
-  hls?: string
+  hls: string
   /** Backend hint: which URL to try first. Defaults to 'direct'. */
   prefer?: 'direct' | 'pretranscode' | 'hls'
-  primary_file_id?: number
-  stream_session_id?: string
+  primary_file_id: number
+  stream_session_id: string
+}
+
+export interface StreamURLResponse {
+  direct_url: string
+  hls_url: string
+  stream_session_id: string
+  api_key: string
+  expires_in: number
 }
 
 export interface SubtitleTrack {
@@ -96,15 +104,15 @@ export type PlaybackPrefer = 'direct' | 'pretranscode' | 'hls'
 export interface PlaybackInfo {
   media_id: number
   primary_file_id: number
-  stream_session_id?: string
+  stream_session_id: string
   method: string
   stream_url: string
-  direct_url?: string
+  direct_url: string
   /** Same media_id endpoint without pm=, so backend's pretranscode lookup runs.
    *  Only present when a ready pre-transcode file exists. */
   pretranscode_url?: string
   /** Realtime HLS transcode endpoint, always present as last-resort fallback. */
-  hls_url?: string
+  hls_url: string
   /** Backend hint of which URL to try first. Client owns the actual fallback chain. */
   prefer?: PlaybackPrefer
   abr_url?: string

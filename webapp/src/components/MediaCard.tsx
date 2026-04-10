@@ -80,7 +80,9 @@ export function MediaCard({
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     }
   }, [isHovered, id, trailerKey, cinemaEnabled, isSeries, seriesId])
-  const { data: fetchedProgress } = useProgress(!isSeries && showProgress ? id : 0)
+  const { data: fetchedProgress } = useProgress(
+    !isSeries && showProgress && externalProgress === undefined ? id : 0,
+  )
 
   // Force no progress/favorite for series cards
   const effectiveShowProgress = isSeries ? false : showProgress
@@ -101,9 +103,12 @@ export function MediaCard({
       }
     : null
   const hasProgress = progress && progress.position > 0 && !progress.completed
-  const progressPercent = progress?.duration
-    ? Math.min(100, (progress.position / progress.duration) * 100)
-    : 0
+  const isCompleted = progress?.completed
+  const progressPercent = isCompleted
+    ? 100
+    : progress?.duration
+      ? Math.min(100, (progress.position / progress.duration) * 100)
+      : 0
 
   const posterSrc = tmdbImage(posterPath, aspectRatio === 'poster' ? 'w500' : 'w780')
   const aspectClass = aspectRatio === 'poster' ? 'aspect-[2/3]' : 'aspect-video'
@@ -191,7 +196,7 @@ export function MediaCard({
           </div>
 
           {/* Progress Bar */}
-          {effectiveShowProgress && hasProgress && (
+          {effectiveShowProgress && (hasProgress || isCompleted) && (
             <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-2">
               <div className="h-1 rounded-full bg-gray-600">
                 <div

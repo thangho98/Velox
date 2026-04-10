@@ -59,7 +59,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg \
     ca-certificates \
-    ffmpeg \
     python3 \
     python3-pip \
     python3-venv \

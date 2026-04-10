@@ -41,20 +41,20 @@ func RequireAuth(jwtManager *auth.JWTManager, apiKeyStore *auth.APIKeyStore, ski
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if path should be skipped (exact match)
 			if skipMap[r.URL.Path] {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, withOptionalJWTContext(r, jwtManager))
 				return
 			}
 			// Check prefix matches
 			for _, prefix := range skipPrefixes {
 				if strings.HasPrefix(r.URL.Path, prefix) {
-					next.ServeHTTP(w, r)
+					next.ServeHTTP(w, withOptionalJWTContext(r, jwtManager))
 					return
 				}
 			}
 			// Check glob patterns (e.g. "/api/media/*/trickplay/*")
 			for _, pattern := range skipPatterns {
 				if matched, _ := path.Match(pattern, r.URL.Path); matched {
-					next.ServeHTTP(w, r)
+					next.ServeHTTP(w, withOptionalJWTContext(r, jwtManager))
 					return
 				}
 			}
@@ -89,6 +89,21 @@ func RequireAuth(jwtManager *auth.JWTManager, apiKeyStore *auth.APIKeyStore, ski
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func withOptionalJWTContext(r *http.Request, jwtManager *auth.JWTManager) *http.Request {
+	token := extractToken(r)
+	if token == "" {
+		return r
+	}
+
+	claims, err := jwtManager.ValidateToken(token)
+	if err != nil {
+		return r
+	}
+
+	ctx := auth.ContextWithSession(r.Context(), claims.UserID, claims.IsAdmin, claims.SessionID)
+	return r.WithContext(ctx)
 }
 
 // RequireAdmin returns a middleware that requires admin access

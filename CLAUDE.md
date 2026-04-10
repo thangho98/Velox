@@ -5,6 +5,7 @@ Velox is a self-hosted home media server (like Jellyfin/Emby but lighter).
 - **Backend:** Go 1.26 + stdlib `net/http` (Go 1.22+ routing) + SQLite (WAL mode)
 - **Frontend:** React 19 + TypeScript + Vite 8 + TailwindCSS 4 + React Compiler
 - **Transcoding:** FFmpeg 8.0 / FFprobe
+- **Android App:** Kotlin + Jetpack Compose + Dagger Hilt + Media3 ExoPlayer
 
 ## Project Structure
 ```
@@ -32,6 +33,15 @@ webapp/
     api/               # API client functions
     types/             # Shared TypeScript types
     lib/               # Utilities
+
+android/               # Native Android application
+  app/src/main/
+    java/.../velox/app/
+      data/            # API clients, repositories, DTOs
+      domain/          # Core models, interfaces
+      presentation/    # Jetpack Compose UI, ViewModels, Navigation
+      service/         # Foreground Services (Player Service, MediaSession)
+      ui/theme/        # Netflix-inspired Compose Theme definitions
 ```
 
 ## Architecture Decisions
@@ -112,6 +122,28 @@ npm run build        # TypeScript check + Vite build
 npm run lint         # ESLint
 npm run format       # Prettier format src/
 npm run format:check # Prettier check (CI)
+```
+
+## Android Rules (Kotlin/Jetpack Compose)
+
+### Code Style & Architecture
+- **Architecture:** MVVM (Model-View-ViewModel) with Clean Architecture principles.
+- **UI:** 100% Jetpack Compose. No XML layouts unless strictly required.
+- **Dependency Injection:** Dagger Hilt.
+- **Async Execution:** Kotlin Coroutines and StateFlow for state management.
+- **Networking:** Retrofit / HttpURLConnection (or native implementations) wrapped in repository layer.
+- **Media Player:** AndroidX Media3 (ExoPlayer) wrapped in a decoupled service.
+
+### Formatting & Linting
+- Follow standard Kotlin style guide.
+- Break up large Composables into smaller, reusable pieces.
+- Define colors and themes globally in `ui/theme/`.
+
+### Build & Run
+```sh
+cd android
+./gradlew build          # Compile app
+./gradlew installDebug   # Install debug APK to connected device/emulator
 ```
 
 ## Git Hooks (Husky)

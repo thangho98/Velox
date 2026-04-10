@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/thawng/velox/internal/model"
+	"github.com/thawng/velox/pkg/ffmpegbin"
 	"github.com/thawng/velox/pkg/ffprobe"
 )
 
@@ -420,10 +421,10 @@ func (s *PretranscodeService) runFFmpeg(ctx context.Context, inputPath, outputPa
 	return nil
 }
 
-// niceFFmpeg wraps an FFmpeg command with nice -n 19 for lowest CPU priority.
+// niceFFmpeg wraps jellyfin-ffmpeg with nice -n 19 for lowest CPU priority.
 // Pretranscode runs in background — it should never starve NAS or realtime transcode.
 func niceFFmpeg(ctx context.Context, args ...string) *exec.Cmd {
-	return exec.CommandContext(ctx, "nice", append([]string{"-n", "19", "ffmpeg"}, args...)...)
+	return exec.CommandContext(ctx, "nice", append([]string{"-n", "19", ffmpegbin.FFmpeg()}, args...)...)
 }
 
 // diskFreeSpace returns free bytes on the filesystem containing path.

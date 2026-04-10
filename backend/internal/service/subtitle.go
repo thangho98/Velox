@@ -14,6 +14,7 @@ import (
 
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/pkg/ffmpegbin"
 	subtitlepkg "github.com/thawng/velox/pkg/subtitle"
 	"github.com/thawng/velox/pkg/translate"
 )
@@ -225,8 +226,8 @@ func (s *SubtitleService) TranslateSubtitle(ctx context.Context, subtitleID int6
 			return nil, fmt.Errorf("creating extract dir: %w", err)
 		}
 		extractPath := filepath.Join(extractDir, fmt.Sprintf("extracted_%d.srt", source.StreamIndex))
-		// Extract via FFmpeg as SRT (not VTT, since our translator expects SRT)
-		cmd := exec.Command("ffmpeg", "-y",
+		// Extract via jellyfin-ffmpeg as SRT (not VTT, since our translator expects SRT)
+		cmd := exec.Command(ffmpegbin.FFmpeg(), "-y",
 			"-i", mf.FilePath,
 			"-map", fmt.Sprintf("0:%d", source.StreamIndex),
 			"-c:s", "srt",

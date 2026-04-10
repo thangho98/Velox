@@ -84,6 +84,9 @@ export interface MediaListItem {
   rating?: number
   overview?: string
   series_id?: number
+  position?: number
+  duration?: number
+  completed?: boolean
 }
 
 export interface MediaListParams {

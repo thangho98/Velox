@@ -32,11 +32,14 @@ func (r *UserDataRepo) GetProgress(ctx context.Context, userID, mediaID int64) (
 	var lastPlayedAt sql.NullString
 
 	err := r.db.QueryRowContext(ctx, `
-		SELECT user_id, media_id, position, completed, is_favorite, rating, play_count, last_played_at, updated_at
-		FROM user_data
-		WHERE user_id = ? AND media_id = ?`,
+		SELECT ud.user_id, ud.media_id, ud.position, ud.completed, ud.is_favorite, ud.rating, ud.play_count, ud.last_played_at, ud.updated_at,
+		       COALESCE(mf.duration, 0)
+		FROM user_data ud
+		LEFT JOIN media m ON m.id = ud.media_id
+		LEFT JOIN media_files mf ON mf.media_id = m.id AND mf.is_primary = 1
+		WHERE ud.user_id = ? AND ud.media_id = ?`,
 		userID, mediaID).
-		Scan(&d.UserID, &d.MediaID, &d.Position, &completed, &isFavorite, &rating, &d.PlayCount, &lastPlayedAt, &d.UpdatedAt)
+		Scan(&d.UserID, &d.MediaID, &d.Position, &completed, &isFavorite, &rating, &d.PlayCount, &lastPlayedAt, &d.UpdatedAt, &d.MediaDuration)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -134,7 +137,7 @@ func (r *UserDataRepo) ListFavorites(ctx context.Context, userID int64, limit, o
 	}
 	defer rows.Close()
 
-	var items []*model.UserData
+	items := []*model.UserData{}
 	for rows.Next() {
 		item := &model.UserData{}
 		var completed, isFavorite int
@@ -175,7 +178,7 @@ func (r *UserDataRepo) ListRecentlyWatched(ctx context.Context, userID int64, li
 	}
 	defer rows.Close()
 
-	var items []*model.UserData
+	items := []*model.UserData{}
 	for rows.Next() {
 		item := &model.UserData{}
 		var completed, isFavorite int
@@ -236,7 +239,7 @@ func (r *UserDataRepo) DismissProgress(ctx context.Context, userID, mediaID int6
 func (r *UserDataRepo) ListContinueWatching(ctx context.Context, userID int64, limit int) ([]*model.ContinueWatchingItem, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT ud.media_id, COALESCE(e.series_id, 0) as series_id, ud.position, ud.completed, ud.last_played_at,
-			   m.title, m.poster_path, m.backdrop_path, m.media_type,
+			   m.title, m.poster_path, COALESCE(e.still_path, m.backdrop_path) as backdrop_path, m.media_type,
 			   COALESCE(mf.duration, 0) as media_duration,
 			   e.episode_number,
 			   s.title as series_title,
@@ -258,7 +261,7 @@ func (r *UserDataRepo) ListContinueWatching(ctx context.Context, userID int64, l
 	}
 	defer rows.Close()
 
-	var items []*model.ContinueWatchingItem
+	items := []*model.ContinueWatchingItem{}
 	for rows.Next() {
 		item := &model.ContinueWatchingItem{}
 		var completed int
@@ -341,7 +344,7 @@ func (r *UserDataRepo) ListNextUp(ctx context.Context, userID int64, limit int) 
 	}
 	defer rows.Close()
 
-	var items []*model.NextUpItem
+	items := []*model.NextUpItem{}
 	for rows.Next() {
 		item := &model.NextUpItem{}
 		var lastWatched sql.NullString
