@@ -35,6 +35,15 @@ android {
         buildConfigField("String", "BASE_URL", "\"$serverUrl\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../keystore/velox-release.keystore")
+            storePassword = "velox2026"
+            keyAlias = "velox"
+            keyPassword = "velox2026"
+        }
+    }
+
     buildTypes {
         debug {
             isDebuggable = true
@@ -42,6 +51,7 @@ android {
         }
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
