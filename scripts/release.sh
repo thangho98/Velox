@@ -96,24 +96,42 @@ info "Creating git tag ${NEW_VERSION}..."
 git tag -a "$NEW_VERSION" -m "Release ${NEW_VERSION}"
 ok "Tag ${NEW_VERSION} created"
 
-# ── Step 2: Build & push multi-arch image ────────────────────────────
+# ── Step 2: Build & push per-platform, then merge manifest ───────────
 VERSION_NUM="${NEW_VERSION#v}"
 
-info "Building multi-arch image (${PLATFORMS})..."
-info "This may take a few minutes..."
+info "Building per-platform images..."
 echo ""
 
-docker buildx build \
-    --platform "$PLATFORMS" \
+# Build each platform separately (more reliable, can retry individually)
+for PLAT in ${PLATFORMS//,/ }; do
+    PLAT_TAG="${PLAT//\//-}"  # linux/amd64 → linux-amd64
+    info "Building ${PLAT}..."
+    docker buildx build \
+        --platform "$PLAT" \
+        --tag "${DOCKER_REPO}:${VERSION_NUM}-${PLAT_TAG}" \
+        --build-arg VERSION="${VERSION_NUM}" \
+        --push \
+        . || fail "Failed to build ${PLAT}"
+    ok "Pushed ${DOCKER_REPO}:${VERSION_NUM}-${PLAT_TAG}"
+    echo ""
+done
+
+# Merge into multi-arch manifest
+info "Creating multi-arch manifest..."
+PLAT_TAGS=()
+for PLAT in ${PLATFORMS//,/ }; do
+    PLAT_TAG="${PLAT//\//-}"
+    PLAT_TAGS+=("${DOCKER_REPO}:${VERSION_NUM}-${PLAT_TAG}")
+done
+
+docker buildx imagetools create \
     --tag "${DOCKER_REPO}:${VERSION_NUM}" \
     --tag "${DOCKER_REPO}:latest" \
-    --build-arg VERSION="${VERSION_NUM}" \
-    --push \
-    .
+    "${PLAT_TAGS[@]}"
 
 echo ""
-ok "Pushed ${DOCKER_REPO}:${VERSION_NUM}"
-ok "Pushed ${DOCKER_REPO}:latest"
+ok "Pushed ${DOCKER_REPO}:${VERSION_NUM} (multi-arch)"
+ok "Pushed ${DOCKER_REPO}:latest (multi-arch)"
 
 # ── Step 3: Push git tag ─────────────────────────────────────────────
 info "Pushing tag to remote..."

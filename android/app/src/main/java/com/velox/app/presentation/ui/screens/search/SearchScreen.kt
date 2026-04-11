@@ -294,7 +294,7 @@ fun SearchContent(
                         }
                     } else {
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 120.dp),
+                            columns = GridCells.Adaptive(minSize = 100.dp),
                             contentPadding = PaddingValues(16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -351,13 +351,13 @@ fun SearchMovieCard(
 ) {
     Column(
         modifier = Modifier
-            .width(120.dp)
+            .fillMaxWidth()
             .clickable(onClick = onClick),
     ) {
         Surface(
             modifier = Modifier
-                .width(120.dp)
-                .height(180.dp),
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f),
             color = NetflixGray,
             shape = RoundedCornerShape(8.dp),
         ) {
@@ -386,7 +386,7 @@ fun SearchMovieCard(
             text = item.title,
             color = NetflixWhite,
             fontSize = 14.sp,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         item.year?.let {
@@ -406,13 +406,13 @@ fun SearchSeriesCard(
 ) {
     Column(
         modifier = Modifier
-            .width(120.dp)
+            .fillMaxWidth()
             .clickable(onClick = onClick),
     ) {
         Surface(
             modifier = Modifier
-                .width(120.dp)
-                .height(180.dp),
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f),
             color = NetflixGray,
             shape = RoundedCornerShape(8.dp),
         ) {
@@ -441,7 +441,7 @@ fun SearchSeriesCard(
             text = item.title,
             color = NetflixWhite,
             fontSize = 14.sp,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         item.year?.let {

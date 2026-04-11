@@ -1,30 +1,62 @@
 {
   "meta": { "schema_version": "1.1.0", "awf_version": "3.3.0" },
   "project": { "name": "Velox", "type": "Media Server", "status": "active" },
-  "tech_stack": { 
-      "frontend": { "web": "React", "android": "Jetpack Compose" }, 
-      "backend": { "lang": "Go", "framework": "Standard Library / Custom" }, 
-      "database": { "main": "SQLite / Postgres?" } 
+  "tech_stack": {
+      "frontend": { "web": "React 19 + TypeScript + Vite 8 + TailwindCSS 4" },
+      "android": { "lang": "Kotlin", "ui": "Jetpack Compose", "di": "Dagger Hilt", "player": "Media3 ExoPlayer", "icons": "Material Icons Rounded (via LucideIcons alias object)" },
+      "backend": { "lang": "Go 1.26", "framework": "stdlib net/http", "transcoding": "FFmpeg 8.0" },
+      "database": { "main": "SQLite (WAL mode)" }
   },
-  "database_schema": { "tables": ["media_markers", "users", "media_files"], "relationships": ["One media_file has many media_markers"] },
+  "database_schema": {
+      "tables": ["media_markers", "users", "media_files", "libraries", "series", "seasons", "episodes", "favorites", "watch_progress", "subtitles"],
+      "relationships": ["One media_file has many media_markers", "One series has many seasons, one season has many episodes", "One user has many watch_progress and favorites"]
+  },
   "api_endpoints": [
       { "path": "/api/admin/markers/stats", "method": "GET", "explained": "Get statistics on intro/credit markers for admin dashboard." },
-      { "path": "/api/admin/markers/backfill", "method": "POST", "explained": "Trigger background audio fingerprint detection for a library." }
+      { "path": "/api/admin/markers/backfill", "method": "POST", "explained": "Trigger background audio fingerprint detection for a library." },
+      { "path": "/api/stream/{id}/url", "method": "POST", "explained": "Generate temporary stream URL with api_key for external players/Cast." },
+      { "path": "/api/media/{id}/cinema", "method": "GET", "explained": "Get trailers from TMDb for cinema mode." },
+      { "path": "/api/series/{id}/cinema", "method": "GET", "explained": "Get series trailers from TMDb for cinema mode." }
   ],
   "business_rules": [
       "Marker detection triggers a background task and broadcasts progress to admins via websocket.",
       "Admin features like backfilling markers are guarded by admin checks in both frontend apps.",
-      "User subjective preferences for auto-skipping segments belong in general user preferences."
+      "User subjective preferences for auto-skipping segments belong in general user preferences.",
+      "Direct Play first; HLS/transcode only when codec/container/audio incompatible.",
+      "Keep screen on while video is playing or locked; allow screen off when paused."
   ],
   "features": [
       "Skip Intro / Credits",
       "Media Scanner",
-      "Live Transcoding",
-      "User Management"
+      "Live Transcoding (HLS)",
+      "User Management",
+      "Netflix-style Trailers (Cinema Mode)",
+      "Chromecast Support",
+      "Dual Subtitle Overlay",
+      "Metadata Editor with NFO Write",
+      "Pre-transcode",
+      "Android Mobile App (Jetpack Compose)"
   ],
-  "knowledge_items": { 
-      "patterns": ["Use ViewModel to bind Jetpack Compose state."], 
-      "gotchas": ["Android app lacks websocket implementation; polling/fire-and-forget is required for background tasks for now."], 
-      "conventions": ["Use Netflix theme colors (NetflixRed, NetflixWhite, NetflixDarkGray) across Android app UI."] 
+  "knowledge_items": {
+      "patterns": [
+          "Use ViewModel to bind Jetpack Compose state.",
+          "Grid layouts use GridCells.Adaptive(minSize=100.dp) with fillMaxWidth() + aspectRatio(). LazyRow items use fixed dp sizes with LocalConfiguration responsive breakpoints.",
+          "Phone vs tablet breakpoint: screenWidthDp < 600 = phone.",
+          "LucideIcons object is a thin alias layer over Material Icons Rounded — change icons by editing the alias, no caller changes needed.",
+          "VideoPlayer gesture hierarchy: root pointerInput for tap/drag when controls hidden, controls overlay handles its own events when visible."
+      ],
+      "gotchas": [
+          "Android app lacks websocket implementation; polling/fire-and-forget is required for background tasks for now.",
+          "Do NOT use dynamic relative width (fillMaxWidth or percentage) inside LazyRow — it hides the scroll affordance.",
+          "Nested Scaffolds cause double status bar padding — outer Scaffold needs contentWindowInsets = WindowInsets(0).",
+          "SliderDefaults.Track renders a stop indicator dot by default — pass drawStopIndicator = null to remove it.",
+          "Root pointerInput detectDragGestures intercepts Slider drag — skip gestures when controls are visible.",
+          "FLAG_KEEP_SCREEN_ON must be tied to isPlaying (not just isLocked) to prevent screen timeout during playback."
+      ],
+      "conventions": [
+          "Use Netflix theme colors (NetflixRed, NetflixWhite, NetflixBlack, NetflixDark, NetflixGray, NetflixLightGray) across Android app UI.",
+          "Material Icons Rounded style for all icons via LucideIcons alias object.",
+          "Responsive sizing: phone (<600dp) gets smaller cards, fonts, poster widths; tablet keeps original sizes."
+      ]
   }
 }

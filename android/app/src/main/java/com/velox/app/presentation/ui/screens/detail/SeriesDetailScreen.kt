@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -237,6 +238,9 @@ fun SeriesDetailContent(
 
                 // Central Poster Overlay
                 item {
+                    val screenWidth = LocalConfiguration.current.screenWidthDp
+                    val posterWidth = if (screenWidth < 600) 180.dp else 260.dp
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -248,7 +252,7 @@ fun SeriesDetailContent(
                                 modifier = Modifier
                                     .align(Alignment.Center)
                                     .padding(top = 20.dp)
-                                    .width(260.dp)
+                                    .width(posterWidth)
                                     .aspectRatio(2f / 3f),
                                 shape = RoundedCornerShape(8.dp),
                                 color = NetflixDark,
@@ -267,7 +271,9 @@ fun SeriesDetailContent(
 
                 // Info
                 item {
-                    Column(modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp)) {
+                    val screenWidth = LocalConfiguration.current.screenWidthDp
+                    val infoPadding = if (screenWidth < 600) 16.dp else 32.dp
+                    Column(modifier = Modifier.padding(horizontal = infoPadding, vertical = 16.dp)) {
                         // Title row with badges
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -276,7 +282,7 @@ fun SeriesDetailContent(
                             Text(
                                 text = series.title,
                                 color = NetflixWhite,
-                                fontSize = 24.sp,
+                                fontSize = if (screenWidth < 600) 20.sp else 24.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f),
                             )
@@ -379,8 +385,8 @@ fun SeriesDetailContent(
                             Text(
                                 text = series.overview,
                                 color = NetflixLightGray,
-                                fontSize = 16.sp,
-                                lineHeight = 24.sp,
+                                fontSize = if (screenWidth < 600) 14.sp else 16.sp,
+                                lineHeight = if (screenWidth < 600) 20.sp else 24.sp,
                             )
                         }
                         Spacer(modifier = Modifier.height(24.dp))
@@ -533,10 +539,13 @@ fun EpisodeCard(
 ) {
     var showActionMenu by remember { mutableStateOf(false) }
 
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val cardPadding = if (screenWidth < 600) 16.dp else 32.dp
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 32.dp, vertical = 8.dp)
+            .padding(horizontal = cardPadding, vertical = 8.dp)
             .clickable(onClick = onClick),
         color = Color(0xFF1C1C1C), // Slightly brighter than Pitch Black
         shape = RoundedCornerShape(8.dp),

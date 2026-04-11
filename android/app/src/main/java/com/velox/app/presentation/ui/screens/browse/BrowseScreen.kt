@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -229,7 +230,7 @@ fun BrowseScreenContent(
             } else {
                 if (isGridView) {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 120.dp),
+                        columns = GridCells.Adaptive(minSize = 100.dp),
                         contentPadding = PaddingValues(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -353,13 +354,13 @@ fun BrowseGridItem(
 ) {
     Column(
         modifier = Modifier
-            .width(120.dp)
+            .fillMaxWidth()
             .clickable(onClick = onClick),
     ) {
         Surface(
             modifier = Modifier
-                .width(120.dp)
-                .height(160.dp),
+                .fillMaxWidth()
+                .aspectRatio(3f / 4f),
             color = NetflixGray,
             shape = RoundedCornerShape(8.dp),
         ) {
@@ -401,7 +402,8 @@ fun BrowseGridItem(
             text = item.name,
             color = NetflixWhite,
             fontSize = 14.sp,
-            maxLines = 2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

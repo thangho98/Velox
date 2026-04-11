@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -126,6 +127,7 @@ fun HomeContent(
             ) {
                 // Welcome section
                 item {
+                    val screenWidth = LocalConfiguration.current.screenWidthDp
                     Column(
                         modifier = Modifier.padding(horizontal = 16.dp),
                     ) {
@@ -133,7 +135,7 @@ fun HomeContent(
                         Text(
                             text = "Welcome back$greeting",
                             color = NetflixWhite,
-                            fontSize = 26.sp,
+                            fontSize = if (screenWidth < 600) 22.sp else 26.sp,
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(modifier = Modifier.height(4.dp))
@@ -342,10 +344,14 @@ fun MediaCard(
     item: MediaItem,
     onClick: () -> Unit,
 ) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val cardWidth = if (screenWidth < 600) 100.dp else 120.dp
+    val cardHeight = if (screenWidth < 600) 140.dp else 168.dp
+
     Surface(
         modifier = Modifier
-            .width(120.dp)
-            .height(168.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .clickable(onClick = onClick),
         color = Color(0xFF1F1F1F),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
@@ -363,7 +369,7 @@ fun MediaCard(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.fillMaxSize().background(Color(0xFF2A2A2A))
                 ) {
-                    Text(text = item.title.take(1).uppercase(), color = Color(0xFF444444), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    Text(text = item.title.take(1).uppercase(), color = Color(0xFF444444), fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -422,10 +428,14 @@ fun SeriesCard(
     posterPath: String?,
     onClick: () -> Unit,
 ) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val cardWidth = if (screenWidth < 600) 100.dp else 120.dp
+    val cardHeight = if (screenWidth < 600) 140.dp else 168.dp
+
     Surface(
         modifier = Modifier
-            .width(120.dp)
-            .height(168.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .clickable(onClick = onClick),
         color = Color(0xFF1F1F1F),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
@@ -443,7 +453,7 @@ fun SeriesCard(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.fillMaxSize().background(Color(0xFF2A2A2A))
                 ) {
-                    Text(text = title.take(1).uppercase(), color = Color(0xFF444444), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    Text(text = title.take(1).uppercase(), color = Color(0xFF444444), fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -477,10 +487,14 @@ fun ContinueWatchingCard(
     onClick: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val cardWidth = if (screenWidth < 600) 200.dp else 240.dp
+    val cardHeight = if (screenWidth < 600) 112.dp else 135.dp
+
     Box(
         modifier = Modifier
-            .width(240.dp)
-            .height(135.dp)
+            .width(cardWidth)
+            .height(cardHeight)
     ) {
         Surface(
             modifier = Modifier
@@ -504,7 +518,7 @@ fun ContinueWatchingCard(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier.fillMaxSize().background(Color(0xFF2A2A2A))
                     ) {
-                        Text(text = item.title.take(1).uppercase(), color = Color(0xFF444444), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                        Text(text = item.title.take(1).uppercase(), color = Color(0xFF444444), fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -592,14 +606,17 @@ fun LibraryCard(
     library: Library,
     onClick: () -> Unit,
 ) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val cardWidth = if (screenWidth < 600) 140.dp else 160.dp
+
     Column(
         modifier = Modifier
-            .width(160.dp)
+            .width(cardWidth)
             .clickable(onClick = onClick),
     ) {
         Surface(
             modifier = Modifier
-                .width(160.dp)
+                .fillMaxWidth()
                 .height(100.dp),
             color = NetflixDark,
             shape = MaterialTheme.shapes.small,
@@ -608,7 +625,7 @@ fun LibraryCard(
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = if (library.type == "movie") "🎬" else "📺", fontSize = 32.sp)
+                    Text(text = if (library.type == "movie") "🎬" else "📺", fontSize = 24.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = library.name,
@@ -633,10 +650,14 @@ fun NextUpCard(
     item: NextUpItem,
     onClick: () -> Unit,
 ) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val cardWidth = if (screenWidth < 600) 200.dp else 240.dp
+    val cardHeight = if (screenWidth < 600) 112.dp else 135.dp
+
     Surface(
         modifier = Modifier
-            .width(240.dp)
-            .height(135.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .clickable(onClick = onClick),
         color = Color(0xFF1F1F1F),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
@@ -656,7 +677,7 @@ fun NextUpCard(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.fillMaxSize().background(Color(0xFF2A2A2A))
                 ) {
-                    Text(text = (item.seriesTitle ?: item.title).take(1).uppercase(), color = Color(0xFF444444), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    Text(text = (item.seriesTitle ?: item.title).take(1).uppercase(), color = Color(0xFF444444), fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 }
             }
 

@@ -543,29 +543,7 @@ private fun PreferencesSection(viewModel: SettingsViewModel, uiState: SettingsUi
             onValueChange = { viewModel.updatePreference("language", it) },
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Auto-Skip Preferences", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        
-        SettingsToggle(
-            label = "Skip intro",
-            description = "Skip intro segments automatically",
-            checked = uiState.skipMarkers.skipIntro,
-            onCheckedChange = { viewModel.updateSkipMarkerSetting("skipIntro", it) },
-        )
 
-        SettingsToggle(
-            label = "Skip credits",
-            description = "Skip credits at end of episodes",
-            checked = uiState.skipMarkers.skipCredits,
-            onCheckedChange = { viewModel.updateSkipMarkerSetting("skipCredits", it) },
-        )
-
-        SettingsToggle(
-            label = "Auto-skip sponsor messages",
-            description = "Skip detected sponsor segments",
-            checked = uiState.skipMarkers.autoSkipSponsor,
-            onCheckedChange = { viewModel.updateSkipMarkerSetting("autoSkipSponsor", it) },
-        )
 
         uiState.error?.let {
             Text(it, color = NetflixRed, fontSize = 14.sp)

@@ -1,5 +1,6 @@
 package com.velox.app.presentation.navigation
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
@@ -47,6 +48,7 @@ fun VeloxNavHost(
     val currentRoute = navBackStackEntry?.destination?.route
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (currentRoute in mainTabs) {
                 VeloxBottomTabBar(

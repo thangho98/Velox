@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -227,6 +228,9 @@ private fun MediaDetailContent(
                     Spacer(modifier = Modifier.height(padding.calculateTopPadding() + 40.dp))
 
                     // Centered Poster (like SeriesDetailScreen)
+                    val screenWidth = LocalConfiguration.current.screenWidthDp
+                    val posterWidth = if (screenWidth < 600) 180.dp else 260.dp
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -237,7 +241,7 @@ private fun MediaDetailContent(
                             Surface(
                                 modifier = Modifier
                                     .padding(top = 20.dp)
-                                    .width(260.dp)
+                                    .width(posterWidth)
                                     .aspectRatio(2f / 3f),
                                 shape = RoundedCornerShape(8.dp),
                                 color = NetflixDark,
@@ -254,7 +258,7 @@ private fun MediaDetailContent(
                             Surface(
                                 modifier = Modifier
                                     .padding(top = 20.dp)
-                                    .width(260.dp)
+                                    .width(posterWidth)
                                     .aspectRatio(2f / 3f),
                                 shape = RoundedCornerShape(8.dp),
                                 color = NetflixDark,
@@ -264,7 +268,7 @@ private fun MediaDetailContent(
                                     Text(
                                         text = mediaDetail.title.take(2).uppercase(),
                                         color = NetflixLightGray,
-                                        fontSize = 48.sp,
+                                        fontSize = if (posterWidth > 200.dp) 48.sp else 36.sp,
                                         fontWeight = FontWeight.Bold,
                                     )
                                 }
@@ -273,7 +277,8 @@ private fun MediaDetailContent(
                     }
 
                     // Info section
-                    Column(modifier = Modifier.padding(horizontal = 32.dp)) {
+                    val infoPadding = if (screenWidth < 600) 16.dp else 32.dp
+                    Column(modifier = Modifier.padding(horizontal = infoPadding)) {
                         MediaDetailInfo(
                             media = mediaDetail,
                             uiState = uiState,
@@ -308,11 +313,13 @@ private fun MediaDetailInfo(
     onCopyStreamUrl: () -> Unit = {},
     onRefreshMetadata: () -> Unit = {},
 ) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+
     // Title
     Text(
         text = media.title,
         color = NetflixWhite,
-        fontSize = 28.sp,
+        fontSize = if (screenWidth < 600) 22.sp else 28.sp,
         fontWeight = FontWeight.Bold,
     )
 
@@ -407,8 +414,8 @@ private fun MediaDetailInfo(
         Text(
             text = media.overview,
             color = NetflixLightGray,
-            fontSize = 16.sp,
-            lineHeight = 24.sp,
+            fontSize = if (screenWidth < 600) 14.sp else 16.sp,
+            lineHeight = if (screenWidth < 600) 20.sp else 24.sp,
         )
         Spacer(modifier = Modifier.height(24.dp))
     }
@@ -695,13 +702,17 @@ private fun TechSpecLabeled(label: String, value: String) {
 
 @Composable
 fun CastCard(castMember: CastMember) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val cardWidth = if (screenWidth < 600) 68.dp else 80.dp
+    val avatarSize = if (screenWidth < 600) 60.dp else 72.dp
+
     Column(
-        modifier = Modifier.width(80.dp),
+        modifier = Modifier.width(cardWidth),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Surface(
             modifier = Modifier
-                .size(72.dp)
+                .size(avatarSize)
                 .clip(CircleShape),
             color = NetflixGray,
         ) {
@@ -745,15 +756,18 @@ fun SimilarCard(
     item: MediaItem,
     onClick: () -> Unit,
 ) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val cardWidth = if (screenWidth < 600) 100.dp else 120.dp
+
     Column(
         modifier = Modifier
-            .width(120.dp)
+            .width(cardWidth)
             .clickable(onClick = onClick),
     ) {
         Surface(
             modifier = Modifier
-                .width(120.dp)
-                .height(160.dp),
+                .fillMaxWidth()
+                .aspectRatio(3f / 4f),
             color = NetflixGray,
             shape = RoundedCornerShape(8.dp),
         ) {

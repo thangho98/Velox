@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -73,16 +74,18 @@ fun ProfileScreenContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Avatar
+                val screenWidth = LocalConfiguration.current.screenWidthDp
+                val avatarSize = if (screenWidth < 600) 72.dp else 96.dp
                 Surface(
-                    modifier = Modifier.size(96.dp),
-                    shape = RoundedCornerShape(48.dp),
+                    modifier = Modifier.size(avatarSize),
+                    shape = RoundedCornerShape(avatarSize / 2),
                     color = NetflixDark,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = uiState.displayName.takeIf { it.isNotEmpty() }?.take(1)?.uppercase() ?: "?",
                             color = NetflixWhite,
-                            fontSize = 40.sp,
+                            fontSize = if (screenWidth < 600) 28.sp else 40.sp,
                             fontWeight = FontWeight.Bold,
                         )
                     }
@@ -93,7 +96,7 @@ fun ProfileScreenContent(
                 Text(
                     text = uiState.displayName,
                     color = NetflixWhite,
-                    fontSize = 24.sp,
+                    fontSize = if (screenWidth < 600) 20.sp else 24.sp,
                     fontWeight = FontWeight.Bold,
                 )
 

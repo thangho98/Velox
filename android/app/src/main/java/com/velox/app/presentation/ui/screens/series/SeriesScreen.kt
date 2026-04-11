@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -286,7 +287,7 @@ fun SeriesContent(
                 } else {
                     // Series grid
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 120.dp),
+                        columns = GridCells.Adaptive(minSize = 100.dp),
                         state = gridState,
                         contentPadding = PaddingValues(
                             start = 16.dp,
@@ -414,13 +415,13 @@ fun SeriesCard(
 ) {
     Column(
         modifier = Modifier
-            .width(120.dp)
+            .fillMaxWidth()
             .clickable(onClick = onClick),
     ) {
         Surface(
             modifier = Modifier
-                .width(120.dp)
-                .height(180.dp)
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
                 .clickable(onClick = onClick),
             color = NetflixGray,
             shape = RoundedCornerShape(8.dp),
@@ -470,7 +471,8 @@ fun SeriesCard(
             text = item.title,
             color = NetflixWhite,
             fontSize = 14.sp,
-            maxLines = 2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         item.year?.let {
             Text(

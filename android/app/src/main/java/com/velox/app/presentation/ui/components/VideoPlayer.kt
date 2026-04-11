@@ -88,9 +88,9 @@ fun VideoPlayer(
     var isUserTouching by remember { mutableStateOf(false) }
     var lastInteractionTime by remember { mutableLongStateOf(0L) }
 
-    // Auto-hide controls
-    LaunchedEffect(uiState.showControls, uiState.isPlaying, uiState.isLocked, isAnyMenuOpen, isUserTouching, lastInteractionTime) {
-        if (uiState.showControls && uiState.isPlaying && !uiState.isLocked && !isAnyMenuOpen && !isUserTouching) {
+    // Auto-hide controls — never hide while buffering or loading
+    LaunchedEffect(uiState.showControls, uiState.isPlaying, uiState.isLocked, isAnyMenuOpen, isUserTouching, lastInteractionTime, uiState.isBuffering, uiState.isLoading) {
+        if (uiState.showControls && uiState.isPlaying && !uiState.isLocked && !isAnyMenuOpen && !isUserTouching && !uiState.isBuffering && !uiState.isLoading) {
             delay(3000)
             viewModel.toggleControls()
         }
@@ -109,10 +109,10 @@ fun VideoPlayer(
         onBackClick()
     }
 
-    // Handle locked state - keep screen on
-    LaunchedEffect(uiState.isLocked) {
+    // Keep screen on while playing or locked
+    LaunchedEffect(uiState.isPlaying, uiState.isLocked) {
         activity?.let {
-            if (uiState.isLocked) {
+            if (uiState.isPlaying || uiState.isLocked) {
                 it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             } else {
                 it.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -180,15 +180,15 @@ fun VideoPlayer(
                     }
                 }
             }
-            .pointerInput(Unit) {
+            .pointerInput(uiState.showControls) {
                 detectTapGestures(
-                    onTap = { offset -> 
+                    onTap = { offset ->
                         if (uiState.showSeekFeedback && seekAccumulator != 0) {
                             val screenWidth = size.width.toFloat()
                             val zoneWidth = screenWidth / 3
                             val isLeftZone = offset.x < zoneWidth
                             val isRightZone = offset.x > screenWidth - zoneWidth
-                            
+
                             val currentSide = uiState.seekFeedbackSide
                             if ((isLeftZone && currentSide == "left") || (isRightZone && currentSide == "right")) {
                                 val direction = if (isRightZone) SEEK_AMOUNT else -SEEK_AMOUNT
@@ -197,7 +197,7 @@ fun VideoPlayer(
                                     side = currentSide,
                                     amount = kotlin.math.abs(seekAccumulator),
                                 )
-                                
+
                                 resetSeekJob?.cancel()
                                 resetSeekJob = coroutineScope.launch {
                                     delay(800)
@@ -212,8 +212,13 @@ fun VideoPlayer(
                                 return@detectTapGestures
                             }
                         }
-                        
-                        viewModel.togglePlayPause() 
+
+                        if (!uiState.showControls) {
+                            // Controls hidden → show controls + pause
+                            viewModel.toggleControls()
+                            viewModel.togglePlayPause()
+                        }
+                        // When controls visible, do nothing here — let controls overlay handle taps
                     },
                     onDoubleTap = { offset ->
                         if (uiState.isLocked) return@detectTapGestures
@@ -260,14 +265,13 @@ fun VideoPlayer(
                     },
                 )
             }
-            .pointerInput(Unit) {
+            .pointerInput(uiState.showControls) {
                 detectDragGestures(
                     onDragStart = { offset ->
-                        if (uiState.isLocked) return@detectDragGestures
-                        // Reset state on drag start
+                        if (uiState.isLocked || uiState.showControls) return@detectDragGestures
                     },
                     onDrag = { change, dragAmount ->
-                        if (uiState.isLocked) return@detectDragGestures
+                        if (uiState.isLocked || uiState.showControls) return@detectDragGestures
 
                         val screenWidth = size.width.toFloat()
                         val absoluteX = change.position.x
@@ -581,6 +585,24 @@ fun VideoPlayer(
             }
         }
 
+        // Fallback back button — only when controls are hidden during loading/buffering/error
+        if (!uiState.showControls && (uiState.isLoading || uiState.isBuffering || uiState.error != null)) {
+            IconButton(
+                onClick = {
+                    viewModel.saveProgress()
+                    onBackClick()
+                },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 12.dp)
+                    .size(40.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape),
+            ) {
+                Icon(LucideIcons.ChevronLeft, contentDescription = "Back", tint = NetflixWhite, modifier = Modifier.size(24.dp))
+            }
+        }
+
         // Error state
         uiState.error?.let { error ->
             Box(
@@ -697,56 +719,29 @@ private fun PlayerControlsOverlay(
                     )
             )
 
-            // Top Bar
+            // Top Bar — back button only
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
-                    .align(Alignment.TopCenter),
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 12.dp)
+                    .align(Alignment.TopStart),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBackClick) {
-                        Icon(LucideIcons.ChevronLeft, contentDescription = "Back", tint = NetflixWhite)
-                    }
-                    Text(text = "Back", color = NetflixWhite, fontSize = 16.sp)
-                }
-
-                // Volume slider top right
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.width(160.dp).padding(horizontal = 8.dp)
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onBackClick,
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                 ) {
-                    Icon(
-                        if (uiState.volume == 0f) LucideIcons.VolumeOff else LucideIcons.VolumeUp,
-                        contentDescription = "Volume",
-                        tint = NetflixWhite,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Slider(
-                        value = uiState.volume,
-                        onValueChange = onSetVolume,
-                        thumb = {
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .background(NetflixWhite, CircleShape)
-                            )
-                        },
-                        track = { sliderState ->
-                            SliderDefaults.Track(
-                                colors = SliderDefaults.colors(
-                                    activeTrackColor = NetflixWhite,
-                                    inactiveTrackColor = NetflixWhite.copy(alpha = 0.3f),
-                                ),
-                                sliderState = sliderState,
-                                modifier = Modifier.height(4.dp)
-                            )
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
+                    Icon(LucideIcons.ChevronLeft, contentDescription = "Back", tint = NetflixWhite, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "Back", color = NetflixWhite, fontSize = 14.sp)
                 }
             }
 
@@ -998,7 +993,8 @@ private fun PlayerSeekBar(
                     inactiveTrackColor = NetflixWhite.copy(alpha = 0.3f),
                 ),
                 sliderState = sliderState,
-                modifier = Modifier.height(4.dp)
+                modifier = Modifier.height(4.dp),
+                drawStopIndicator = null,
             )
         },
         modifier = Modifier.fillMaxWidth(),

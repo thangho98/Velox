@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -139,7 +140,7 @@ private fun FavoritesScreenContent(
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 120.dp),
+                    columns = GridCells.Adaptive(minSize = 100.dp),
                     contentPadding = PaddingValues(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -165,14 +166,14 @@ private fun FavoriteCard(
 ) {
     Column(
         modifier = Modifier
-            .width(120.dp)
+            .fillMaxWidth()
             .clickable(onClick = onClick),
     ) {
         Box {
             Surface(
                 modifier = Modifier
-                    .width(120.dp)
-                    .height(180.dp),
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f),
                 color = NetflixGray,
                 shape = RoundedCornerShape(8.dp),
             ) {
@@ -214,7 +215,8 @@ private fun FavoriteCard(
             text = item.title,
             color = NetflixWhite,
             fontSize = 14.sp,
-            maxLines = 2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         item.year?.let {
             Text(

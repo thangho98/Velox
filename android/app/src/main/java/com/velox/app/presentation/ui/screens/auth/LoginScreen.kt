@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -147,9 +148,10 @@ private fun LoginScreenContent(
                 modifier = Modifier.widthIn(max = 400.dp),
             ) {
                 // Logo
+                val screenWidth = LocalConfiguration.current.screenWidthDp
                 Text(
                     text = "VELOX",
-                    fontSize = 48.sp,
+                    fontSize = if (screenWidth < 600) 36.sp else 48.sp,
                     fontWeight = FontWeight.Bold,
                     color = NetflixRed,
                     textAlign = TextAlign.Center,
@@ -241,9 +243,10 @@ private fun ServerUrlStep(
     val focusManager = LocalFocusManager.current
 
     // Title
+    val screenWidth = LocalConfiguration.current.screenWidthDp
     Text(
         text = "Connect to Server",
-        fontSize = 28.sp,
+        fontSize = if (screenWidth < 600) 22.sp else 28.sp,
         fontWeight = FontWeight.SemiBold,
         color = NetflixWhite,
     )
@@ -381,9 +384,10 @@ private fun CredentialsStep(
     val focusManager = LocalFocusManager.current
 
     // Title
+    val screenWidth = LocalConfiguration.current.screenWidthDp
     Text(
         text = "Sign In",
-        fontSize = 28.sp,
+        fontSize = if (screenWidth < 600) 22.sp else 28.sp,
         fontWeight = FontWeight.SemiBold,
         color = NetflixWhite,
     )
