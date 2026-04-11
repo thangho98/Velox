@@ -297,7 +297,7 @@ func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inp
 
 	if hdr {
 		args = append(args,
-			"-vf", buildPretranscodeHDRScaleFilter(inputPath, sourceHeight),
+			"-vf", buildPretranscodeHDRScaleFilter(inputPath, sourceHeight, "yuv420p"),
 			"-c:v", "libx264",
 			"-preset", "medium",
 			"-crf", "20",
@@ -346,14 +346,16 @@ func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inp
 	return cmd.Run()
 }
 
-func buildPretranscodeHDRScaleFilter(inputPath string, height int) string {
+// buildPretranscodeHDRScaleFilter builds the SW tonemap filter chain.
+// outFmt controls the final pixel format: "nv12" for VAAPI hwupload, "yuv420p" for SW/NVENC.
+func buildPretranscodeHDRScaleFilter(inputPath string, height int, outFmt string) string {
 	prefix := ""
 	if ffprobe.NeedsHDRColorMetadataFallback(inputPath) {
 		prefix = "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,"
 	}
 	return prefix + fmt.Sprintf(
-		"zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,scale=-2:%d",
-		height,
+		"zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709:r=tv,format=%s,scale=-2:%d",
+		outFmt, height,
 	)
 }
 
@@ -377,7 +379,18 @@ func estimateBitrateForHeight(height int) int {
 
 func (s *PretranscodeService) encodeFile(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceAudioCodec string, hdr bool) error {
 	if hdr {
-		log.Printf("pretranscode: HDR/DV source detected, forcing software tonemap for %s", filepath.Base(inputPath))
+		// HDR/DV: software tonemap is required, but try HW encode (hybrid) first
+		if s.hwAccel != "" {
+			log.Printf("pretranscode: HDR/DV source detected, hybrid tonemap (SW decode+tonemap → %s encode) for %s", s.hwAccel, filepath.Base(inputPath))
+			err := s.runFFmpeg(ctx, inputPath, outputPath, profile, s.hwAccel, sourceAudioCodec, true)
+			if err == nil {
+				return nil
+			}
+			log.Printf("pretranscode: HDR hybrid encode failed (%s), retrying full software: %v", s.hwAccel, err)
+			_ = os.Remove(outputPath)
+		} else {
+			log.Printf("pretranscode: HDR/DV source detected, full software tonemap for %s", filepath.Base(inputPath))
+		}
 		return s.runFFmpeg(ctx, inputPath, outputPath, profile, "", sourceAudioCodec, true)
 	}
 	// Try HW accel first, fallback to software
@@ -395,16 +408,20 @@ func (s *PretranscodeService) encodeFile(ctx context.Context, inputPath, outputP
 func (s *PretranscodeService) runFFmpeg(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, hwAccel, sourceAudioCodec string, hdr bool) error {
 	args := []string{"-hide_banner", "-loglevel", "error", "-stats", "-y"}
 
-	// HDR/DV pretranscode prioritizes correct SDR output over speed.
-	if !hdr {
-		switch hwAccel {
-		case "vaapi":
-			args = append(args, "-vaapi_device", "/dev/dri/renderD128")
-		case "nvenc":
+	// HW device init — needed for both normal HW and HDR hybrid (SW tonemap → HW encode)
+	switch hwAccel {
+	case "vaapi":
+		args = append(args, "-vaapi_device", "/dev/dri/renderD128")
+	case "nvenc":
+		if !hdr {
 			args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
-		case "qsv":
+		}
+	case "qsv":
+		if !hdr {
 			args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
-		case "videotoolbox":
+		}
+	case "videotoolbox":
+		if !hdr {
 			args = append(args, "-hwaccel", "videotoolbox")
 		}
 	}
@@ -412,16 +429,30 @@ func (s *PretranscodeService) runFFmpeg(ctx context.Context, inputPath, outputPa
 	args = append(args, "-i", inputPath)
 
 	if hdr {
-		args = append(args,
-			"-vf", buildPretranscodeHDRScaleFilter(inputPath, profile.Height),
-			"-c:v", "libx264",
-			"-preset", "medium",
-			"-crf", "22",
-			"-pix_fmt", "yuv420p",
-			"-colorspace", "bt709",
-			"-color_primaries", "bt709",
-			"-color_trc", "bt709",
-		)
+		// HDR/DV: software tonemap always runs on CPU.
+		// When hwAccel is set, upload tonemapped frames to GPU for HW encode (hybrid).
+		switch hwAccel {
+		case "vaapi":
+			// SW tonemap → nv12 → hwupload to VAAPI surface
+			baseFilter := buildPretranscodeHDRScaleFilter(inputPath, profile.Height, "nv12")
+			args = append(args, "-vf", baseFilter+",hwupload",
+				"-c:v", "h264_vaapi", "-profile:v", "main",
+				"-b:v", fmt.Sprintf("%dk", profile.VideoBitrate))
+		case "nvenc":
+			// NVENC accepts system memory frames directly
+			args = append(args, "-vf", buildPretranscodeHDRScaleFilter(inputPath, profile.Height, "yuv420p"),
+				"-c:v", "h264_nvenc", "-preset", "p4", "-tune", "hq", "-profile:v", "high", "-pix_fmt", "yuv420p",
+				"-b:v", fmt.Sprintf("%dk", profile.VideoBitrate))
+		case "qsv":
+			args = append(args, "-vf", buildPretranscodeHDRScaleFilter(inputPath, profile.Height, "nv12")+",hwupload=extra_hw_frames=64",
+				"-c:v", "h264_qsv", "-preset", "medium",
+				"-b:v", fmt.Sprintf("%dk", profile.VideoBitrate))
+		default:
+			// Full software
+			args = append(args, "-vf", buildPretranscodeHDRScaleFilter(inputPath, profile.Height, "yuv420p"),
+				"-c:v", "libx264", "-preset", "medium", "-crf", "22", "-pix_fmt", "yuv420p")
+		}
+		args = append(args, "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709")
 	} else {
 		// Video filter (scale)
 		switch hwAccel {
@@ -475,25 +506,32 @@ func (s *PretranscodeService) runFFmpeg(ctx context.Context, inputPath, outputPa
 
 	if err := cmd.Run(); err != nil {
 		errOutput := stderr.String()
-		// Extract last useful line from stderr
-		lines := strings.Split(strings.TrimSpace(errOutput), "\n")
+		// FFmpeg uses \r for progress and \n for errors — normalize both
+		normalized := strings.ReplaceAll(errOutput, "\r\n", "\n")
+		normalized = strings.ReplaceAll(normalized, "\r", "\n")
+		lines := strings.Split(strings.TrimSpace(normalized), "\n")
+		// Walk backwards to find the last non-progress line (actual error)
 		errMsg := err.Error()
-		if len(lines) > 0 {
-			last := lines[len(lines)-1]
-			if len(last) > 200 {
-				last = last[:200]
+		for i := len(lines) - 1; i >= 0; i-- {
+			line := strings.TrimSpace(lines[i])
+			if line == "" || strings.HasPrefix(line, "frame=") || strings.HasPrefix(line, "size=") {
+				continue
 			}
-			errMsg = last
+			if len(line) > 300 {
+				line = line[:300]
+			}
+			errMsg = line
+			break
 		}
 		return fmt.Errorf("ffmpeg: %s", errMsg)
 	}
 	return nil
 }
 
-// niceFFmpeg wraps jellyfin-ffmpeg with nice -n 19 for lowest CPU priority.
-// Pretranscode runs in background — it should never starve NAS or realtime transcode.
+// niceFFmpeg wraps jellyfin-ffmpeg with nice -n 10 for lower CPU priority.
+// Pretranscode runs in background — it should yield to realtime transcode but still get reasonable CPU time.
 func niceFFmpeg(ctx context.Context, args ...string) *exec.Cmd {
-	return exec.CommandContext(ctx, "nice", append([]string{"-n", "19", ffmpegbin.FFmpeg()}, args...)...)
+	return exec.CommandContext(ctx, "nice", append([]string{"-n", "10", ffmpegbin.FFmpeg()}, args...)...)
 }
 
 // diskFreeSpace returns free bytes on the filesystem containing path.
