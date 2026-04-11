@@ -240,6 +240,11 @@ class PlayerViewModel @Inject constructor(
             .build()
             .apply {
                 addListener(playerListener)
+                // Disable native text rendering by default — use DualSubtitleOverlay instead
+                trackSelectionParameters = trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
             }
     }
 
