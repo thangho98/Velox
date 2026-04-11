@@ -146,8 +146,9 @@ if [[ -d "android" ]]; then
     ./gradlew assembleRelease || warn "Failed to build Android APK"
     popd > /dev/null
     
-    APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
-    if [[ -f "$APK_SRC" ]]; then
+    # Find APK (could be app-release.apk or app-release-unsigned.apk)
+    APK_SRC=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+    if [[ -n "$APK_SRC" && -f "$APK_SRC" ]]; then
         cp "$APK_SRC" "$APK_DEST"
         ok "Built APK: $APK_DEST"
     else
