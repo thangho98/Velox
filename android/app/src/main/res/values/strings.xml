@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Velox</string>
+    <string name="stream_url_copied">Copied stream URL</string>
+    <string name="stream_url_copy_failed">Failed to copy stream URL</string>
 </resources>

@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -44,6 +46,7 @@ import com.velox.app.domain.model.MediaDetail
 import com.velox.app.domain.model.MediaFile
 import com.velox.app.domain.model.MediaItem
 import com.velox.app.domain.model.WatchProgress
+import com.velox.app.R
 import com.velox.app.presentation.ui.components.ActionMenu
 import com.velox.app.presentation.ui.components.ActionMenuButton
 import com.velox.app.presentation.ui.components.ActionMenuItem
@@ -57,6 +60,7 @@ import com.velox.app.ui.theme.NetflixLightGray
 import com.velox.app.ui.theme.NetflixRed
 import com.velox.app.ui.theme.NetflixWhite
 import com.velox.app.ui.theme.VeloxTheme
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,10 +71,15 @@ fun MediaDetailScreen(
     viewModel: MediaDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val clipboardManager = LocalClipboardManager.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    val copiedMessage = stringResource(R.string.stream_url_copied)
+    val copyFailedMessage = stringResource(R.string.stream_url_copy_failed)
 
     MediaDetailContent(
         uiState = uiState,
+        snackbarHostState = snackbarHostState,
         onBackClick = onBackClick,
         onPlayClick = onPlayClick,
         onFavoriteClick = { viewModel.toggleFavorite() },
@@ -79,8 +88,13 @@ fun MediaDetailScreen(
         onSubtitleSelect = { viewModel.selectSubtitleLanguage(it) },
         onCopyStreamUrl = {
             viewModel.copyStreamUrl { url ->
-                if (url != null) {
-                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(url))
+                coroutineScope.launch {
+                    if (url != null) {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(url))
+                        snackbarHostState.showSnackbar(copiedMessage)
+                    } else {
+                        snackbarHostState.showSnackbar(copyFailedMessage)
+                    }
                 }
             }
         },
@@ -92,6 +106,7 @@ fun MediaDetailScreen(
 @Composable
 private fun MediaDetailContent(
     uiState: MediaDetailUiState,
+    snackbarHostState: SnackbarHostState,
     onBackClick: () -> Unit,
     onPlayClick: () -> Unit,
     onFavoriteClick: () -> Unit,
@@ -166,6 +181,7 @@ private fun MediaDetailContent(
         }
 
         Scaffold(
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             topBar = {
                 TopAppBar(
                     title = { },
@@ -815,6 +831,7 @@ private fun MediaDetailScreenPreview() {
     VeloxTheme {
         MediaDetailContent(
             uiState = SampleMediaDetailUiState,
+            snackbarHostState = remember { SnackbarHostState() },
             onBackClick = {},
             onPlayClick = {},
             onFavoriteClick = {},

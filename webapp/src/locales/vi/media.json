@@ -14,6 +14,7 @@
     "crew": "Đoàn làm phim",
     "similar": "Phim tương tự",
     "copyStreamUrl": "Sao chép link stream",
+    "copyStreamUrlFailed": "Không thể sao chép link stream",
     "markAsWatched": "Đánh dấu đã xem",
     "markAsUnwatched": "Đánh dấu chưa xem",
     "copied": "Đã sao chép!",

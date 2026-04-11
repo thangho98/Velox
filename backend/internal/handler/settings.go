@@ -334,6 +334,13 @@ type deeplResponse struct {
 	APIKey string `json:"api_key"`
 }
 
+type aiTranslationRequest struct {
+	Provider string `json:"provider"`
+	APIKey   string `json:"api_key"`
+	BaseURL  string `json:"base_url"`
+	Model    string `json:"model"`
+}
+
 // GetDeepL returns the current DeepL configuration.
 // GET /api/admin/settings/deepl
 func (h *SettingsHandler) GetDeepL(w http.ResponseWriter, r *http.Request) {
@@ -358,5 +365,40 @@ func (h *SettingsHandler) UpdateDeepL(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to save api_key")
 		return
 	}
+	respondJSON(w, http.StatusOK, settings)
+}
+
+// GetAITranslation returns the current AI subtitle translation configuration.
+// GET /api/admin/settings/ai-translation
+func (h *SettingsHandler) GetAITranslation(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.settingsSvc.GetAITranslation(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	respondJSON(w, http.StatusOK, settings)
+}
+
+// UpdateAITranslation saves AI subtitle translation settings.
+// PUT /api/admin/settings/ai-translation
+func (h *SettingsHandler) UpdateAITranslation(w http.ResponseWriter, r *http.Request) {
+	var req aiTranslationRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	settings, err := h.settingsSvc.UpdateAITranslation(
+		r.Context(),
+		req.Provider,
+		req.APIKey,
+		req.BaseURL,
+		req.Model,
+	)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	respondJSON(w, http.StatusOK, settings)
 }

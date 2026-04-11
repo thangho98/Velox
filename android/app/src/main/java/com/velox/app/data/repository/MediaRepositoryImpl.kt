@@ -732,6 +732,9 @@ class MediaRepositoryImpl @Inject constructor(
                         title = dto.media?.title ?: "",
                         seriesId = dto.seriesId,
                         seasonId = dto.seasonId,
+                        seasonNumber = dto.episodeNumber?.let { dto.seasonNumber },
+                        episodeNumber = dto.episodeNumber,
+                        episodeOverview = dto.media?.overview,
                     )
                 )
             } else {

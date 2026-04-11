@@ -1,5 +1,16 @@
 # Changelog
 
+## [2026-04-11]
+### Added
+- Backend: AI subtitle translation package (`pkg/translate/ai.go`) - supports OpenAI, Gemini, and Anthropic compatible APIs.
+- Backend: `aisubtest` CLI tool for testing AI subtitle translation.
+- Backend: `ffprobe_hdr_test.go` for FFprobe HDR metadata testing.
+
+### Changed
+- Backend: Stream URL TTL now calculated from media file duration instead of fixed 2-hour value.
+- Android App: Disable native text track rendering in ExoPlayer to prevent double subtitle rendering.
+- Android App: Add release signing config with keystore for signed APK builds.
+
 ## [2026-04-10]
 ### Added
 - Android App: Implement Skip Intro / Credits Admin Dashboard in Settings Screen.

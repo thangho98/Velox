@@ -277,7 +277,7 @@ func (app *serverApp) initServices() error {
 
 	app.services.auth = service.NewAuthService(repos.user, repos.refreshToken, repos.session, app.jwtManager, app.db)
 	app.services.userData = service.NewUserDataService(repos.userData)
-	app.services.subtitle = service.NewSubtitleService(app.db, repos.subtitle, repos.mediaFile)
+	app.services.subtitle = service.NewSubtitleService(app.db, repos.subtitle, repos.mediaFile, repos.media, repos.genre)
 	app.services.subtitle.SetSettingsRepo(repos.appSettings)
 	app.services.subtitle.SetCacheDir(app.cfg.SubtitleCachePath)
 	app.services.audioTrack = service.NewAudioTrackService(app.db, repos.audioTrack)
@@ -366,7 +366,7 @@ func (app *serverApp) initHandlers() {
 	app.handlers.library = handler.NewLibraryHandler(services.library)
 	app.handlers.media = handler.NewMediaHandler(services.media)
 	app.handlers.stream = handler.NewStreamHandler(services.stream, services.streamManager)
-	app.handlers.streamURL = handler.NewStreamURLHandler(app.apiKeyStore)
+	app.handlers.streamURL = handler.NewStreamURLHandler(app.apiKeyStore, services.stream)
 	app.handlers.setup = handler.NewSetupHandler(services.setup)
 	app.handlers.auth = handler.NewAuthHandler(services.auth)
 	app.handlers.user = handler.NewUserHandler(services.auth)

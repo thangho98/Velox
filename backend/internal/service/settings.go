@@ -41,6 +41,27 @@ type PlaybackSettings struct {
 	PlaybackMode string `json:"playback_mode"`
 }
 
+// AITranslationSettings configures AI subtitle localization providers.
+type AITranslationSettings struct {
+	Provider string `json:"provider"`
+	APIKey   string `json:"api_key"`
+	BaseURL  string `json:"base_url"`
+	Model    string `json:"model"`
+}
+
+func defaultAITranslationBaseURL(provider string) string {
+	switch provider {
+	case "openai_compatible":
+		return "https://api.openai.com/v1"
+	case "gemini_compatible":
+		return "https://generativelanguage.googleapis.com/v1beta"
+	case "anthropic_compatible":
+		return "https://api.anthropic.com"
+	default:
+		return ""
+	}
+}
+
 // NewSettingsService creates a new settings service.
 func NewSettingsService(repo *repository.AppSettingsRepo, builtinKeys map[string]bool) *SettingsService {
 	return &SettingsService{
@@ -241,4 +262,75 @@ func (s *SettingsService) UpdateDeepL(ctx context.Context, apiKey string) (*APIK
 	}
 
 	return &APIKeySettings{APIKey: apiKey}, nil
+}
+
+// GetAITranslation returns the current AI subtitle translation configuration.
+func (s *SettingsService) GetAITranslation(ctx context.Context) (*AITranslationSettings, error) {
+	vals, err := s.repo.GetMulti(
+		ctx,
+		model.SettingAITranslationProvider,
+		model.SettingAITranslationAPIKey,
+		model.SettingAITranslationBaseURL,
+		model.SettingAITranslationModel,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting AI translation settings: %w", err)
+	}
+
+	return &AITranslationSettings{
+		Provider: vals[model.SettingAITranslationProvider],
+		APIKey:   vals[model.SettingAITranslationAPIKey],
+		BaseURL: func() string {
+			baseURL := vals[model.SettingAITranslationBaseURL]
+			if baseURL == "" {
+				return defaultAITranslationBaseURL(vals[model.SettingAITranslationProvider])
+			}
+			return baseURL
+		}(),
+		Model: vals[model.SettingAITranslationModel],
+	}, nil
+}
+
+// UpdateAITranslation saves the AI subtitle translation configuration.
+func (s *SettingsService) UpdateAITranslation(
+	ctx context.Context,
+	provider, apiKey, baseURL, modelName string,
+) (*AITranslationSettings, error) {
+	switch provider {
+	case "", "openai_compatible", "gemini_compatible", "anthropic_compatible":
+	default:
+		return nil, fmt.Errorf("provider must be empty, openai_compatible, gemini_compatible, or anthropic_compatible")
+	}
+
+	if provider != "" {
+		if apiKey == "" {
+			return nil, fmt.Errorf("api_key is required when provider is enabled")
+		}
+		if modelName == "" {
+			return nil, fmt.Errorf("model is required when provider is enabled")
+		}
+		if baseURL == "" {
+			baseURL = defaultAITranslationBaseURL(provider)
+		}
+	}
+
+	if err := s.repo.Set(ctx, model.SettingAITranslationProvider, provider); err != nil {
+		return nil, err
+	}
+	if err := s.repo.Set(ctx, model.SettingAITranslationAPIKey, apiKey); err != nil {
+		return nil, err
+	}
+	if err := s.repo.Set(ctx, model.SettingAITranslationBaseURL, baseURL); err != nil {
+		return nil, err
+	}
+	if err := s.repo.Set(ctx, model.SettingAITranslationModel, modelName); err != nil {
+		return nil, err
+	}
+
+	return &AITranslationSettings{
+		Provider: provider,
+		APIKey:   apiKey,
+		BaseURL:  baseURL,
+		Model:    modelName,
+	}, nil
 }

@@ -2,21 +2,32 @@
  * Subtitle provider settings hooks
  */
 
-import { createSettingsHooks } from './factory'
+import { createSettingsHooks } from "./factory";
 
 // --- Types ---
 
 interface SubdlSettings {
-  api_key: string
-  has_builtin: boolean
+  api_key: string;
+  has_builtin: boolean;
 }
 
 interface DeepLSettings {
-  api_key: string
+  api_key: string;
+}
+
+interface AITranslationSettings {
+  provider:
+    | ""
+    | "openai_compatible"
+    | "gemini_compatible"
+    | "anthropic_compatible";
+  api_key: string;
+  base_url: string;
+  model: string;
 }
 
 interface AutoSubSettings {
-  languages: string
+  languages: string;
 }
 
 // --- Hooks ---
@@ -24,10 +35,13 @@ interface AutoSubSettings {
 export const [useSubdlSettings, useUpdateSubdlSettings] = createSettingsHooks<
   SubdlSettings,
   { api_key: string }
->('subdl')
+>("subdl");
 
 export const [useDeepLSettings, useUpdateDeepLSettings] =
-  createSettingsHooks<DeepLSettings>('deepl')
+  createSettingsHooks<DeepLSettings>("deepl");
+
+export const [useAITranslationSettings, useUpdateAITranslationSettings] =
+  createSettingsHooks<AITranslationSettings>("ai-translation");
 
 export const [useAutoSubSettings, useUpdateAutoSubSettings] =
-  createSettingsHooks<AutoSubSettings>('auto-subtitles')
+  createSettingsHooks<AutoSubSettings>("auto-subtitles");

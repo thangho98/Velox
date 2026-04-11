@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/thawng/velox/pkg/ffmpegbin"
+	"github.com/thawng/velox/pkg/ffprobe"
 )
 
 const (
@@ -265,20 +266,7 @@ func (g *Generator) buildFrameFilter(isHDR bool) string {
 // isHDRFile returns true if the input file uses HDR color transfer (PQ/SMPTE2084)
 // or BT.2020 color primaries.
 func isHDRFile(inputPath string) bool {
-	cmd := exec.Command(ffmpegbin.FFprobe(),
-		"-v", "quiet",
-		"-select_streams", "v:0",
-		"-show_entries", "stream=color_transfer,color_primaries",
-		"-of", "default=noprint_wrappers=1",
-		inputPath,
-	)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		return false
-	}
-	lower := strings.ToLower(out.String())
-	return strings.Contains(lower, "smpte2084") || strings.Contains(lower, "bt2020")
+	return ffprobe.IsHDRLike(inputPath)
 }
 
 // createSpriteSheets combines extracted frames into sprite sheets using ffmpeg's

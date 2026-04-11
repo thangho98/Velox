@@ -900,6 +900,18 @@ private fun SubtitlesSection(viewModel: SettingsViewModel, uiState: SettingsUiSt
             onSave = { apiKey -> viewModel.updateProviderApiKey("subdl", apiKey) }
         )
 
+        AITranslationSettingsCard(
+            settings = uiState.aiTranslationSettings,
+            onSave = { provider, apiKey, baseUrl, model ->
+                viewModel.updateAITranslationSettings(
+                    provider = provider,
+                    apiKey = apiKey,
+                    baseUrl = baseUrl,
+                    model = model,
+                )
+            }
+        )
+
         // DeepL Settings
         ProviderSettingsCard(
             name = "DeepL Translation",
@@ -917,6 +929,144 @@ private fun SubtitlesSection(viewModel: SettingsViewModel, uiState: SettingsUiSt
             languages = uiState.autoSubSettings?.languages ?: "",
             onSave = { langs -> viewModel.updateAutoSubSettings(langs) }
         )
+    }
+}
+
+private fun defaultAITranslationBaseUrl(provider: String): String =
+    when (provider) {
+        "openai_compatible" -> "https://api.openai.com/v1"
+        "gemini_compatible" -> "https://generativelanguage.googleapis.com/v1beta"
+        "anthropic_compatible" -> "https://api.anthropic.com"
+        else -> ""
+    }
+
+@Composable
+private fun AITranslationSettingsCard(
+    settings: com.velox.app.data.model.AITranslationSettingsDto?,
+    onSave: (String, String, String, String) -> Unit,
+) {
+    var provider by remember(settings?.provider) { mutableStateOf(settings?.provider ?: "") }
+    var apiKey by remember(settings?.apiKey) { mutableStateOf(settings?.apiKey ?: "") }
+    var baseUrl by remember(settings?.baseUrl, settings?.provider) {
+        mutableStateOf(settings?.baseUrl ?: defaultAITranslationBaseUrl(settings?.provider ?: ""))
+    }
+    var model by remember(settings?.model) { mutableStateOf(settings?.model ?: "") }
+    var apiKeyVisible by remember { mutableStateOf(false) }
+
+    val providerOptions = listOf(
+        "" to "Disabled",
+        "openai_compatible" to "OpenAI Compatible",
+        "gemini_compatible" to "Gemini Compatible",
+        "anthropic_compatible" to "Anthropic Compatible",
+    )
+    val isEnabled = provider.isNotEmpty()
+    val statusText = providerOptions.find { it.first == provider }?.second ?: "Disabled"
+    val statusColor = if (isEnabled) Color(0xFF22C55E) else Color(0xFF6B7280)
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = NetflixDark,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("AI Subtitle Localization", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    color = statusColor.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(4.dp),
+                ) {
+                    Text(
+                        text = statusText,
+                        color = statusColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "Use an LLM provider to localize subtitles with better tone and context. Velox manages the system prompt and validates AI JSON output before saving.",
+                color = NetflixLightGray,
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            SettingsDropdown(
+                label = "Provider",
+                value = provider,
+                options = providerOptions,
+                onValueChange = { selected ->
+                    provider = selected
+                    baseUrl = defaultAITranslationBaseUrl(selected)
+                },
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("API Key", color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = isEnabled,
+                placeholder = { Text("Provider API key") },
+                visualTransformation = if (apiKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                trailingIcon = {
+                    val image = if (apiKeyVisible) LucideIcons.Visibility else LucideIcons.VisibilityOff
+                    IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) { Icon(image, "Toggle API Key visibility") }
+                },
+                colors = textFieldColors(),
+                shape = RoundedCornerShape(8.dp),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                label = { Text("Base URL") },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = isEnabled,
+                placeholder = { Text(defaultAITranslationBaseUrl(provider)) },
+                colors = textFieldColors(),
+                shape = RoundedCornerShape(8.dp),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = model,
+                onValueChange = { model = it },
+                label = { Text("Model") },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = isEnabled,
+                placeholder = { Text("e.g. gpt-4.1-mini") },
+                colors = textFieldColors(),
+                shape = RoundedCornerShape(8.dp),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Prompt is system-managed. The response must pass strict JSON validation before a subtitle file is created.",
+                color = NetflixLightGray,
+                fontSize = 11.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { onSave(provider, apiKey, baseUrl, model) },
+                colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Save", fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }
 

@@ -242,6 +242,9 @@ data class MediaWithFilesInfo(
     val title: String,
     val seriesId: Int?,
     val seasonId: Int?,
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
+    val episodeOverview: String? = null,
 )
 
 data class WatchProgress(

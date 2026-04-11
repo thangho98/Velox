@@ -15,6 +15,8 @@ type ClientCapabilities struct {
 
 // User agent patterns for detection
 var (
+	androidNativePattern = regexp.MustCompile(`(?i)veloxandroid`)
+
 	// Browser patterns
 	chromePattern  = regexp.MustCompile(`(?i)chrome|chromium|crios`)
 	firefoxPattern = regexp.MustCompile(`(?i)firefox|fxios`)
@@ -41,6 +43,14 @@ func DetectClientFromUA(userAgent string) ClientCapabilities {
 	}
 
 	ua := strings.ToLower(userAgent)
+
+	if androidNativePattern.MatchString(ua) {
+		caps.Platform = "android"
+		caps.IsMobile = true
+		caps.Browser = "velox-android"
+		caps.Profile = &AndroidNative
+		return caps
+	}
 
 	// Detect platform
 	if iosPattern.MatchString(ua) {

@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { LuSave, LuCheck, LuEye, LuEyeOff } from 'react-icons/lu'
+import { Select } from '@/components/ui/Select'
 import {
   useOpenSubsSettings,
   useUpdateOpenSubsSettings,
   useSubdlSettings,
   useUpdateSubdlSettings,
+  useAITranslationSettings,
+  useUpdateAITranslationSettings,
   useDeepLSettings,
   useUpdateDeepLSettings,
   useAutoSubSettings,
@@ -179,6 +182,9 @@ export function SubtitlesSection() {
       {/* Subdl */}
       <SubdlCard />
 
+      {/* AI Translation */}
+      <AITranslationCard />
+
       {/* DeepL Translation */}
       <DeepLCard />
 
@@ -268,6 +274,166 @@ function SubdlCard() {
             {showApiKey ? <LuEyeOff size={16} /> : <LuEye size={16} />}
           </button>
         </div>
+        <button
+          type="submit"
+          disabled={isSaving}
+          className="flex items-center gap-2 rounded bg-netflix-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-netflix-red-hover disabled:opacity-50"
+        >
+          {saved ? (
+            <>
+              <LuCheck size={14} /> {t('actions.saved')}
+            </>
+          ) : (
+            <>
+              <LuSave size={14} /> {isSaving ? t('actions.saving') : t('actions.save')}
+            </>
+          )}
+        </button>
+      </form>
+    </div>
+  )
+}
+
+function AITranslationCard() {
+  const { t } = useTranslation('settings')
+  const { data: settings, isLoading } = useAITranslationSettings()
+  const { mutate: updateSettings, isPending: isSaving } = useUpdateAITranslationSettings()
+  const [editedProvider, setEditedProvider] = useState<string | null>(null)
+  const [editedApiKey, setEditedApiKey] = useState<string | null>(null)
+  const [editedBaseUrl, setEditedBaseUrl] = useState<string | null>(null)
+  const [editedModel, setEditedModel] = useState<string | null>(null)
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const provider = editedProvider ?? settings?.provider ?? ''
+  const defaultBaseUrl =
+    provider === 'openai_compatible'
+      ? 'https://api.openai.com/v1'
+      : provider === 'gemini_compatible'
+        ? 'https://generativelanguage.googleapis.com/v1beta'
+        : provider === 'anthropic_compatible'
+          ? 'https://api.anthropic.com'
+          : ''
+  const apiKey = editedApiKey ?? settings?.api_key ?? ''
+  const baseUrl = editedBaseUrl ?? settings?.base_url ?? defaultBaseUrl
+  const model = editedModel ?? settings?.model ?? ''
+  const isEnabled = provider !== ''
+
+  const providerOptions = [
+    { value: '', label: t('providers.aiTranslation.disabled') },
+    { value: 'openai_compatible', label: t('providers.aiTranslation.providers.openai') },
+    { value: 'gemini_compatible', label: t('providers.aiTranslation.providers.gemini') },
+    { value: 'anthropic_compatible', label: t('providers.aiTranslation.providers.anthropic') },
+  ]
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault()
+    updateSettings(
+      {
+        provider,
+        api_key: apiKey,
+        base_url: baseUrl,
+        model,
+      },
+      {
+        onSuccess: () => {
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2000)
+        },
+      },
+    )
+  }
+
+  const handleProviderChange = (nextProvider: string) => {
+    setEditedProvider(nextProvider)
+    setEditedBaseUrl(
+      nextProvider === ''
+        ? ''
+        : nextProvider === 'openai_compatible'
+          ? 'https://api.openai.com/v1'
+          : nextProvider === 'gemini_compatible'
+            ? 'https://generativelanguage.googleapis.com/v1beta'
+            : 'https://api.anthropic.com',
+    )
+  }
+
+  if (isLoading) return <Spinner />
+
+  return (
+    <div className="rounded-lg bg-netflix-dark p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-white">{t('providers.aiTranslation.name')}</h3>
+        <span
+          className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+            isEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'
+          }`}
+        >
+          {isEnabled
+            ? providerOptions.find((option) => option.value === provider)?.label
+            : t('providers.aiTranslation.disabled')}
+        </span>
+      </div>
+      <p className="mb-5 text-xs text-gray-400">{t('providers.aiTranslation.description')}</p>
+
+      <form onSubmit={handleSave} className="space-y-4">
+        <Field label={t('providers.aiTranslation.provider')} compact>
+          <Select
+            value={provider}
+            onChange={(e) => handleProviderChange(e.target.value)}
+            className="w-full"
+          >
+            {providerOptions.map((option) => (
+              <option key={option.value || 'disabled'} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label={t('providers.aiTranslation.apiKey')} compact>
+          <div className="relative">
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(e) => setEditedApiKey(e.target.value)}
+              disabled={!isEnabled}
+              placeholder={t('providers.aiTranslation.apiKeyPlaceholder')}
+              className={`${inputClass} pr-10 disabled:opacity-50`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey(!showApiKey)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            >
+              {showApiKey ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+            </button>
+          </div>
+        </Field>
+
+        <Field label={t('providers.aiTranslation.baseUrl')} compact>
+          <input
+            type="text"
+            value={baseUrl}
+            onChange={(e) => setEditedBaseUrl(e.target.value)}
+            disabled={!isEnabled}
+            placeholder={defaultBaseUrl}
+            className={`${inputClass} disabled:opacity-50`}
+          />
+        </Field>
+
+        <Field label={t('providers.aiTranslation.model')} compact>
+          <input
+            type="text"
+            value={model}
+            onChange={(e) => setEditedModel(e.target.value)}
+            disabled={!isEnabled}
+            placeholder={t('providers.aiTranslation.modelPlaceholder')}
+            className={`${inputClass} disabled:opacity-50`}
+          />
+        </Field>
+
+        <p className="text-[11px] text-gray-500">{t('providers.aiTranslation.validationHint')}</p>
+
         <button
           type="submit"
           disabled={isSaving}

@@ -8,6 +8,8 @@ import {
 } from '@/hooks/stores/useMedia'
 import { usePlayerStore } from '@/stores/player'
 import { LuFilm, LuPlay, LuPencil, LuLink, LuCheck, LuCircle, LuRotateCcw } from 'react-icons/lu'
+import { useToast } from '@/components/Toast'
+import { copyTextToClipboard } from '@/lib/clipboard'
 import { tmdbImage } from '@/lib/image'
 import { ActionMenu } from '@/components/ActionMenu'
 import type { ActionMenuItem } from '@/components/ActionMenu'
@@ -26,7 +28,20 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
   const { data: progress } = useProgress(episode.media_id)
   const { mutate: updateProgress } = useUpdateProgress()
   const { mutate: dismissProgress } = useDismissProgress()
-  const { mutate: getStreamUrl } = useStreamUrl(episode.media_id)
+  const { success: showToastSuccess, error: showToastError } = useToast()
+  const { mutate: getStreamUrl } = useStreamUrl(episode.media_id, {
+    onSuccess: async (data) => {
+      const copied = await copyTextToClipboard(data.direct_url)
+      if (!copied) {
+        showToastError(t('actions.copyStreamUrlFailed'))
+        return
+      }
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      showToastSuccess(t('actions.copied'))
+    },
+    onError: () => showToastError(t('actions.copyStreamUrlFailed')),
+  })
   const [copied, setCopied] = useState(false)
   const duration = episode.duration || 0
   const showProgressBar =
@@ -64,15 +79,7 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
     {
       label: copied ? t('actions.copied') : t('actions.copyStreamUrl'),
       icon: <LuLink size={16} className={copied ? 'text-green-400' : ''} />,
-      onClick: () => {
-        getStreamUrl(undefined, {
-          onSuccess: (data) => {
-            navigator.clipboard.writeText(data.direct_url)
-            setCopied(true)
-            setTimeout(() => setCopied(false), 2000)
-          },
-        })
-      },
+      onClick: () => getStreamUrl(),
     },
     {
       label: t('actions.editMetadata'),

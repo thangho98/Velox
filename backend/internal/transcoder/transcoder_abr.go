@@ -142,7 +142,7 @@ func (t *Transcoder) generateABRVariant(inputPath, playlistPath, segPattern stri
 	hdr := isHDRFile(inputPath)
 	var vf string
 	if hdr {
-		vf = fmt.Sprintf("%s,%s", hdrToneMapFilterForHW(hwAccel), hwScaleFilter(hwAccel, v.Height))
+		vf = fmt.Sprintf("%s,%s", hdrToneMapFilterForHW(hwAccel, inputPath), hwScaleFilter(hwAccel, v.Height))
 	} else {
 		vf = hwScaleFilter(hwAccel, v.Height)
 	}

@@ -1,13 +1,12 @@
 package transcoder
 
 import (
-	"bytes"
 	"fmt"
-	"log"
 	"os/exec"
 	"strings"
 
 	"github.com/thawng/velox/pkg/ffmpegbin"
+	"github.com/thawng/velox/pkg/ffprobe"
 )
 
 // hasSubtitlesFilter is set once at init — true when FFmpeg was built with libass.
@@ -99,21 +98,22 @@ func hdrTonemapVAAPI() string {
 
 // hdrTonemapOpenCL returns OpenCL-based HDR→SDR tone mapping filter.
 // Works with NVIDIA/AMD GPUs via OpenCL. Output is NV12.
-func hdrTonemapOpenCL() string {
-	return "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=opencl:format=nv12"
+func hdrTonemapOpenCL(inputPath string) string {
+	return hdrColorMetadataFallbackPrefix(inputPath) +
+		"zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=opencl:format=nv12"
 }
 
 // hdrToneMapFilterForHW returns the appropriate HDR→SDR tone mapping filter
 // based on the hardware accelerator in use. Falls back to software zscale+hable
 // when no hardware accelerator is available or for unsupported cases.
-func hdrToneMapFilterForHW(hwAccel string) string {
+func hdrToneMapFilterForHW(hwAccel, inputPath string) string {
 	switch hwAccel {
 	case "vaapi":
 		return hdrTonemapVAAPI()
 	case "nvenc", "amf":
-		return hdrTonemapOpenCL()
+		return hdrTonemapOpenCL(inputPath)
 	default:
-		return hdrToneMapFilter() // software fallback: zscale+hable
+		return hdrToneMapFilter(inputPath) // software fallback: zscale+hable
 	}
 }
 
@@ -122,7 +122,7 @@ func hdrToneMapFilterForHW(hwAccel string) string {
 func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string) []string {
 	var filters []string
 	if hdr {
-		filters = append(filters, hdrToneMapFilterForHW(hwAccel))
+		filters = append(filters, hdrToneMapFilterForHW(hwAccel, inputPath))
 	}
 	if siIdx >= 0 && hasSubtitlesFilter {
 		escaped := escapeFFmpegSubtitlePath(inputPath)
@@ -147,8 +147,8 @@ func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string)
 // buildImageSubtitleBurnInArgs burns a bitmap subtitle stream (PGS/VobSub) into
 // the primary video using filter_complex overlay. The selected subtitle stream is
 // referenced by absolute stream index on input 0.
-func buildImageSubtitleBurnInArgs(hwAccel string, hdr bool, subtitleStreamIndex int) []string {
-	complexFilter := buildImageSubtitleBurnInFilter(hwAccel, hdr, subtitleStreamIndex)
+func buildImageSubtitleBurnInArgs(hwAccel string, hdr bool, inputPath string, subtitleStreamIndex int) []string {
+	complexFilter := buildImageSubtitleBurnInFilter(hwAccel, hdr, inputPath, subtitleStreamIndex)
 	args := []string{
 		"-filter_complex", complexFilter,
 		"-map", "[vout]",
@@ -161,8 +161,8 @@ func buildImageSubtitleBurnInArgs(hwAccel string, hdr bool, subtitleStreamIndex 
 
 // buildImageSubtitleBurnInVideoOnlyArgs is the same burn-in path as
 // buildImageSubtitleBurnInArgs, but only maps the filtered video output.
-func buildImageSubtitleBurnInVideoOnlyArgs(hwAccel string, hdr bool, subtitleStreamIndex int) []string {
-	complexFilter := buildImageSubtitleBurnInFilter(hwAccel, hdr, subtitleStreamIndex)
+func buildImageSubtitleBurnInVideoOnlyArgs(hwAccel string, hdr bool, inputPath string, subtitleStreamIndex int) []string {
+	complexFilter := buildImageSubtitleBurnInFilter(hwAccel, hdr, inputPath, subtitleStreamIndex)
 	args := []string{
 		"-filter_complex", complexFilter,
 		"-map", "[vout]",
@@ -193,11 +193,11 @@ func hwEncoderArgs(hwAccel string) []string {
 // For HDR sources, uses zscale+hable tonemap (software) because subtitle overlay
 // via filter_complex requires system memory frames. VAAPI hardware tonemap outputs
 // to GPU surfaces which can't be directly overlaid with subtitles.
-func buildImageSubtitleBurnInFilter(hwAccel string, hdr bool, subtitleStreamIndex int) string {
+func buildImageSubtitleBurnInFilter(hwAccel string, hdr bool, inputPath string, subtitleStreamIndex int) string {
 	if hdr {
 		// Always use zscale+hable for HDR subtitle burn-in — filter_complex
 		// requires software processing, so VAAPI hwaccel doesn't help here.
-		return fmt.Sprintf("[0:v:0]%s[base];[base][0:%d]overlay[vout]", hdrToneMapFilter(), subtitleStreamIndex)
+		return fmt.Sprintf("[0:v:0]%s[base];[base][0:%d]overlay[vout]", hdrToneMapFilter(inputPath), subtitleStreamIndex)
 	}
 	return fmt.Sprintf("[0:v:0][0:%d]overlay[vout]", subtitleStreamIndex)
 }
@@ -222,25 +222,19 @@ func escapeFFmpegSubtitlePath(path string) string {
 // isHDRFile returns true if the input file's primary video stream uses HDR
 // color transfer (PQ/SMPTE2084) or BT.2020 color primaries.
 func isHDRFile(inputPath string) bool {
-	cmd := exec.Command(ffmpegbin.FFprobe(),
-		"-v", "quiet",
-		"-select_streams", "v:0",
-		"-show_entries", "stream=color_transfer,color_primaries",
-		"-of", "default=noprint_wrappers=1",
-		inputPath,
-	)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		log.Printf("transcoder: HDR probe failed for %q: %v", inputPath, err)
-		return false
-	}
-	lower := strings.ToLower(out.String())
-	return strings.Contains(lower, "smpte2084") || strings.Contains(lower, "bt2020")
+	return ffprobe.IsHDRLike(inputPath)
 }
 
 // hdrToneMapFilter returns the FFmpeg -vf filter chain for HDR→SDR tone mapping.
 // Output is SDR BT.709 in yuv420p, suitable for H.264/H.265 HLS streaming.
-func hdrToneMapFilter() string {
-	return "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709,format=yuv420p"
+func hdrToneMapFilter(inputPath string) string {
+	return hdrColorMetadataFallbackPrefix(inputPath) +
+		"zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709,format=yuv420p"
+}
+
+func hdrColorMetadataFallbackPrefix(inputPath string) string {
+	if !ffprobe.NeedsHDRColorMetadataFallback(inputPath) {
+		return ""
+	}
+	return "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,"
 }

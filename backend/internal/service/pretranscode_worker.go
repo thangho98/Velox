@@ -68,6 +68,7 @@ func (s *PretranscodeService) processJob(ctx context.Context, job *model.Pretran
 	}
 
 	isAudioRemux := profile.VideoCodec == "copy"
+	isHDR := ffprobe.IsHDRLike(mf.FilePath)
 
 	// For video pretranscode: skip if source resolution < profile height (no upscale)
 	if !isAudioRemux && mf.Height < profile.Height {
@@ -156,9 +157,9 @@ func (s *PretranscodeService) processJob(ctx context.Context, job *model.Pretran
 	if isAudioRemux && !needsVideoTranscode {
 		errEncode = s.runAudioRemux(ctx, mf.FilePath, outputPath, profile)
 	} else if isAudioRemux && needsVideoTranscode {
-		errEncode = s.runUniversalTranscode(ctx, mf.FilePath, outputPath, profile, mf.Height)
+		errEncode = s.runUniversalTranscode(ctx, mf.FilePath, outputPath, profile, mf.Height, isHDR)
 	} else {
-		errEncode = s.encodeFile(ctx, mf.FilePath, outputPath, profile, mf.AudioCodec)
+		errEncode = s.encodeFile(ctx, mf.FilePath, outputPath, profile, mf.AudioCodec, isHDR)
 	}
 
 	if errEncode != nil {
@@ -262,41 +263,79 @@ func (s *PretranscodeService) runAudioRemux(ctx context.Context, inputPath, outp
 }
 
 // runUniversalTranscode transcodes non-H.264 sources to H.264+AAC at source resolution.
-func (s *PretranscodeService) runUniversalTranscode(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceHeight int) error {
+func (s *PretranscodeService) runUniversalTranscode(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceHeight int, hdr bool) error {
 	bitrate := estimateBitrateForHeight(sourceHeight)
+	if hdr {
+		log.Printf("pretranscode: HDR/DV source detected, forcing software tonemap for %s", filepath.Base(inputPath))
+		return s.runUniversalTranscodeWith(ctx, inputPath, outputPath, profile, sourceHeight, bitrate, "", true)
+	}
 	// Try HW accel first
 	if s.hwAccel != "" {
-		err := s.runUniversalTranscodeWith(ctx, inputPath, outputPath, profile, sourceHeight, bitrate, s.hwAccel)
+		err := s.runUniversalTranscodeWith(ctx, inputPath, outputPath, profile, sourceHeight, bitrate, s.hwAccel, false)
 		if err == nil {
 			return nil
 		}
 		log.Printf("pretranscode: HW universal transcode failed (%s), retrying software: %v", s.hwAccel, err)
 		_ = os.Remove(outputPath)
 	}
-	return s.runUniversalTranscodeWith(ctx, inputPath, outputPath, profile, sourceHeight, bitrate, "")
+	return s.runUniversalTranscodeWith(ctx, inputPath, outputPath, profile, sourceHeight, bitrate, "", false)
 }
 
-func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceHeight, bitrate int, hwAccel string) error {
+func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceHeight, bitrate int, hwAccel string, hdr bool) error {
 	args := []string{"-hide_banner", "-loglevel", "error", "-stats", "-y"}
 
-	switch hwAccel {
-	case "vaapi":
-		args = append(args, "-vaapi_device", "/dev/dri/renderD128")
-	case "nvenc":
-		args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
+	if !hdr {
+		switch hwAccel {
+		case "vaapi":
+			args = append(args, "-vaapi_device", "/dev/dri/renderD128")
+		case "nvenc":
+			args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
+		}
 	}
 
 	args = append(args, "-i", inputPath)
 
-	switch hwAccel {
-	case "vaapi":
-		args = append(args, "-vf", "format=nv12,hwupload,scale_vaapi=format=nv12", "-c:v", "h264_vaapi", "-b:v", fmt.Sprintf("%dk", bitrate))
-	case "nvenc":
-		args = append(args, "-c:v", "h264_nvenc", "-preset", "p4", "-b:v", fmt.Sprintf("%dk", bitrate))
-	case "amf":
-		args = append(args, "-c:v", "h264_amf", "-b:v", fmt.Sprintf("%dk", bitrate))
-	default:
-		args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p")
+	if hdr {
+		args = append(args,
+			"-vf", buildPretranscodeHDRScaleFilter(inputPath, sourceHeight),
+			"-c:v", "libx264",
+			"-preset", "medium",
+			"-crf", "20",
+			"-pix_fmt", "yuv420p",
+			"-colorspace", "bt709",
+			"-color_primaries", "bt709",
+			"-color_trc", "bt709",
+		)
+	} else {
+		switch hwAccel {
+		case "vaapi":
+			args = append(args,
+				"-vf", fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d:format=nv12", sourceHeight),
+				"-c:v", "h264_vaapi",
+				"-profile:v", "main",
+				"-b:v", fmt.Sprintf("%dk", bitrate),
+			)
+		case "nvenc":
+			args = append(args,
+				"-vf", fmt.Sprintf("scale_cuda=w=-2:h=%d:format=yuv420p", sourceHeight),
+				"-c:v", "h264_nvenc",
+				"-preset", "p4",
+				"-profile:v", "high",
+				"-pix_fmt", "yuv420p",
+				"-b:v", fmt.Sprintf("%dk", bitrate),
+			)
+		case "amf":
+			args = append(args,
+				"-vf", fmt.Sprintf("scale=-2:%d", sourceHeight),
+				"-c:v", "h264_amf",
+				"-quality", "balanced",
+				"-pix_fmt", "yuv420p",
+				"-b:v", fmt.Sprintf("%dk", bitrate),
+			)
+		default:
+			args = append(args, "-vf", fmt.Sprintf("scale=-2:%d", sourceHeight))
+			args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p")
+		}
 	}
 
 	args = append(args, "-c:a", "aac", "-b:a", fmt.Sprintf("%dk", profile.AudioBitrate), "-ac", "2",
@@ -305,6 +344,17 @@ func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inp
 	cmd := niceFFmpeg(ctx, args...)
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func buildPretranscodeHDRScaleFilter(inputPath string, height int) string {
+	prefix := ""
+	if ffprobe.NeedsHDRColorMetadataFallback(inputPath) {
+		prefix = "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,"
+	}
+	return prefix + fmt.Sprintf(
+		"zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,scale=-2:%d",
+		height,
+	)
 }
 
 // estimateBitrateForHeight returns a rough video bitrate (kbps) for H.264 at a given height.
@@ -325,66 +375,85 @@ func estimateBitrateForHeight(height int) int {
 	}
 }
 
-func (s *PretranscodeService) encodeFile(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceAudioCodec string) error {
+func (s *PretranscodeService) encodeFile(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceAudioCodec string, hdr bool) error {
+	if hdr {
+		log.Printf("pretranscode: HDR/DV source detected, forcing software tonemap for %s", filepath.Base(inputPath))
+		return s.runFFmpeg(ctx, inputPath, outputPath, profile, "", sourceAudioCodec, true)
+	}
 	// Try HW accel first, fallback to software
 	if s.hwAccel != "" {
-		err := s.runFFmpeg(ctx, inputPath, outputPath, profile, s.hwAccel, sourceAudioCodec)
+		err := s.runFFmpeg(ctx, inputPath, outputPath, profile, s.hwAccel, sourceAudioCodec, false)
 		if err == nil {
 			return nil
 		}
 		log.Printf("pretranscode: HW encode failed (%s), retrying software: %v", s.hwAccel, err)
 		_ = os.Remove(outputPath)
 	}
-	return s.runFFmpeg(ctx, inputPath, outputPath, profile, "", sourceAudioCodec)
+	return s.runFFmpeg(ctx, inputPath, outputPath, profile, "", sourceAudioCodec, false)
 }
 
-func (s *PretranscodeService) runFFmpeg(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, hwAccel, sourceAudioCodec string) error {
+func (s *PretranscodeService) runFFmpeg(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, hwAccel, sourceAudioCodec string, hdr bool) error {
 	args := []string{"-hide_banner", "-loglevel", "error", "-stats", "-y"}
 
-	// Input args (HW accel init)
-	switch hwAccel {
-	case "vaapi":
-		args = append(args, "-vaapi_device", "/dev/dri/renderD128")
-	case "nvenc":
-		args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
-	case "qsv":
-		args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
-	case "videotoolbox":
-		args = append(args, "-hwaccel", "videotoolbox")
+	// HDR/DV pretranscode prioritizes correct SDR output over speed.
+	if !hdr {
+		switch hwAccel {
+		case "vaapi":
+			args = append(args, "-vaapi_device", "/dev/dri/renderD128")
+		case "nvenc":
+			args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
+		case "qsv":
+			args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
+		case "videotoolbox":
+			args = append(args, "-hwaccel", "videotoolbox")
+		}
 	}
 
 	args = append(args, "-i", inputPath)
 
-	// Video filter (scale)
-	switch hwAccel {
-	case "vaapi":
-		args = append(args, "-vf", fmt.Sprintf("format=nv12,hwupload,scale_vaapi=-2:%d", profile.Height))
-	case "nvenc":
-		args = append(args, "-vf", fmt.Sprintf("scale_cuda=-2:%d", profile.Height))
-	case "qsv":
-		args = append(args, "-vf", fmt.Sprintf("scale_qsv=-2:%d", profile.Height))
-	default:
-		args = append(args, "-vf", fmt.Sprintf("scale=-2:%d", profile.Height))
-	}
+	if hdr {
+		args = append(args,
+			"-vf", buildPretranscodeHDRScaleFilter(inputPath, profile.Height),
+			"-c:v", "libx264",
+			"-preset", "medium",
+			"-crf", "22",
+			"-pix_fmt", "yuv420p",
+			"-colorspace", "bt709",
+			"-color_primaries", "bt709",
+			"-color_trc", "bt709",
+		)
+	} else {
+		// Video filter (scale)
+		switch hwAccel {
+		case "vaapi":
+			args = append(args, "-vf", fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d:format=nv12", profile.Height))
+		case "nvenc":
+			args = append(args, "-vf", fmt.Sprintf("scale_cuda=w=-2:h=%d:format=yuv420p", profile.Height))
+		case "qsv":
+			args = append(args, "-vf", fmt.Sprintf("scale_qsv=w=-2:h=%d:format=nv12", profile.Height))
+		default:
+			args = append(args, "-vf", fmt.Sprintf("scale=-2:%d", profile.Height))
+		}
 
-	// Video codec
-	switch hwAccel {
-	case "vaapi":
-		args = append(args, "-c:v", "h264_vaapi")
-	case "nvenc":
-		args = append(args, "-c:v", "h264_nvenc", "-preset", "p4", "-tune", "hq")
-	case "qsv":
-		args = append(args, "-c:v", "h264_qsv", "-preset", "medium")
-	case "videotoolbox":
-		args = append(args, "-c:v", "h264_videotoolbox")
-	case "amf":
-		args = append(args, "-c:v", "h264_amf", "-quality", "balanced")
-	default:
-		args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "22", "-pix_fmt", "yuv420p")
+		// Video codec
+		switch hwAccel {
+		case "vaapi":
+			args = append(args, "-c:v", "h264_vaapi", "-profile:v", "main")
+		case "nvenc":
+			args = append(args, "-c:v", "h264_nvenc", "-preset", "p4", "-tune", "hq", "-profile:v", "high", "-pix_fmt", "yuv420p")
+		case "qsv":
+			args = append(args, "-c:v", "h264_qsv", "-preset", "medium", "-pix_fmt", "nv12")
+		case "videotoolbox":
+			args = append(args, "-c:v", "h264_videotoolbox", "-pix_fmt", "yuv420p")
+		case "amf":
+			args = append(args, "-c:v", "h264_amf", "-quality", "balanced", "-pix_fmt", "yuv420p")
+		default:
+			args = append(args, "-c:v", "libx264", "-preset", "medium", "-crf", "22", "-pix_fmt", "yuv420p")
+		}
 	}
 
 	// Bitrate (for HW encoders that don't support CRF)
-	if hwAccel != "" {
+	if hwAccel != "" && !hdr {
 		args = append(args, "-b:v", fmt.Sprintf("%dk", profile.VideoBitrate))
 	}
 

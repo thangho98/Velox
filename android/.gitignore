@@ -73,3 +73,5 @@ crashlytics-build.gradle
 # OS
 .DS_Store
 Thumbs.db
+
+.gradle-home/wrapper/dists/

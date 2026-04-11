@@ -24,15 +24,25 @@ type SubtitleService struct {
 	db            *sql.DB
 	subtitleRepo  *repository.SubtitleRepo
 	mediaFileRepo *repository.MediaFileRepo
+	mediaRepo     *repository.MediaRepo
+	genreRepo     *repository.GenreRepo
 	settingsRepo  *repository.AppSettingsRepo
 	subtitleCache string
 }
 
-func NewSubtitleService(db *sql.DB, subtitleRepo *repository.SubtitleRepo, mediaFileRepo *repository.MediaFileRepo) *SubtitleService {
+func NewSubtitleService(
+	db *sql.DB,
+	subtitleRepo *repository.SubtitleRepo,
+	mediaFileRepo *repository.MediaFileRepo,
+	mediaRepo *repository.MediaRepo,
+	genreRepo *repository.GenreRepo,
+) *SubtitleService {
 	return &SubtitleService{
 		db:            db,
 		subtitleRepo:  subtitleRepo,
 		mediaFileRepo: mediaFileRepo,
+		mediaRepo:     mediaRepo,
+		genreRepo:     genreRepo,
 	}
 }
 
@@ -186,17 +196,39 @@ func (s *SubtitleService) ServeContent(ctx context.Context, subtitleID int64) ([
 // Translate translates a subtitle using configured provider settings.
 func (s *SubtitleService) Translate(ctx context.Context, subtitleID int64, targetLang string) (*model.Subtitle, error) {
 	deeplAPIKey := ""
+	aiConfig := translate.AIConfig{}
 	if s.settingsRepo != nil {
-		deeplAPIKey, _ = s.settingsRepo.Get(ctx, model.SettingDeepLAPIKey)
+		vals, _ := s.settingsRepo.GetMulti(
+			ctx,
+			model.SettingDeepLAPIKey,
+			model.SettingAITranslationProvider,
+			model.SettingAITranslationAPIKey,
+			model.SettingAITranslationBaseURL,
+			model.SettingAITranslationModel,
+		)
+		deeplAPIKey = vals[model.SettingDeepLAPIKey]
+		aiConfig = translate.AIConfig{
+			Provider: translate.AIProvider(vals[model.SettingAITranslationProvider]),
+			APIKey:   vals[model.SettingAITranslationAPIKey],
+			BaseURL:  vals[model.SettingAITranslationBaseURL],
+			Model:    vals[model.SettingAITranslationModel],
+		}
 	}
 
-	return s.TranslateSubtitle(ctx, subtitleID, targetLang, deeplAPIKey, s.subtitleCache)
+	return s.TranslateSubtitle(ctx, subtitleID, targetLang, aiConfig, deeplAPIKey, s.subtitleCache)
 }
 
 // TranslateSubtitle translates a subtitle file to the target language.
-// Uses DeepL (if API key configured) with Google Translate fallback.
+// Uses the configured AI provider first, then DeepL, then Google Translate fallback.
 // Returns the newly created subtitle record.
-func (s *SubtitleService) TranslateSubtitle(ctx context.Context, subtitleID int64, targetLang, deeplAPIKey, subtitleDir string) (*model.Subtitle, error) {
+func (s *SubtitleService) TranslateSubtitle(
+	ctx context.Context,
+	subtitleID int64,
+	targetLang string,
+	aiConfig translate.AIConfig,
+	deeplAPIKey,
+	subtitleDir string,
+) (*model.Subtitle, error) {
 	// Get source subtitle
 	source, err := s.Get(ctx, subtitleID)
 	if err != nil {
@@ -245,9 +277,16 @@ func (s *SubtitleService) TranslateSubtitle(ctx context.Context, subtitleID int6
 		return nil, fmt.Errorf("subtitle has no file path")
 	}
 
-	// Choose translator: DeepL primary, Google fallback
+	aiConfig.Context = s.buildAITranslationContext(ctx, source.MediaFileID)
+
+	// Choose translator: AI provider first, then DeepL, then Google.
 	var translator translate.Translator
-	if deeplAPIKey != "" {
+	if aiConfig.Provider != "" {
+		translator, err = translate.NewAI(aiConfig)
+		if err != nil {
+			return nil, fmt.Errorf("configuring ai translator: %w", err)
+		}
+	} else if deeplAPIKey != "" {
 		translator = translate.NewDeepL(deeplAPIKey)
 	} else {
 		translator = translate.NewGoogle()
@@ -264,15 +303,32 @@ func (s *SubtitleService) TranslateSubtitle(ctx context.Context, subtitleID int6
 	// Translate
 	translated, err := translate.TranslateSRT(ctx, translator, content, targetLang)
 	if err != nil {
-		// If DeepL fails (quota exceeded), fallback to Google
-		if deeplAPIKey != "" {
+		switch {
+		case aiConfig.Provider != "":
+			slog.Warn("ai subtitle translation failed", "provider", aiConfig.Provider, "error", err)
+			if deeplAPIKey != "" {
+				translator = translate.NewDeepL(deeplAPIKey)
+				slog.Warn("falling back to deepl after ai failure", "error", err)
+				translated, err = translate.TranslateSRT(ctx, translator, content, targetLang)
+				if err == nil {
+					break
+				}
+				slog.Warn("deepl fallback failed after ai failure", "error", err)
+			}
+			translator = translate.NewGoogle()
+			slog.Warn("falling back to google after ai failure", "error", err)
+			translated, err = translate.TranslateSRT(ctx, translator, content, targetLang)
+			if err != nil {
+				return nil, fmt.Errorf("translation failed after ai fallback: %w", err)
+			}
+		case deeplAPIKey != "":
 			slog.Warn("deepl translation failed, falling back to google", "error", err)
 			translator = translate.NewGoogle()
 			translated, err = translate.TranslateSRT(ctx, translator, content, targetLang)
 			if err != nil {
 				return nil, fmt.Errorf("translation failed: %w", err)
 			}
-		} else {
+		default:
 			return nil, fmt.Errorf("translation failed: %w", err)
 		}
 	}
@@ -295,6 +351,23 @@ func (s *SubtitleService) TranslateSubtitle(ctx context.Context, subtitleID int6
 	}
 
 	savePath := filepath.Join(dir, fmt.Sprintf("translated_%s_%d.srt", targetLang, subtitleID))
+
+	// Delete existing translated subtitle with same file path if it exists
+	if existing, err := s.subtitleRepo.FindByMediaFileIDAndFilePath(ctx, source.MediaFileID, savePath); err == nil {
+		slog.Info("deleting existing translated subtitle before re-translating",
+			"existing_subtitle_id", existing.ID,
+			"media_file_id", source.MediaFileID,
+			"file_path", savePath,
+		)
+		if err := s.subtitleRepo.Delete(ctx, existing.ID); err != nil {
+			slog.Warn("failed to delete existing subtitle, will overwrite", "error", err)
+		}
+		// Also remove the old file
+		if _, err := os.Stat(savePath); err == nil {
+			os.Remove(savePath)
+		}
+	}
+
 	if err := os.WriteFile(savePath, []byte(translated), 0644); err != nil {
 		return nil, fmt.Errorf("saving translated subtitle: %w", err)
 	}
@@ -323,4 +396,45 @@ func (s *SubtitleService) TranslateSubtitle(ctx context.Context, subtitleID int6
 	)
 
 	return sub, nil
+}
+
+func (s *SubtitleService) buildAITranslationContext(ctx context.Context, mediaFileID int64) *translate.AIContext {
+	if s.mediaFileRepo == nil || s.mediaRepo == nil {
+		return nil
+	}
+
+	mediaFile, err := s.mediaFileRepo.GetByID(ctx, mediaFileID)
+	if err != nil {
+		return nil
+	}
+
+	media, err := s.mediaRepo.GetByID(ctx, mediaFile.MediaID)
+	if err != nil {
+		return nil
+	}
+
+	context := &translate.AIContext{
+		Title:     media.Title,
+		MediaType: media.MediaType,
+		Overview:  media.Overview,
+		Tagline:   media.Tagline,
+	}
+
+	if s.genreRepo != nil {
+		genres, err := s.genreRepo.ListByMediaID(ctx, media.ID)
+		if err == nil {
+			context.Genres = make([]string, 0, len(genres))
+			for _, genre := range genres {
+				if genre.Name != "" {
+					context.Genres = append(context.Genres, genre.Name)
+				}
+			}
+		}
+	}
+
+	if context.Title == "" && context.MediaType == "" && context.Overview == "" && context.Tagline == "" && len(context.Genres) == 0 {
+		return nil
+	}
+
+	return context
 }

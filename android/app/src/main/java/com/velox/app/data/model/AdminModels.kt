@@ -219,6 +219,22 @@ data class UpdateProviderRequest(
     @SerialName("api_key") val apiKey: String,
 )
 
+@Serializable
+data class AITranslationSettingsDto(
+    val provider: String,
+    @SerialName("api_key") val apiKey: String,
+    @SerialName("base_url") val baseUrl: String,
+    val model: String,
+)
+
+@Serializable
+data class UpdateAITranslationRequest(
+    val provider: String,
+    @SerialName("api_key") val apiKey: String,
+    @SerialName("base_url") val baseUrl: String,
+    val model: String,
+)
+
 // OpenSubtitles Settings
 @Serializable
 data class OpenSubsSettingsDto(

@@ -1,5 +1,21 @@
 package playback
 
+// AndroidNative profile for the Velox Android app using ExoPlayer/Media3.
+// Codec/container support is further tightened by client-reported capabilities.
+var AndroidNative = DeviceProfile{
+	Name:                     "Android Native",
+	SupportedVideoCodecs:     []string{CodecH264, CodecH265, CodecVP9, CodecAV1},
+	SupportedAudioCodecs:     []string{CodecAAC, CodecOpus, CodecMP3, CodecFLAC, CodecAC3, CodecEAC3},
+	SupportedContainers:      []string{ContainerMP4, ContainerMKV, ContainerWebM, ContainerHLS},
+	SupportedSubtitleFormats: []string{SubtitleVTT, SubtitleSRT, SubtitleASS},
+	MaxWidth:                 0,
+	MaxHeight:                0,
+	MaxBitrate:               0,
+	CanBurnSubtitles:         false,
+	SupportsHLS:              true,
+	SupportsWebM:             true,
+}
+
 // ChromeDesktop profile for Chrome/Chromium on desktop
 var ChromeDesktop = DeviceProfile{
 	Name:                     "Chrome Desktop",
@@ -109,6 +125,8 @@ var SmartTV = DeviceProfile{
 // GetBuiltinProfile returns a built-in profile by name
 func GetBuiltinProfile(name string) *DeviceProfile {
 	switch name {
+	case "android_native":
+		return &AndroidNative
 	case "chrome":
 		return &ChromeDesktop
 	case "firefox":
@@ -129,12 +147,13 @@ func GetBuiltinProfile(name string) *DeviceProfile {
 // AllBuiltinProfiles returns a map of all available profiles
 func AllBuiltinProfiles() map[string]*DeviceProfile {
 	return map[string]*DeviceProfile{
-		"chrome":        &ChromeDesktop,
-		"firefox":       &FirefoxDesktop,
-		"safari":        &SafariDesktop,
-		"mobile_safari": &MobileSafari,
-		"edge":          &EdgeDesktop,
-		"smarttv":       &SmartTV,
-		"generic":       &GenericBrowser,
+		"android_native": &AndroidNative,
+		"chrome":         &ChromeDesktop,
+		"firefox":        &FirefoxDesktop,
+		"safari":         &SafariDesktop,
+		"mobile_safari":  &MobileSafari,
+		"edge":           &EdgeDesktop,
+		"smarttv":        &SmartTV,
+		"generic":        &GenericBrowser,
 	}
 }

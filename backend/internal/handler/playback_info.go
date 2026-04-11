@@ -326,8 +326,9 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 	baseURL := "/api/stream/" + strconv.FormatInt(mediaID, 10)
 	hlsURL := baseURL + "/hls/master.m3u8"
 	apiKey := ""
+	streamTTL := auth.StreamAPIKeyTTL(primaryFile.Duration)
 	if h.apiKeyStore != nil {
-		apiKey = h.apiKeyStore.Generate(userID, isAdmin)
+		apiKey = h.apiKeyStore.Generate(userID, isAdmin, streamTTL)
 	}
 	streamSessionID := newStreamSessionID()
 	baseQuery := url.Values{}

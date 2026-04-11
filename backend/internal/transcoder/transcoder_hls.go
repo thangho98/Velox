@@ -122,7 +122,7 @@ func (t *Transcoder) runHLSFFmpeg(ctx context.Context, inputPath, dir, prefix st
 		}
 		args = append(args, "-i", inputPath)
 		if siIdx >= 0 {
-			args = append(args, buildImageSubtitleBurnInArgs(hwAccel, hdr, siIdx)...)
+			args = append(args, buildImageSubtitleBurnInArgs(hwAccel, hdr, inputPath, siIdx)...)
 		} else {
 			encArgs := buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)
 			// Insert scale filter for max_height (before any existing -vf).
@@ -380,7 +380,7 @@ func (t *Transcoder) runMultiOutputHLS(ctx context.Context, inputPath, dir, pref
 	if videoCopy {
 		args = append(args, "-map", "0:v:0", "-c:v", "copy")
 	} else if siIdx >= 0 {
-		args = append(args, buildImageSubtitleBurnInVideoOnlyArgs(hwAccel, hdr, siIdx)...)
+		args = append(args, buildImageSubtitleBurnInVideoOnlyArgs(hwAccel, hdr, inputPath, siIdx)...)
 	} else {
 		args = append(args, "-map", "0:v:0")
 		args = append(args, buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)...)
@@ -685,7 +685,7 @@ func StartHLSV2Encoder(ctx context.Context, opts V2EncoderOpts) (*exec.Cmd, erro
 	if opts.VideoCopy {
 		args = append(args, "-map", "0:v:0", "-c:v", "copy")
 	} else if opts.SubtitleStreamIdx >= 0 {
-		args = append(args, buildImageSubtitleBurnInVideoOnlyArgs(opts.HwAccel, hdr, opts.SubtitleStreamIdx)...)
+		args = append(args, buildImageSubtitleBurnInVideoOnlyArgs(opts.HwAccel, hdr, opts.InputPath, opts.SubtitleStreamIdx)...)
 	} else {
 		args = append(args, "-map", "0:v:0")
 		encArgs := buildVideoEncodeArgs(opts.HwAccel, hdr, opts.SubtitleStreamIdx, opts.InputPath)

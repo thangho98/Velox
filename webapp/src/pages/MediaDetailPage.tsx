@@ -30,6 +30,8 @@ import {
 } from 'react-icons/lu'
 import { ActionMenu } from '@/components/ActionMenu'
 import type { ActionMenuItem } from '@/components/ActionMenu'
+import { useToast } from '@/components/Toast'
+import { copyTextToClipboard } from '@/lib/clipboard'
 import { tmdbImage } from '@/lib/image'
 import { MetadataEditor } from '@/components/metadata/MetadataEditor'
 import { useTrailers } from '@/hooks/useCinemaMode'
@@ -51,7 +53,20 @@ export default function MediaDetailPage() {
   const { mutate: uploadImage, isPending: isUploadingImage } = useUploadMediaImage(mediaId)
   const { data: mediaGenres = [] } = useMediaGenres(mediaId)
   const { data: mediaCredits = [] } = useMediaCredits(mediaId)
-  const { mutate: getStreamUrl } = useStreamUrl(mediaId)
+  const { success: showToastSuccess, error: showToastError } = useToast()
+  const { mutate: getStreamUrl } = useStreamUrl(mediaId, {
+    onSuccess: async (data) => {
+      const copied = await copyTextToClipboard(data.direct_url)
+      if (!copied) {
+        showToastError(t('actions.copyStreamUrlFailed'))
+        return
+      }
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      showToastSuccess(t('actions.copied'))
+    },
+    onError: () => showToastError(t('actions.copyStreamUrlFailed')),
+  })
   const [copied, setCopied] = useState(false)
   const { youtubeKey } = useTrailers(mediaId)
 
@@ -298,17 +313,9 @@ export default function MediaDetailPage() {
                   items={
                     [
                       {
-                        label: copied ? 'Copied!' : 'Copy stream URL',
+                        label: copied ? t('actions.copied') : t('actions.copyStreamUrl'),
                         icon: <LuLink size={16} className={copied ? 'text-green-400' : ''} />,
-                        onClick: () => {
-                          getStreamUrl(undefined, {
-                            onSuccess: (data) => {
-                              navigator.clipboard.writeText(data.direct_url)
-                              setCopied(true)
-                              setTimeout(() => setCopied(false), 2000)
-                            },
-                          })
-                        },
+                        onClick: () => getStreamUrl(),
                       },
                       {
                         label: 'Edit metadata',

@@ -201,6 +201,23 @@
       "name": "DeepL Translation",
       "description": "AI-powered subtitle translation. Requires a DeepL API key.",
       "getKey": "Get API key at deepl.com"
+    },
+    "aiTranslation": {
+      "name": "AI Subtitle Localization",
+      "description": "Use an LLM provider to localize subtitles with better tone and context. Velox designs the prompt internally and validates every AI response before saving.",
+      "provider": "Provider",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Provider API key",
+      "baseUrl": "Base URL",
+      "model": "Model",
+      "modelPlaceholder": "Example: gpt-4.1-mini, gemini-2.5-flash, claude-3-5-sonnet-latest",
+      "disabled": "Disabled",
+      "validationHint": "The system prompt is managed by Velox. AI output must pass strict JSON validation before a subtitle file is created.",
+      "providers": {
+        "openai": "OpenAI Compatible",
+        "gemini": "Gemini Compatible",
+        "anthropic": "Anthropic Compatible"
+      }
     }
   },
   "actions": {

@@ -340,6 +340,14 @@ interface VeloxApi {
         @Body request: UpdateOpenSubsRequest,
     ): Response<DataWrapper<OpenSubsSettingsDto>>
 
+    @GET("admin/settings/ai-translation")
+    suspend fun getAITranslationSettings(): Response<DataWrapper<AITranslationSettingsDto>>
+
+    @PUT("admin/settings/ai-translation")
+    suspend fun updateAITranslationSettings(
+        @Body request: UpdateAITranslationRequest,
+    ): Response<DataWrapper<AITranslationSettingsDto>>
+
     // Auto-Subtitle Settings
     @GET("admin/settings/auto-subtitles")
     suspend fun getAutoSubSettings(): Response<DataWrapper<AutoSubSettingsDto>>

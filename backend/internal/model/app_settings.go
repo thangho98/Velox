@@ -51,6 +51,14 @@ const (
 	SettingDeepLAPIKey = "deepl_api_key"
 )
 
+// Known setting keys for AI subtitle translation/localization.
+const (
+	SettingAITranslationProvider = "ai_translation_provider"
+	SettingAITranslationAPIKey   = "ai_translation_api_key"
+	SettingAITranslationBaseURL  = "ai_translation_base_url"
+	SettingAITranslationModel    = "ai_translation_model"
+)
+
 // Known setting keys for setup wizard.
 const (
 	// SettingSetupWizardCompleted tracks whether the admin has completed the onboarding wizard.

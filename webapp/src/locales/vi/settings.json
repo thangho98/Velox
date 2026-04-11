@@ -201,6 +201,23 @@
       "name": "Dịch DeepL",
       "description": "Dịch phụ đề bằng AI. Cần DeepL API key.",
       "getKey": "Lấy API key tại deepl.com"
+    },
+    "aiTranslation": {
+      "name": "AI Subtitle Localization",
+      "description": "Dùng LLM để localize phụ đề sát ngữ cảnh và sắc thái phim hơn. Velox tự thiết kế prompt hệ thống và validate chặt response trước khi lưu.",
+      "provider": "Nhà cung cấp",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "API key của provider",
+      "baseUrl": "Base URL",
+      "model": "Model",
+      "modelPlaceholder": "Ví dụ: gpt-4.1-mini, gemini-2.5-flash, claude-3-5-sonnet-latest",
+      "disabled": "Tắt",
+      "validationHint": "Prompt hệ thống do Velox quản lý. Output từ AI phải vượt qua bước kiểm tra JSON nghiêm ngặt trước khi tạo file phụ đề.",
+      "providers": {
+        "openai": "OpenAI Compatible",
+        "gemini": "Gemini Compatible",
+        "anthropic": "Anthropic Compatible"
+      }
     }
   },
   "actions": {

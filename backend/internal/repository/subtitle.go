@@ -128,6 +128,29 @@ func (r *SubtitleRepo) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// FindByMediaFileIDAndFilePath finds a subtitle by media file and file path.
+func (r *SubtitleRepo) FindByMediaFileIDAndFilePath(ctx context.Context, mediaFileID int64, filePath string) (*model.Subtitle, error) {
+	var s model.Subtitle
+	var isEmbedded, isForced, isDefault, isSDH int
+
+	err := r.db.QueryRowContext(ctx, `SELECT id, media_file_id, language, codec, title,
+		is_embedded, stream_index, file_path, is_forced, is_default, is_sdh
+		FROM subtitles WHERE media_file_id = ? AND file_path = ?`, mediaFileID, filePath).
+		Scan(&s.ID, &s.MediaFileID, &s.Language, &s.Codec, &s.Title,
+			&isEmbedded, &s.StreamIndex, &s.FilePath, &isForced, &isDefault, &isSDH)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find subtitle by media_file_id %d and path %s: %w", mediaFileID, filePath, err)
+	}
+	s.IsEmbedded = isEmbedded == 1
+	s.IsForced = isForced == 1
+	s.IsDefault = isDefault == 1
+	s.IsSDH = isSDH == 1
+	return &s, nil
+}
+
 // Update updates a subtitle
 func (r *SubtitleRepo) Update(ctx context.Context, s *model.Subtitle) error {
 	isEmbedded := 0

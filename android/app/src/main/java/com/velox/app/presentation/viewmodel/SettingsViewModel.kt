@@ -135,6 +135,7 @@ data class SettingsUiState(
     val openSubsSettings: com.velox.app.data.model.OpenSubsSettingsDto? = null,
     val subdlSettings: com.velox.app.data.model.ProviderSettingsDto? = null,
     val deepLSettings: com.velox.app.data.model.ProviderSettingsDto? = null,
+    val aiTranslationSettings: com.velox.app.data.model.AITranslationSettingsDto? = null,
     val autoSubSettings: com.velox.app.data.model.AutoSubSettingsDto? = null,
 
     // Admin Playback
@@ -524,6 +525,7 @@ class SettingsViewModel @Inject constructor(
             val openSubsRes = veloxApi.getOpenSubsSettings()
             val subdlRes = veloxApi.getProviderSettings("subdl")
             val deepLRes = veloxApi.getProviderSettings("deepl")
+            val aiTranslationRes = veloxApi.getAITranslationSettings()
             val autoSubRes = veloxApi.getAutoSubSettings()
 
             _uiState.update { state ->
@@ -531,6 +533,7 @@ class SettingsViewModel @Inject constructor(
                     openSubsSettings = openSubsRes.body()?.data,
                     subdlSettings = subdlRes.body()?.data,
                     deepLSettings = deepLRes.body()?.data,
+                    aiTranslationSettings = aiTranslationRes.body()?.data,
                     autoSubSettings = autoSubRes.body()?.data,
                 )
             }
@@ -558,6 +561,26 @@ class SettingsViewModel @Inject constructor(
                 val res = veloxApi.updateAutoSubSettings(com.velox.app.data.model.UpdateAutoSubRequest(languages))
                 if (res.isSuccessful) {
                     _uiState.update { it.copy(autoSubSettings = res.body()?.data) }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun updateAITranslationSettings(provider: String, apiKey: String, baseUrl: String, model: String) {
+        viewModelScope.launch {
+            try {
+                val res = veloxApi.updateAITranslationSettings(
+                    com.velox.app.data.model.UpdateAITranslationRequest(
+                        provider = provider,
+                        apiKey = apiKey,
+                        baseUrl = baseUrl,
+                        model = model,
+                    )
+                )
+                if (res.isSuccessful) {
+                    _uiState.update { it.copy(aiTranslationSettings = res.body()?.data) }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"math"
 	"sync"
 	"time"
 )
@@ -14,8 +15,24 @@ type APIKeyEntry struct {
 	ExpiresAt time.Time
 }
 
+const MinStreamAPIKeyTTL = 1 * time.Hour
+
+// StreamAPIKeyTTL calculates a stream API key lifetime from media duration with
+// a 15% playback buffer, floored to at least 1 hour.
+func StreamAPIKeyTTL(durationSeconds float64) time.Duration {
+	if durationSeconds <= 0 || math.IsNaN(durationSeconds) || math.IsInf(durationSeconds, 0) {
+		return MinStreamAPIKeyTTL
+	}
+
+	ttlSeconds := math.Ceil(durationSeconds * 1.15)
+	ttl := time.Duration(ttlSeconds) * time.Second
+	if ttl < MinStreamAPIKeyTTL {
+		return MinStreamAPIKeyTTL
+	}
+	return ttl
+}
+
 // APIKeyStore manages short-lived API keys for external player URLs.
-// Keys are stored in memory and expire after StreamTokenExpiry (2 hours).
 type APIKeyStore struct {
 	mu   sync.RWMutex
 	keys map[string]APIKeyEntry
@@ -29,16 +46,19 @@ func NewAPIKeyStore() *APIKeyStore {
 }
 
 // Generate creates a new API key for the given user. Returns a 32-char hex string.
-func (s *APIKeyStore) Generate(userID int64, isAdmin bool) string {
+func (s *APIKeyStore) Generate(userID int64, isAdmin bool, ttl time.Duration) string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	key := hex.EncodeToString(b)
+	if ttl < MinStreamAPIKeyTTL {
+		ttl = MinStreamAPIKeyTTL
+	}
 
 	s.mu.Lock()
 	s.keys[key] = APIKeyEntry{
 		UserID:    userID,
 		IsAdmin:   isAdmin,
-		ExpiresAt: time.Now().Add(StreamTokenExpiry),
+		ExpiresAt: time.Now().Add(ttl),
 	}
 	s.mu.Unlock()
 

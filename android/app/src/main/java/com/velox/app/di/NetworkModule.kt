@@ -1,6 +1,7 @@
 package com.velox.app.di
 
 import android.content.Context
+import android.os.Build
 import com.velox.app.BuildConfig
 import com.velox.app.data.api.AuthInterceptor
 import com.velox.app.data.api.AuthManager
@@ -72,7 +73,18 @@ object NetworkModule {
             }
         }
 
+        val userAgentInterceptor = okhttp3.Interceptor { chain ->
+            val request = chain.request().newBuilder()
+                .header(
+                    "User-Agent",
+                    "VeloxAndroid/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.RELEASE}; ${Build.MANUFACTURER} ${Build.MODEL})"
+                )
+                .build()
+            chain.proceed(request)
+        }
+
         return OkHttpClient.Builder()
+            .addInterceptor(userAgentInterceptor)
             .addInterceptor(authInterceptor)
             .authenticator(tokenAuthenticator)
             .addInterceptor(loggingInterceptor)

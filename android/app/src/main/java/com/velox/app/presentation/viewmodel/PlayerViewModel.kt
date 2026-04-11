@@ -1,6 +1,7 @@
 package com.velox.app.presentation.viewmodel
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,7 +9,15 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.velox.app.data.api.AuthManager
+import com.velox.app.domain.model.Episode as DomainEpisode
+import com.velox.app.domain.model.MediaDetail as DomainMediaDetail
+import com.velox.app.domain.model.MediaWithFilesInfo as DomainMediaWithFilesInfo
+import com.velox.app.domain.model.Season as DomainSeason
 import com.velox.app.domain.model.PlaybackInfo as DomainPlaybackInfo
 import com.velox.app.domain.model.AudioTrack as DomainAudioTrack
 import com.velox.app.domain.model.SubtitleTrack as DomainSubtitleTrack
@@ -28,6 +37,8 @@ import javax.inject.Inject
 data class PlayerUiState(
     val isLoading: Boolean = true,
     val playbackInfo: DomainPlaybackInfo? = null,
+    val mediaDetail: DomainMediaDetail? = null,
+    val mediaContext: DomainMediaWithFilesInfo? = null,
     val isPlaying: Boolean = false,
     val currentPosition: Long = 0L,
     val duration: Long = 0L,
@@ -98,7 +109,18 @@ data class PlayerUiState(
     val upNextCountdown: Int = 15,
     val nextEpisodeId: Int? = null,
     val nextEpisodeTitle: String? = null,
+
+    // Watch detail panel
+    val activeDetailPanel: DetailPanelUi = DetailPanelUi.None,
+    val seasons: List<DomainSeason> = emptyList(),
+    val seasonPanelSeasonId: Int = 0,
+    val seasonPanelEpisodes: List<DomainEpisode> = emptyList(),
+    val isSeasonPanelLoading: Boolean = false,
 )
+
+enum class DetailPanelUi {
+    None, Info, Season
+}
 
 enum class AspectRatioUi {
     Contain, Cover, Fill
@@ -142,6 +164,7 @@ data class AudioTrackUi(
 )
 
 data class SubtitleTrackUi(
+    val id: Int,
     val index: Int,
     val label: String,
     val language: String,
@@ -166,6 +189,7 @@ data class SubtitleSearchResultUi(
 class PlayerViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val playerPrefsManager: com.velox.app.data.local.PlayerPrefsManager,
+    private val authManager: AuthManager,
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -250,7 +274,15 @@ class PlayerViewModel @Inject constructor(
 
     fun loadPlaybackInfo() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null, nextEpisodeId = null, nextEpisodeTitle = null, showUpNext = false) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    error = null,
+                    nextEpisodeId = null,
+                    nextEpisodeTitle = null,
+                    showUpNext = false,
+                )
+            }
             upNextTriggered = false
 
             // Dynamic capability detection: Use MediaCodecUtil to check exactly what the hardware supports
@@ -272,13 +304,20 @@ class PlayerViewModel @Inject constructor(
             )
 
             launch {
+                mediaRepository.getMedia(mediaId).onSuccess { media ->
+                    _uiState.update { it.copy(mediaDetail = media) }
+                }
+            }
+
+            launch {
                 // Use /media/{id}/files endpoint (like webapp) to get series_id/season_id
                 val result = mediaRepository.getMediaWithFilesInfo(mediaId)
                 result.onSuccess { info ->
                     android.util.Log.d("PlayerVM", "mediaWithFiles OK: type=${info.mediaType} seriesId=${info.seriesId} seasonId=${info.seasonId}")
-                    _uiState.update { it.copy(mediaTitle = info.title) }
+                    _uiState.update { it.copy(mediaTitle = info.title, mediaContext = info) }
                     if (info.mediaType == "episode" && info.seriesId != null && info.seasonId != null) {
                         loadNextEpisode(info.seriesId, info.seasonId)
+                        loadSeasonPanel(info.seriesId, info.seasonId)
                     }
                 }.onFailure { e ->
                     android.util.Log.e("PlayerVM", "mediaWithFiles FAILED: ${e.message}", e)
@@ -301,7 +340,7 @@ class PlayerViewModel @Inject constructor(
                                 AudioTrackUi(index, track.label, track.language)
                             },
                             subtitleTracks = listOf(
-                                SubtitleTrackUi(-1, "Off", "", null),
+                                SubtitleTrackUi(-1, -1, "Off", "", null),
                             ) + info.subtitleTracks
                                 .mapIndexed { index, track -> index to track }
                                 .filter { (_, track) -> 
@@ -309,7 +348,7 @@ class PlayerViewModel @Inject constructor(
                                     fmt == "srt" || fmt == "vtt" || fmt == "ass" || fmt.contains("subdl")
                                 }
                                 .map { (originalIndex, track) ->
-                                    SubtitleTrackUi(originalIndex, track.label, track.language, track.format)
+                                    SubtitleTrackUi(track.id, originalIndex, track.label, track.language, track.format)
                                 },
                             skipSegments = info.skipSegments.map { segment ->
                                 SkipSegmentUi(
@@ -375,6 +414,53 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    private fun loadSeasonPanel(seriesId: Int, initialSeasonId: Int) {
+        viewModelScope.launch {
+            mediaRepository.getSeasons(seriesId).onSuccess { seasons ->
+                val selectedSeasonId = seasons.firstOrNull { it.id == initialSeasonId }?.id
+                    ?: seasons.firstOrNull()?.id
+                    ?: 0
+                _uiState.update {
+                    it.copy(
+                        seasons = seasons,
+                        seasonPanelSeasonId = selectedSeasonId,
+                    )
+                }
+                if (selectedSeasonId > 0) {
+                    loadSeasonEpisodes(seriesId, selectedSeasonId)
+                }
+            }
+        }
+    }
+
+    private fun loadSeasonEpisodes(seriesId: Int, seasonId: Int) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isSeasonPanelLoading = true,
+                    seasonPanelSeasonId = seasonId,
+                )
+            }
+            mediaRepository.getEpisodes(seriesId, seasonId)
+                .onSuccess { episodes ->
+                    _uiState.update {
+                        it.copy(
+                            seasonPanelEpisodes = episodes,
+                            isSeasonPanelLoading = false,
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.update {
+                        it.copy(
+                            seasonPanelEpisodes = emptyList(),
+                            isSeasonPanelLoading = false,
+                        )
+                    }
+                }
+        }
+    }
+
     private fun loadNextEpisode(seriesId: Int, seasonId: Int) {
         viewModelScope.launch {
             mediaRepository.getEpisodes(seriesId, seasonId).onSuccess { episodes ->
@@ -418,6 +504,11 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun handlePlaybackError(error: androidx.media3.common.PlaybackException) {
+        Log.e(
+            "PlayerVM",
+            "Playback failed on source=$currentPlaybackSource code=${error.errorCodeName} message=${error.message}",
+            error,
+        )
         val info = _uiState.value.playbackInfo
         if (info == null) {
             _uiState.update { it.copy(error = error.message) }
@@ -435,10 +526,23 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    private fun buildAuthenticatedMediaSource(url: String) =
+        DefaultMediaSourceFactory(
+            DefaultDataSource.Factory(
+                context,
+                DefaultHttpDataSource.Factory().apply {
+                    authManager.getAccessTokenSync()?.let { token ->
+                        setDefaultRequestProperties(
+                            mapOf("Authorization" to "Bearer $token")
+                        )
+                    }
+                    setAllowCrossProtocolRedirects(true)
+                },
+            ),
+        ).createMediaSource(MediaItem.fromUri(url))
+
     private fun preparePlayer(url: String, info: DomainPlaybackInfo, maintainPosition: Boolean = false) {
         _player?.let { player ->
-            val mediaItem = MediaItem.fromUri(url)
-            
             // Re-capture current position if we are falling back
             val resumePosition = if (maintainPosition && player.currentPosition > 0) {
                 player.currentPosition
@@ -446,7 +550,8 @@ class PlayerViewModel @Inject constructor(
                 info.position?.let { (it * 1000).toLong() } ?: 0L
             }
 
-            player.setMediaItem(mediaItem)
+            Log.d("PlayerVM", "Preparing source=$currentPlaybackSource url=$url resumeMs=$resumePosition")
+            player.setMediaSource(buildAuthenticatedMediaSource(url))
 
             if (resumePosition > 0) {
                 player.seekTo(resumePosition)
@@ -467,8 +572,13 @@ class PlayerViewModel @Inject constructor(
                 _uiState.update { it.copy(showControls = true) }
             } else {
                 player.play()
-                // Hide controls when playing
-                _uiState.update { it.copy(showControls = false) }
+                // Hide controls when playing and close detail panel like webapp
+                _uiState.update {
+                    it.copy(
+                        showControls = false,
+                        activeDetailPanel = DetailPanelUi.None,
+                    )
+                }
             }
         }
     }
@@ -644,6 +754,41 @@ class PlayerViewModel @Inject constructor(
     fun toggleControls() {
         if (_uiState.value.isLocked) return
         _uiState.update { it.copy(showControls = !it.showControls) }
+    }
+
+    fun toggleDetailPanel(panel: DetailPanelUi) {
+        if (panel == DetailPanelUi.Season && _uiState.value.seasons.isEmpty()) {
+            return
+        }
+
+        val nextPanel = if (_uiState.value.activeDetailPanel == panel) {
+            DetailPanelUi.None
+        } else {
+            panel
+        }
+
+        if (nextPanel != DetailPanelUi.None && _player?.isPlaying == true) {
+            _player?.pause()
+        }
+
+        _uiState.update {
+            it.copy(
+                activeDetailPanel = nextPanel,
+                showControls = true,
+            )
+        }
+    }
+
+    fun closeDetailPanel() {
+        _uiState.update { it.copy(activeDetailPanel = DetailPanelUi.None) }
+    }
+
+    fun selectSeasonPanelSeason(seasonId: Int) {
+        val seriesId = _uiState.value.mediaContext?.seriesId ?: return
+        if (_uiState.value.seasonPanelSeasonId == seasonId && _uiState.value.seasonPanelEpisodes.isNotEmpty()) {
+            return
+        }
+        loadSeasonEpisodes(seriesId, seasonId)
     }
 
     fun setPlaybackSpeed(speed: Float) {

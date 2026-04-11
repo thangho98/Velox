@@ -3,6 +3,7 @@
  */
 
 import { useQuery, useMutation } from '@tanstack/react-query'
+import type { UseMutationOptions } from '@tanstack/react-query'
 import { api } from '../../api'
 import type {
   StreamUrls,
@@ -120,8 +121,14 @@ export function usePlaybackInfo(mediaId: number, request: PlaybackInfoRequest = 
   })
 }
 
-export function useStreamUrl(mediaId: number) {
+type StreamUrlMutationOptions = Omit<
+  UseMutationOptions<StreamURLResponse, Error, void, unknown>,
+  'mutationFn'
+>
+
+export function useStreamUrl(mediaId: number, options?: StreamUrlMutationOptions) {
   return useMutation({
     mutationFn: () => api.post<StreamURLResponse>(`/stream/${mediaId}/url`, {}),
+    ...options,
   })
 }

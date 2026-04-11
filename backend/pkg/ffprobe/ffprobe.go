@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -77,21 +78,31 @@ type FormatInfo struct {
 
 // StreamInfo from ffprobe
 type StreamInfo struct {
-	Index         int         `json:"index"`
-	CodecType     string      `json:"codec_type"`
-	CodecName     string      `json:"codec_name"`
-	Profile       string      `json:"profile"`
-	Level         int         `json:"level"`
-	Width         int         `json:"width"`
-	Height        int         `json:"height"`
-	RFrameRate    string      `json:"r_frame_rate"`
-	AvgFrameRate  string      `json:"avg_frame_rate"`
-	Channels      int         `json:"channels"`
-	ChannelLayout string      `json:"channel_layout"`
-	BitRate       string      `json:"bit_rate"`
-	SampleRate    string      `json:"sample_rate"`
-	Tags          StreamTags  `json:"tags"`
-	Disposition   Disposition `json:"disposition"`
+	Index          int            `json:"index"`
+	CodecType      string         `json:"codec_type"`
+	CodecName      string         `json:"codec_name"`
+	Profile        string         `json:"profile"`
+	Level          int            `json:"level"`
+	Width          int            `json:"width"`
+	Height         int            `json:"height"`
+	PixFmt         string         `json:"pix_fmt"`
+	ColorTransfer  string         `json:"color_transfer"`
+	ColorPrimaries string         `json:"color_primaries"`
+	ColorSpace     string         `json:"color_space"`
+	RFrameRate     string         `json:"r_frame_rate"`
+	AvgFrameRate   string         `json:"avg_frame_rate"`
+	Channels       int            `json:"channels"`
+	ChannelLayout  string         `json:"channel_layout"`
+	BitRate        string         `json:"bit_rate"`
+	SampleRate     string         `json:"sample_rate"`
+	Tags           StreamTags     `json:"tags"`
+	Disposition    Disposition    `json:"disposition"`
+	SideDataList   []SideDataInfo `json:"side_data_list"`
+}
+
+type SideDataInfo struct {
+	SideDataType string `json:"side_data_type"`
+	DVProfile    int    `json:"dv_profile"`
 }
 
 // StreamTags from ffprobe
@@ -248,6 +259,133 @@ func Probe(path string) (*ProbeResult, error) {
 	}
 
 	return r, nil
+}
+
+var hdrFilenamePattern = regexp.MustCompile(`(?i)(^|[^a-z0-9])(dovi|dv|hdr10\+|hdr10|hdr|pq)([^a-z0-9]|$)`)
+
+// IsHDRLike returns true when the source appears to be HDR or Dolby Vision.
+// Some WEB-DL/DoVi files omit standard color_transfer metadata, so we also
+// inspect ffprobe side data and finally fall back to conservative filename hints.
+func IsHDRLike(path string) bool {
+	cmd := exec.Command(ffmpegbin.FFprobe(),
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_streams",
+		"-show_format",
+		path,
+	)
+
+	out, err := cmd.Output()
+	if err != nil {
+		log.Printf("ffprobe: HDR probe failed for %q: %v", path, err)
+		return false
+	}
+
+	var detailed DetailedProbeResult
+	if err := json.Unmarshal(out, &detailed); err != nil {
+		log.Printf("ffprobe: parse HDR probe for %q: %v", path, err)
+		return false
+	}
+
+	return isHDRLikeFromDetailed(detailed, path)
+}
+
+// NeedsHDRColorMetadataFallback returns true when a source appears HDR/DV but
+// its primary video stream is missing usable color metadata. In that case we
+// should inject conservative BT.2020/PQ tags before tone mapping so filters
+// like zscale can build a conversion path instead of failing at frame 0.
+func NeedsHDRColorMetadataFallback(path string) bool {
+	cmd := exec.Command(ffmpegbin.FFprobe(),
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_streams",
+		"-show_format",
+		path,
+	)
+
+	out, err := cmd.Output()
+	if err != nil {
+		log.Printf("ffprobe: HDR fallback probe failed for %q: %v", path, err)
+		return false
+	}
+
+	var detailed DetailedProbeResult
+	if err := json.Unmarshal(out, &detailed); err != nil {
+		log.Printf("ffprobe: parse HDR fallback probe for %q: %v", path, err)
+		return false
+	}
+
+	return needsHDRColorMetadataFallbackFromDetailed(detailed, path)
+}
+
+func isHDRLikeFromDetailed(detailed DetailedProbeResult, path string) bool {
+	for _, stream := range detailed.Streams {
+		if stream.CodecType != "video" {
+			continue
+		}
+
+		combined := strings.ToLower(strings.Join([]string{
+			stream.Profile,
+			stream.ColorTransfer,
+			stream.ColorPrimaries,
+			stream.ColorSpace,
+		}, " "))
+
+		if strings.Contains(combined, "smpte2084") ||
+			strings.Contains(combined, "arib-std-b67") ||
+			strings.Contains(combined, "bt2020") {
+			return true
+		}
+
+		for _, sideData := range stream.SideDataList {
+			lowerType := strings.ToLower(sideData.SideDataType)
+			if sideData.DVProfile > 0 ||
+				strings.Contains(lowerType, "dovi") ||
+				strings.Contains(lowerType, "dolby vision") {
+				return true
+			}
+		}
+
+		break
+	}
+
+	return hdrFilenamePattern.MatchString(strings.ToLower(path))
+}
+
+func needsHDRColorMetadataFallbackFromDetailed(detailed DetailedProbeResult, path string) bool {
+	if !isHDRLikeFromDetailed(detailed, path) {
+		return false
+	}
+
+	for _, stream := range detailed.Streams {
+		if stream.CodecType != "video" {
+			continue
+		}
+
+		if !isUnknownOrEmpty(stream.ColorTransfer) &&
+			!isUnknownOrEmpty(stream.ColorPrimaries) &&
+			!isUnknownOrEmpty(stream.ColorSpace) {
+			return false
+		}
+
+		for _, sideData := range stream.SideDataList {
+			lowerType := strings.ToLower(sideData.SideDataType)
+			if sideData.DVProfile > 0 ||
+				strings.Contains(lowerType, "dovi") ||
+				strings.Contains(lowerType, "dolby vision") {
+				return true
+			}
+		}
+
+		return true
+	}
+
+	return false
+}
+
+func isUnknownOrEmpty(v string) bool {
+	v = strings.TrimSpace(strings.ToLower(v))
+	return v == "" || v == "unknown" || v == "reserved"
 }
 
 // IsTextBasedSubtitle returns true if the codec is text-based (can be extracted to VTT)
