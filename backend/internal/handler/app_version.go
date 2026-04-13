@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
 )
 
@@ -32,7 +33,7 @@ func (h *AppVersionHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 
 	// Create a dummy record if none exists to allow GitHub checking to still work
 	if latest == nil {
-		latest = &repository.AppVersion{
+		latest = &model.AppVersion{
 			Platform:    platform,
 			VersionName: "0.1.0",
 			VersionCode: 1,

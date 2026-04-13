@@ -346,15 +346,18 @@ func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inp
 	return cmd.Run()
 }
 
-// buildPretranscodeHDRScaleFilter builds the SW tonemap filter chain.
+// buildPretranscodeHDRScaleFilter builds the SW tonemap filter chain using tonemapx.
 // outFmt controls the final pixel format: "nv12" for VAAPI hwupload, "yuv420p" for SW/NVENC.
+//
+// Uses tonemapx (Jellyfin SIMD-optimized) which correctly handles both standard
+// HDR10 (BT.2020/PQ) and Dolby Vision (including Profile 5 IPT-PQ-C2).
 func buildPretranscodeHDRScaleFilter(inputPath string, height int, outFmt string) string {
 	prefix := ""
 	if ffprobe.NeedsHDRColorMetadataFallback(inputPath) {
 		prefix = "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,"
 	}
 	return prefix + fmt.Sprintf(
-		"zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709:r=tv,format=%s,scale=-2:%d",
+		"tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709,format=%s,scale=-2:%d",
 		outFmt, height,
 	)
 }

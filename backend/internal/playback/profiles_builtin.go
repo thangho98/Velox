@@ -14,6 +14,7 @@ var AndroidNative = DeviceProfile{
 	CanBurnSubtitles:         false,
 	SupportsHLS:              true,
 	SupportsWebM:             true,
+	SupportsHDR:              true, // ExoPlayer/Media3 handles HDR rendering natively
 }
 
 // ChromeDesktop profile for Chrome/Chromium on desktop
@@ -47,6 +48,7 @@ var FirefoxDesktop = DeviceProfile{
 }
 
 // SafariDesktop profile for Safari on macOS
+// macOS natively renders HDR/DV via AVFoundation (HEVC Main 10, HLG, Dolby Vision)
 var SafariDesktop = DeviceProfile{
 	Name:                     "Safari Desktop",
 	SupportedVideoCodecs:     []string{CodecH264, CodecH265}, // HEVC on macOS Safari
@@ -63,6 +65,7 @@ var SafariDesktop = DeviceProfile{
 
 // MobileSafari profile for Safari on iOS/iPadOS
 // iOS natively decodes AC3/EAC3 via hardware (Apple A-series chips)
+// iOS/iPadOS renders HDR/DV natively via AVFoundation on supported devices
 var MobileSafari = DeviceProfile{
 	Name:                     "Mobile Safari",
 	SupportedVideoCodecs:     []string{CodecH264, CodecH265},

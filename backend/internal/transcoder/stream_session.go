@@ -157,8 +157,16 @@ func (s *Session) PrimeFromSegment(ctx context.Context, segNum int) error {
 		needRestart = true
 	} else if segNum < s.startSegment {
 		needRestart = true
-	} else if segNum > s.currentSegmentOnDisk("video")+5 {
-		needRestart = true
+	} else {
+		// Use the max of the actual disk position or the start_segment-1.
+		// If ffmpeg just started, disk position is -1, but it is working on startSegment.
+		currentPos := s.currentSegmentOnDisk("video")
+		if s.startSegment-1 > currentPos {
+			currentPos = s.startSegment - 1
+		}
+		if segNum > currentPos+5 {
+			needRestart = true
+		}
 	}
 	s.mu.Unlock()
 

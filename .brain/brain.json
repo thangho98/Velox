@@ -8,7 +8,7 @@
       "database": { "main": "SQLite (WAL mode)" }
   },
   "database_schema": {
-      "tables": ["media_markers", "users", "media_files", "libraries", "series", "seasons", "episodes", "favorites", "watch_progress", "subtitles"],
+      "tables": ["media_markers", "users", "media_files", "libraries", "series", "seasons", "episodes", "favorites", "watch_progress", "subtitles", "app_versions", "tasks"],
       "relationships": ["One media_file has many media_markers", "One series has many seasons, one season has many episodes", "One user has many watch_progress and favorites"]
   },
   "api_endpoints": [
@@ -16,7 +16,9 @@
       { "path": "/api/admin/markers/backfill", "method": "POST", "explained": "Trigger background audio fingerprint detection for a library." },
       { "path": "/api/stream/{id}/url", "method": "POST", "explained": "Generate temporary stream URL with api_key. TTL now based on media duration." },
       { "path": "/api/media/{id}/cinema", "method": "GET", "explained": "Get trailers from TMDb for cinema mode." },
-      { "path": "/api/series/{id}/cinema", "method": "GET", "explained": "Get series trailers from TMDb for cinema mode." }
+      { "path": "/api/series/{id}/cinema", "method": "GET", "explained": "Get series trailers from TMDb for cinema mode." },
+      { "path": "/api/admin/scheduler/tasks", "method": "GET", "explained": "List all scheduled tasks with status, interval, last_run, next_run for admin dashboard." },
+      { "path": "/api/app/latest", "method": "GET", "explained": "Get latest app version info for in-app update check. Falls back to baseline if DB empty." }
   ],
   "business_rules": [
       "Marker detection triggers a background task and broadcasts progress to admins via websocket.",
@@ -24,7 +26,8 @@
       "User subjective preferences for auto-skipping segments belong in general user preferences.",
       "Direct Play first; HLS/transcode only when codec/container/audio incompatible.",
       "Keep screen on while video is playing or locked; allow screen off when paused.",
-      "Stream URL TTL (expires_in) is calculated from media file duration, not fixed."
+      "Stream URL TTL (expires_in) is calculated from media file duration, not fixed.",
+      "Scheduled tasks persist to SQLite tasks table. Intervals are configurable from admin UI."
   ],
   "features": [
       "Skip Intro / Credits",
@@ -37,7 +40,9 @@
       "Metadata Editor with NFO Write",
       "Pre-transcode",
       "Android Mobile App (Jetpack Compose)",
-      "AI Subtitle Translation (NEW)"
+      "AI Subtitle Translation",
+      "In-App Updates (Android)",
+      "Scheduled Tasks Management"
   ],
   "knowledge_items": {
       "patterns": [
@@ -45,7 +50,9 @@
           "Grid layouts use GridCells.Adaptive(minSize=100.dp) with fillMaxWidth() + aspectRatio(). LazyRow items use fixed dp sizes with LocalConfiguration responsive breakpoints.",
           "Phone vs tablet breakpoint: screenWidthDp < 600 = phone.",
           "LucideIcons object is a thin alias layer over Material Icons Rounded — change icons by editing the alias, no caller changes needed.",
-          "VideoPlayer gesture hierarchy: root pointerInput for tap/drag when controls hidden, controls overlay handles its own events when visible."
+          "VideoPlayer gesture hierarchy: root pointerInput for tap/drag when controls hidden, controls overlay handles its own events when visible.",
+          "In-app updates: Use Android DownloadManager + REQUEST_INSTALL_PACKAGES + Intent.ACTION_VIEW for native APK install flow.",
+          "Scheduled tasks: Persist to SQLite 'tasks' table with configurable intervals. Repository pattern in backend/internal/repository/scheduled_task.go."
       ],
       "gotchas": [
           "Android app lacks websocket implementation; polling/fire-and-forget is required for background tasks for now.",
@@ -54,7 +61,9 @@
           "SliderDefaults.Track renders a stop indicator dot by default — pass drawStopIndicator = null to remove it.",
           "Root pointerInput detectDragGestures intercepts Slider drag — skip gestures when controls are visible.",
           "FLAG_KEEP_SCREEN_ON must be tied to isPlaying (not just isLocked) to prevent screen timeout during playback.",
-          "Double subtitle rendering: Disable C.TRACK_TYPE_TEXT in ExoPlayer when DualSubtitleOverlay handles display."
+          "Double subtitle rendering: Disable C.TRACK_TYPE_TEXT in ExoPlayer when DualSubtitleOverlay handles display.",
+          "AppVersionCard must use AuthManager's dynamic URL, NOT hardcoded BuildConfig.BASE_URL — causes connection failures on different networks.",
+          "GetLatest app version API must handle empty DB gracefully — return baseline version, not 404."
       ],
       "conventions": [
           "Use Netflix theme colors (NetflixRed, NetflixWhite, NetflixBlack, NetflixDark, NetflixGray, NetflixLightGray) across Android app UI.",

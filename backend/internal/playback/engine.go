@@ -59,17 +59,19 @@ type PlaybackDecision struct {
 
 // MediaFileInfo represents media file metadata for decision making
 type MediaFileInfo struct {
-	ID           int    `json:"id"`
-	Path         string `json:"path"`
-	VideoCodec   string `json:"video_codec"`
-	AudioCodec   string `json:"audio_codec"`
-	Container    string `json:"container"`
-	Width        int    `json:"width"`
-	Height       int    `json:"height"`
-	Duration     int    `json:"duration"` // seconds
-	Bitrate      int    `json:"bitrate"`  // kbps
-	HasSubtitles bool   `json:"has_subtitles"`
-	SubType      string `json:"subtitle_type,omitempty"` // srt, vtt, pgs, etc.
+	ID                 int    `json:"id"`
+	Path               string `json:"path"`
+	VideoCodec         string `json:"video_codec"`
+	AudioCodec         string `json:"audio_codec"`
+	Container          string `json:"container"`
+	Width              int    `json:"width"`
+	Height             int    `json:"height"`
+	Duration           int    `json:"duration"` // seconds
+	Bitrate            int    `json:"bitrate"`  // kbps
+	HasSubtitles       bool   `json:"has_subtitles"`
+	SubType            string `json:"subtitle_type,omitempty"` // srt, vtt, pgs, etc.
+	IsHDR              bool   `json:"is_hdr"`                  // true if HDR10/DV/HLG
+	NeedsServerTonemap bool   `json:"needs_server_tonemap"`    // true for DV Profile 5 etc. — must tonemap server-side regardless of client
 }
 
 // UserPreferences for playback
@@ -128,6 +130,30 @@ func Decide(media MediaFileInfo, profile *DeviceProfile, prefs UserPreferences) 
 		decision.Method = MethodDirectPlay
 		decision.Reason = "Direct play compatible"
 		decision.EstimatedBitrate = media.Bitrate
+	}
+
+	// HDR content that lacks standard color metadata (e.g. Dolby Vision Profile 5
+	// with IPT-PQ-C2 color space) needs server-side tone mapping for clients that
+	// can't handle DV natively. Native apps (Android/ExoPlayer) can direct play
+	// MKV with DV RPU intact, but browsers via HLS remux lose DV metadata.
+	if media.IsHDR && media.NeedsServerTonemap && profile != nil && !profile.SupportsHDR && !needsVideoTranscode {
+		needsVideoTranscode = true
+		decision.VideoAction = VideoTranscode
+		decision.VideoCodec = selectBestVideoCodec(profile)
+		decision.Method = MethodFullTranscode
+		decision.Reason = "Dolby Vision requires server-side tone mapping"
+		decision.EstimatedBitrate = estimateBitrate(media.Height)
+	}
+
+	// Standard HDR content (HDR10/HLG with proper BT.2020/PQ tags) needs
+	// server-side tone mapping only when the client can't render HDR natively.
+	if media.IsHDR && !media.NeedsServerTonemap && profile != nil && !profile.SupportsHDR && !needsVideoTranscode {
+		needsVideoTranscode = true
+		decision.VideoAction = VideoTranscode
+		decision.VideoCodec = selectBestVideoCodec(profile)
+		decision.Method = MethodFullTranscode
+		decision.Reason = "HDR content requires tone mapping for this client"
+		decision.EstimatedBitrate = estimateBitrate(media.Height)
 	}
 
 	// Check if audio codec is supported

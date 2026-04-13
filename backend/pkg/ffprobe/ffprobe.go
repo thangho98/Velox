@@ -293,7 +293,7 @@ func IsHDRLike(path string) bool {
 // NeedsHDRColorMetadataFallback returns true when a source appears HDR/DV but
 // its primary video stream is missing usable color metadata. In that case we
 // should inject conservative BT.2020/PQ tags before tone mapping so filters
-// like zscale can build a conversion path instead of failing at frame 0.
+// like tonemapx can apply correct tone mapping instead of failing at frame 0.
 func NeedsHDRColorMetadataFallback(path string) bool {
 	cmd := exec.Command(ffmpegbin.FFprobe(),
 		"-v", "quiet",

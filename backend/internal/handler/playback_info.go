@@ -14,6 +14,7 @@ import (
 	"github.com/thawng/velox/internal/auth"
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/playback"
+	"github.com/thawng/velox/pkg/ffprobe"
 )
 
 // GetPlaybackInfo returns playback decision for a media item
@@ -161,17 +162,19 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 
 	// Create media file info for decision engine
 	mediaInfo := playback.MediaFileInfo{
-		ID:           int(primaryFile.ID),
-		Path:         primaryFile.FilePath,
-		VideoCodec:   primaryFile.VideoCodec,
-		AudioCodec:   selectedAudioCodec,
-		Container:    primaryFile.Container,
-		Width:        primaryFile.Width,
-		Height:       primaryFile.Height,
-		Duration:     int(primaryFile.Duration),
-		Bitrate:      primaryFile.Bitrate / 1000, // Convert to kbps
-		HasSubtitles: hasSubtitles,
-		SubType:      subType,
+		ID:                 int(primaryFile.ID),
+		Path:               primaryFile.FilePath,
+		VideoCodec:         primaryFile.VideoCodec,
+		AudioCodec:         selectedAudioCodec,
+		Container:          primaryFile.Container,
+		Width:              primaryFile.Width,
+		Height:             primaryFile.Height,
+		Duration:           int(primaryFile.Duration),
+		Bitrate:            primaryFile.Bitrate / 1000, // Convert to kbps
+		HasSubtitles:       hasSubtitles,
+		SubType:            subType,
+		IsHDR:              ffprobe.IsHDRLike(primaryFile.FilePath),
+		NeedsServerTonemap: ffprobe.NeedsHDRColorMetadataFallback(primaryFile.FilePath),
 	}
 
 	// Make playback decision

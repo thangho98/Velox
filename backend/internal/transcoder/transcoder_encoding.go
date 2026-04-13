@@ -65,8 +65,23 @@ func ffmpegInputProbeArgs() []string {
 	}
 }
 
-func buildFFmpegInputArgs(hwAccel string) []string {
+// buildFFmpegInputArgs returns input-side FFmpeg args (probe + hwaccel).
+// For HDR: always uses software decode so CPU-decoded frames retain correct
+// color metadata for the tonemapx filter chain. Hardware decoders
+// (VideoToolbox, QSV, AMF) can strip or alter color metadata on the decoded
+// frames, causing tonemapx to misinterpret the color space.
+func buildFFmpegInputArgs(hwAccel string, hdr bool) []string {
 	args := ffmpegInputProbeArgs()
+	if hdr {
+		// Software decode for ALL HDR — tonemapx needs correct color metadata.
+		if hwAccel == "vaapi" {
+			// VAAPI still needs the device init for hwupload → h264_vaapi encode.
+			args = append(args, "-vaapi_device", "/dev/dri/renderD128")
+		}
+		// All other hwAccel types (nvenc, videotoolbox, qsv, amf):
+		// skip hwaccel decode args — decode in software, encode with HW encoder.
+		return args
+	}
 	args = append(args, hwInputArgs(hwAccel)...)
 	return args
 }
@@ -89,31 +104,33 @@ func hwVideoCodec(hwAccel string) string {
 	return "libx264"
 }
 
-// hdrTonemapVAAPI returns VAAPI-native HDR→SDR tone mapping filter.
-// Uses VAAPI's built-in tonemap which runs on GPU — fast and efficient.
-// Output is NV12 ready for h264_vaapi encoder.
-func hdrTonemapVAAPI() string {
-	return "tonemap_vaapi=format=nv12"
-}
-
-// hdrTonemapOpenCL returns OpenCL-based HDR→SDR tone mapping filter.
-// Works with NVIDIA/AMD GPUs via OpenCL. Output is NV12.
-func hdrTonemapOpenCL(inputPath string) string {
+// hdrToneMapFilterSW returns the software HDR→SDR tonemap filter chain.
+// Uses tonemapx (Jellyfin SIMD-optimized) which correctly handles both standard
+// HDR10 (BT.2020/PQ) and Dolby Vision (including Profile 5 IPT-PQ-C2).
+// The older zscale chain fails on DV Profile 5 because it assumes BT.2020nc
+// matrix coefficients, but DV P5 uses IPT color space — producing green/magenta tint.
+// outFmt controls the final pixel format: "yuv420p" for software encode,
+// "nv12" for VAAPI hwupload.
+func hdrToneMapFilterSW(inputPath, outFmt string) string {
 	return hdrColorMetadataFallbackPrefix(inputPath) +
-		"zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=opencl:format=nv12"
+		fmt.Sprintf(
+			"tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709,format=%s",
+			outFmt,
+		)
 }
 
 // hdrToneMapFilterForHW returns the appropriate HDR→SDR tone mapping filter
-// based on the hardware accelerator in use. Falls back to software zscale+hable
-// when no hardware accelerator is available or for unsupported cases.
+// for the given hardware accelerator.
+// Always uses software tonemapx (CPU SIMD) because:
+// 1. tonemap_vaapi does not reliably convert BT.2020 primaries on many GPU drivers
+// 2. tonemapx correctly handles Dolby Vision (including DV Profile 5)
 func hdrToneMapFilterForHW(hwAccel, inputPath string) string {
 	switch hwAccel {
 	case "vaapi":
-		return hdrTonemapVAAPI()
-	case "nvenc", "amf":
-		return hdrTonemapOpenCL(inputPath)
+		// Software tonemap → NV12 → hwupload to VAAPI surface for h264_vaapi.
+		return hdrToneMapFilterSW(inputPath, "nv12") + ",hwupload"
 	default:
-		return hdrToneMapFilter(inputPath) // software fallback: zscale+hable
+		return hdrToneMapFilter(inputPath) // software: tonemapx → yuv420p
 	}
 }
 
@@ -129,7 +146,7 @@ func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string)
 		filters = append(filters, fmt.Sprintf("subtitles=filename='%s':si=%d", escaped, siIdx))
 	}
 	// VAAPI: force NV12 surface format so h264_vaapi can encode 10-bit sources.
-	// When HDR tonemap is applied via tonemap_vaapi, format is already NV12.
+	// When HDR tonemap is applied, format is already NV12+hwupload.
 	if hwAccel == "vaapi" && len(filters) == 0 {
 		filters = append(filters, "scale_vaapi=format=nv12")
 	}
@@ -141,6 +158,11 @@ func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string)
 
 	args = append(args, "-c:v", hwVideoCodec(hwAccel))
 	args = append(args, hwEncoderArgs(hwAccel)...)
+
+	// Tag the output stream as BT.709 so players render correct colors.
+	if hdr {
+		args = append(args, "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709")
+	}
 	return args
 }
 
@@ -156,6 +178,9 @@ func buildImageSubtitleBurnInArgs(hwAccel string, hdr bool, inputPath string, su
 		"-c:v", hwVideoCodec(hwAccel),
 	}
 	args = append(args, hwEncoderArgs(hwAccel)...)
+	if hdr {
+		args = append(args, "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709")
+	}
 	return args
 }
 
@@ -169,6 +194,9 @@ func buildImageSubtitleBurnInVideoOnlyArgs(hwAccel string, hdr bool, inputPath s
 		"-c:v", hwVideoCodec(hwAccel),
 	}
 	args = append(args, hwEncoderArgs(hwAccel)...)
+	if hdr {
+		args = append(args, "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709")
+	}
 	return args
 }
 
@@ -190,12 +218,11 @@ func hwEncoderArgs(hwAccel string) []string {
 
 // buildImageSubtitleBurnInFilter builds the filter_complex string for burning
 // image-based subtitles (PGS/VobSub) into the video.
-// For HDR sources, uses zscale+hable tonemap (software) because subtitle overlay
-// via filter_complex requires system memory frames. VAAPI hardware tonemap outputs
-// to GPU surfaces which can't be directly overlaid with subtitles.
+// For HDR sources, uses tonemapx (software) because subtitle overlay via
+// filter_complex requires system memory frames.
 func buildImageSubtitleBurnInFilter(hwAccel string, hdr bool, inputPath string, subtitleStreamIndex int) string {
 	if hdr {
-		// Always use zscale+hable for HDR subtitle burn-in — filter_complex
+		// Always use software tonemap for HDR subtitle burn-in — filter_complex
 		// requires software processing, so VAAPI hwaccel doesn't help here.
 		return fmt.Sprintf("[0:v:0]%s[base];[base][0:%d]overlay[vout]", hdrToneMapFilter(inputPath), subtitleStreamIndex)
 	}
@@ -228,8 +255,7 @@ func isHDRFile(inputPath string) bool {
 // hdrToneMapFilter returns the FFmpeg -vf filter chain for HDR→SDR tone mapping.
 // Output is SDR BT.709 in yuv420p, suitable for H.264/H.265 HLS streaming.
 func hdrToneMapFilter(inputPath string) string {
-	return hdrColorMetadataFallbackPrefix(inputPath) +
-		"zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709,format=yuv420p"
+	return hdrToneMapFilterSW(inputPath, "yuv420p")
 }
 
 func hdrColorMetadataFallbackPrefix(inputPath string) string {

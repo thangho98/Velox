@@ -135,11 +135,13 @@ func (t *Transcoder) generateABRVariant(inputPath, playlistPath, segPattern stri
 	bufsizeStr := fmt.Sprintf("%dk", v.Bitrate*2)
 
 	args := []string{"-hide_banner", "-loglevel", "warning"}
-	args = append(args, buildFFmpegInputArgs(hwAccel)...)
+
+	// Detect HDR before building input args — HDR+VAAPI needs software decode.
+	hdr := isHDRFile(inputPath)
+	args = append(args, buildFFmpegInputArgs(hwAccel, hdr)...)
 	args = append(args, "-i", inputPath)
 
 	// Apply HDR→SDR tonemapping if the source is HDR, then scale to target height.
-	hdr := isHDRFile(inputPath)
 	var vf string
 	if hdr {
 		vf = fmt.Sprintf("%s,%s", hdrToneMapFilterForHW(hwAccel, inputPath), hwScaleFilter(hwAccel, v.Height))
@@ -153,6 +155,10 @@ func (t *Transcoder) generateABRVariant(inputPath, playlistPath, segPattern stri
 		args = append(args, "-pix_fmt", "yuv420p")
 	case "vaapi":
 		args = append(args, "-profile:v", "main")
+	}
+	// Tag tonemapped output as BT.709 so players render correct colors.
+	if hdr {
+		args = append(args, "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709")
 	}
 	args = append(args,
 		"-b:v", bitrateStr,

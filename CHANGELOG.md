@@ -1,5 +1,15 @@
 # Changelog
 
+## [2026-04-13]
+### Added
+- Backend: Scheduled tasks API and `app_versions` database seed migration.
+- Android App: Implement `AppUpdater` with `DownloadManager` for automatic in-app Android updates using `REQUEST_INSTALL_PACKAGES`.
+- Webapp/Android App: Added scheduled tasks editor and status dashboard.
+
+### Changed
+- Android App: AppVersionCard now fetches updates dynamically using `VeloxApi` and `AuthManager` tokens instead of a hardcoded HTTP connection.
+- Backend: `AppVersion` Github tag parsing implementation updated to accurately calculate version codes (e.g. `v0.1.5` -> `105`).
+- Webapp: Unified all HTML `<select>` elements to use a customized `Select.tsx` component matching the overall Design System dark theme.
 ## [2026-04-11]
 ### Added
 - Backend: AI subtitle translation package (`pkg/translate/ai.go`) - supports OpenAI, Gemini, and Anthropic compatible APIs.

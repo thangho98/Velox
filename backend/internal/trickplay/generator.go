@@ -210,7 +210,14 @@ func (g *Generator) extractFramesWithSeek(mediaID int64, inputPath string, durat
 // For HDR content, applies tone mapping to convert to SDR.
 func (g *Generator) extractFrameAt(inputPath string, timestampSec int, outputPath string, isHDR bool) error {
 	args := []string{"-hide_banner", "-loglevel", "error"}
-	if g.hwAccel != "" {
+	if isHDR {
+		// HDR: software decode so tonemapx gets correct color metadata.
+		// Hardware decoders can strip BT.2020/PQ metadata (especially DV Profile 5).
+		if g.hwAccel == "vaapi" {
+			// VAAPI still needs device init for hwupload → scale_vaapi in filter chain.
+			args = append(args, "-vaapi_device", "/dev/dri/renderD128")
+		}
+	} else if g.hwAccel != "" {
 		switch g.hwAccel {
 		case "vaapi":
 			args = append(args, "-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128")
@@ -226,7 +233,7 @@ func (g *Generator) extractFrameAt(inputPath string, timestampSec int, outputPat
 	args = append(args, "-i", inputPath)
 
 	// Build video filter chain.
-	vf := g.buildFrameFilter(isHDR)
+	vf := g.buildFrameFilter(inputPath, isHDR)
 	args = append(args, "-vf", vf)
 	args = append(args, "-frames:v", "1", "-q:v", "5", "-y", outputPath)
 
@@ -241,25 +248,24 @@ func (g *Generator) extractFrameAt(inputPath string, timestampSec int, outputPat
 
 // buildFrameFilter returns the FFmpeg video filter chain for frame extraction.
 // For HDR content, includes tone mapping based on hardware accelerator.
-func (g *Generator) buildFrameFilter(isHDR bool) string {
+func (g *Generator) buildFrameFilter(inputPath string, isHDR bool) string {
 	if !isHDR {
 		return fmt.Sprintf("scale=%d:%d", tileWidth, tileHeight)
 	}
 
+	// Use tonemapx for all paths — handles both HDR10 and Dolby Vision
+	// (including DV Profile 5 IPT-PQ-C2) correctly via SIMD on CPU.
+	// The older zscale/tonemap_vaapi chains fail on DV Profile 5.
+	prefix := ""
+	if ffprobe.NeedsHDRColorMetadataFallback(inputPath) {
+		prefix = "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,"
+	}
 	switch g.hwAccel {
 	case "vaapi":
-		// VAAPI HDR: upload to GPU, tone map to SDR (NV12), then hardware scale.
-		// Order: format -> hwupload -> tonemap_vaapi -> scale_vaapi
-		return fmt.Sprintf("format=nv12,hwupload,tonemap_vaapi=format=nv12,scale_vaapi=w=%d:h=%d:format=nv12", tileWidth, tileHeight)
-	case "nvenc", "cuda", "amf":
-		// NVIDIA GPU HDR via OpenCL: zscale to linear BT.709, tonemap to SDR, then scale.
-		return fmt.Sprintf("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=opencl:format=nv12,scale=%d:%d", tileWidth, tileHeight)
-	case "videotoolbox":
-		// macOS VideoToolbox: no HW tonemap, use software zscale+hable.
-		return fmt.Sprintf("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709,format=yuv420p,scale=%d:%d", tileWidth, tileHeight)
+		// Software tonemap → NV12 → hwupload → VAAPI scale for thumbnail output.
+		return fmt.Sprintf("%stonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709,format=nv12,hwupload,scale_vaapi=w=%d:h=%d:format=nv12", prefix, tileWidth, tileHeight)
 	default:
-		// Software HDR tonemap fallback using zscale + hable.
-		return fmt.Sprintf("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709,format=yuv420p,scale=%d:%d", tileWidth, tileHeight)
+		return fmt.Sprintf("%stonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709,format=yuv420p,scale=%d:%d", prefix, tileWidth, tileHeight)
 	}
 }
 

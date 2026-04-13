@@ -116,7 +116,7 @@ func (t *Transcoder) runHLSFFmpeg(ctx context.Context, inputPath, dir, prefix st
 		)
 	} else {
 		args = []string{"-hide_banner", "-loglevel", "warning"}
-		args = append(args, buildFFmpegInputArgs(hwAccel)...)
+		args = append(args, buildFFmpegInputArgs(hwAccel, hdr)...)
 		if startOffset > 0 {
 			args = append(args, "-ss", fmt.Sprintf("%.3f", startOffset))
 		}
@@ -132,8 +132,12 @@ func (t *Transcoder) runHLSFFmpeg(ctx context.Context, inputPath, dir, prefix st
 				inserted := false
 				for i, arg := range encArgs {
 					if arg == "-vf" && i+1 < len(encArgs) {
-						// For VAAPI: replace the existing scale_vaapi with one that includes height
-						if hwAccel == "vaapi" {
+						if hdr {
+							// HDR: scale AFTER tonemap — placing scale before tonemapx
+							// corrupts the HDR color pipeline (swscale can strip color
+							// metadata, producing green/magenta color shift).
+							encArgs[i+1] = encArgs[i+1] + "," + scaleFilter
+						} else if hwAccel == "vaapi" {
 							encArgs[i+1] = strings.Replace(encArgs[i+1], "scale_vaapi=format=nv12", scaleFilter, 1)
 						} else {
 							encArgs[i+1] = scaleFilter + "," + encArgs[i+1]
@@ -358,7 +362,7 @@ func (t *Transcoder) runMultiOutputHLS(ctx context.Context, inputPath, dir, pref
 	if videoCopy {
 		args = append(args, ffmpegInputProbeArgs()...)
 	} else {
-		args = append(args, buildFFmpegInputArgs(hwAccel)...)
+		args = append(args, buildFFmpegInputArgs(hwAccel, hdr)...)
 	}
 	if startOffset > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.3f", startOffset))
@@ -651,10 +655,13 @@ func StartHLSV2Encoder(ctx context.Context, opts V2EncoderOpts) (*exec.Cmd, erro
 
 	startOffset := float64(opts.StartSegNum) * opts.SegLength
 
+	// Detect HDR before building input args — HDR+VAAPI needs software decode.
+	hdr := isHDRFile(opts.InputPath)
+
 	if opts.VideoCopy {
 		args = append(args, ffmpegInputProbeArgs()...)
 	} else {
-		args = append(args, buildFFmpegInputArgs(opts.HwAccel)...)
+		args = append(args, buildFFmpegInputArgs(opts.HwAccel, hdr)...)
 	}
 
 	if startOffset > 0 {
@@ -680,8 +687,6 @@ func StartHLSV2Encoder(ctx context.Context, opts V2EncoderOpts) (*exec.Cmd, erro
 		)
 	}
 
-	hdr := isHDRFile(opts.InputPath)
-
 	if opts.VideoCopy {
 		args = append(args, "-map", "0:v:0", "-c:v", "copy")
 	} else if opts.SubtitleStreamIdx >= 0 {
@@ -694,7 +699,12 @@ func StartHLSV2Encoder(ctx context.Context, opts V2EncoderOpts) (*exec.Cmd, erro
 			inserted := false
 			for i, arg := range encArgs {
 				if arg == "-vf" && i+1 < len(encArgs) {
-					if opts.HwAccel == "vaapi" {
+					if hdr {
+						// HDR: scale AFTER tonemap — placing scale before zscale
+						// corrupts the HDR color pipeline (swscale strips BT.2020
+						// metadata, producing green/magenta color shift).
+						encArgs[i+1] = encArgs[i+1] + "," + scaleFilter
+					} else if opts.HwAccel == "vaapi" {
 						encArgs[i+1] = strings.Replace(encArgs[i+1], "scale_vaapi=format=nv12", scaleFilter, 1)
 					} else {
 						encArgs[i+1] = scaleFilter + "," + encArgs[i+1]

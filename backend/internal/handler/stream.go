@@ -20,6 +20,7 @@ import (
 	"github.com/thawng/velox/internal/playback"
 	"github.com/thawng/velox/internal/service"
 	"github.com/thawng/velox/internal/transcoder"
+	"github.com/thawng/velox/pkg/ffprobe"
 )
 
 type StreamHandler struct {
@@ -90,15 +91,17 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mediaInfo := playback.MediaFileInfo{
-		ID:         int(mf.ID),
-		Path:       mf.FilePath,
-		VideoCodec: mf.VideoCodec,
-		AudioCodec: mf.AudioCodec,
-		Container:  mf.Container,
-		Width:      mf.Width,
-		Height:     mf.Height,
-		Duration:   int(mf.Duration),
-		Bitrate:    mf.Bitrate / 1000,
+		ID:                 int(mf.ID),
+		Path:               mf.FilePath,
+		VideoCodec:         mf.VideoCodec,
+		AudioCodec:         mf.AudioCodec,
+		Container:          mf.Container,
+		Width:              mf.Width,
+		Height:             mf.Height,
+		Duration:           int(mf.Duration),
+		Bitrate:            mf.Bitrate / 1000,
+		IsHDR:              ffprobe.IsHDRLike(mf.FilePath),
+		NeedsServerTonemap: ffprobe.NeedsHDRColorMetadataFallback(mf.FilePath),
 	}
 
 	decision := playback.PlaybackDecision{Method: explicitPlaybackMethod(r.URL.Query().Get("pm"))}
