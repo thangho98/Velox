@@ -216,12 +216,43 @@ fun VideoPlayer(
                             }
                         }
 
-                        if (!uiState.showControls) {
-                            // Controls hidden → show controls + pause
+                        if (uiState.showControls) {
                             viewModel.toggleControls()
-                            viewModel.togglePlayPause()
+                        } else {
+                            viewModel.toggleControls()
+
+                            if (uiState.isPlaying) {
+                                // Calculate viewport bounds
+                                val screenWidth = size.width.toFloat()
+                                val screenHeight = size.height.toFloat()
+                                val videoWidth = uiState.videoWidth.takeIf { it > 0 }?.toFloat() ?: 16f
+                                val videoHeight = uiState.videoHeight.takeIf { it > 0 }?.toFloat() ?: 9f
+                                
+                                val videoAspectRatio = videoWidth / videoHeight
+                                val screenAspectRatio = screenWidth / screenHeight
+                                
+                                var viewportWidth = screenWidth
+                                var viewportHeight = screenHeight
+                                
+                                if (uiState.aspectRatio == AspectRatioUi.Contain) {
+                                    if (videoAspectRatio > screenAspectRatio) {
+                                        viewportHeight = screenWidth / videoAspectRatio
+                                    } else {
+                                        viewportWidth = screenHeight * videoAspectRatio
+                                    }
+                                }
+                                
+                                val letterboxPx = (screenHeight - viewportHeight) / 2f
+                                val pillarboxPx = (screenWidth - viewportWidth) / 2f
+                                
+                                val isInsideViewport = offset.x >= pillarboxPx && offset.x <= screenWidth - pillarboxPx &&
+                                                       offset.y >= letterboxPx && offset.y <= screenHeight - letterboxPx
+
+                                if (isInsideViewport) {
+                                    viewModel.togglePlayPause()
+                                }
+                            }
                         }
-                        // When controls visible, do nothing here — let controls overlay handle taps
                     },
                     onDoubleTap = { offset ->
                         if (uiState.isLocked) return@detectTapGestures
@@ -263,6 +294,14 @@ fun VideoPlayer(
                                 }
                                 seekAccumulator = 0
                                 viewModel.hideSeekFeedback()
+                            }
+                        } else {
+                            // Double tap in the center zone -> treat as single tap (toggle controls/pause)
+                            if (!uiState.showControls) {
+                                viewModel.toggleControls()
+                                if (uiState.isPlaying) {
+                                    viewModel.togglePlayPause()
+                                }
                             }
                         }
                     },
@@ -446,39 +485,7 @@ fun VideoPlayer(
             }
         }
 
-        // Center Overlays (Buffering, Paused)
-        if (uiState.isBuffering) {
-            androidx.compose.material3.CircularProgressIndicator(
-                color = NetflixWhite,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        } else {
-            androidx.compose.animation.AnimatedVisibility(
-                visible = !uiState.isPlaying && uiState.error == null,
-                enter = androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.FastOutLinearInEasing)) + androidx.compose.animation.fadeOut(),
-                modifier = Modifier.align(Alignment.Center)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), androidx.compose.foundation.shape.CircleShape)
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null,
-                            onClick = { viewModel.togglePlayPause() }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        LucideIcons.PlayArrow, 
-                        contentDescription = "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
-            }
-        }
+
 
         // Controls overlay - HIDE if error exists
         if (uiState.error == null) {
@@ -490,8 +497,14 @@ fun VideoPlayer(
                     onBackClick()
                 },
                 onPlayPauseClick = viewModel::togglePlayPause,
-                onSeekForward = viewModel::seekForward,
-                onSeekBackward = viewModel::seekBackward,
+                onSeekForward = {
+                    viewModel.seekForward(5)
+                    viewModel.showSeekFeedback("right", 5)
+                },
+                onSeekBackward = {
+                    viewModel.seekBackward(5)
+                    viewModel.showSeekFeedback("left", 5)
+                },
                 onSeek = viewModel::seekTo,
                 onSkipSegment = viewModel::skipSegment,
                 onToggleControls = viewModel::toggleControls,
@@ -520,9 +533,13 @@ fun VideoPlayer(
                 onSetRepeatMode = viewModel::setRepeatMode,
                 onTogglePlaybackStats = viewModel::togglePlaybackStats,
                 onPlayNextEpisode = {
-                    uiState.nextEpisodeId?.let { nextId ->
-                        viewModel.saveProgress()
-                        onNavigateToMedia(nextId)
+                    if (uiState.nextEpisodeWatched) {
+                        viewModel.showWatchedWarning()
+                    } else {
+                        uiState.nextEpisodeId?.let { nextId ->
+                            viewModel.saveProgress()
+                            onNavigateToMedia(nextId)
+                        }
                     }
                 },
                 onDismissUpNext = viewModel::dismissUpNext,
@@ -562,6 +579,40 @@ fun VideoPlayer(
             )
         }
 
+        // Center Overlays (Buffering, Paused)
+        if (uiState.isBuffering) {
+            androidx.compose.material3.CircularProgressIndicator(
+                color = NetflixWhite,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        } else {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !uiState.isPlaying && uiState.error == null && uiState.showControls,
+                enter = androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.FastOutLinearInEasing)) + androidx.compose.animation.fadeOut(),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), androidx.compose.foundation.shape.CircleShape)
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = { viewModel.togglePlayPause() }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        LucideIcons.PlayArrow, 
+                        contentDescription = "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+            }
+        }
+
         // Playback Stats Overlay
         PlaybackStatsOverlay(
             visible = uiState.showPlaybackStats,
@@ -577,14 +628,59 @@ fun VideoPlayer(
                 title = upNextTitle,
                 countdown = uiState.upNextCountdown,
                 onPlayNext = {
-                    uiState.upNextId?.let { nextId ->
-                        viewModel.saveProgress()
-                        onNavigateToMedia(nextId)
+                    if (uiState.nextEpisodeWatched) {
+                        viewModel.showWatchedWarning()
+                    } else {
+                        uiState.upNextId?.let { nextId ->
+                            viewModel.saveProgress()
+                            onNavigateToMedia(nextId)
+                        }
                     }
                 },
                 onDismiss = viewModel::dismissUpNext,
                 bottomPadding = maxOf(214.dp, letterboxDp + 50.dp),
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // Watched Warning Dialog
+        if (uiState.showWatchedWarning) {
+            AlertDialog(
+                onDismissRequest = viewModel::hideWatchedWarning,
+                title = { Text("Đã xem tập này", color = Color.White) },
+                text = { Text("Bạn đã xem xong tập phim tiếp theo. Bạn muốn xem lại từ đầu hay chuyển qua tập kế tiếp?", color = Color.Gray) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.hideWatchedWarning()
+                        uiState.nextEpisodeId?.let { nextId ->
+                            viewModel.resetProgressAndNavigate(nextId, onNavigateToMedia)
+                        }
+                    }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(LucideIcons.Replay, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Xem lại từ đầu", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                },
+                dismissButton = {
+                    uiState.nextNextEpisodeId?.let { nextNextId ->
+                        TextButton(onClick = {
+                            viewModel.hideWatchedWarning()
+                            viewModel.saveProgress()
+                            onNavigateToMedia(nextNextId)
+                        }) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(LucideIcons.SkipNext, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Tập kế tiếp", color = Color.White)
+                            }
+                        }
+                    }
+                },
+                containerColor = Color(0xFF1E1E1E),
+                titleContentColor = Color.White,
+                textContentColor = Color.Gray
             )
         }
 
@@ -726,13 +822,7 @@ private fun PlayerControlsOverlay(
         exit = fadeOut(),
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() },
-                    onClick = onToggleControls,
-                ),
+            modifier = Modifier.fillMaxSize(),
         ) {
             // Dark gradient overlay strictly at the bottom
             Box(
@@ -920,7 +1010,7 @@ private fun PlayerControlsOverlay(
                     // Seek bar Match Web
                     PlayerSeekBar(
                         currentPosition = uiState.currentPosition,
-                        duration = uiState.duration,
+                        duration = uiState.effectiveDuration,
                         onSeek = onSeek,
                     )
 
@@ -931,11 +1021,12 @@ private fun PlayerControlsOverlay(
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = formatTime(uiState.currentPosition), color = NetflixWhite, fontSize = 14.sp)
+                        val displayPos = if (uiState.effectiveDuration > 0 || !uiState.isLoading) formatTime(uiState.currentPosition) else "--:--"
+                        Text(text = displayPos, color = NetflixWhite, fontSize = 14.sp)
                         Spacer(modifier = Modifier.width(32.dp))
 
                         IconButton(onClick = onSeekBackward) {
-                            Icon(LucideIcons.Replay10, contentDescription = "Rewind", tint = NetflixWhite, modifier = Modifier.size(24.dp))
+                            Icon(LucideIcons.Replay5, contentDescription = "Rewind", tint = NetflixWhite, modifier = Modifier.size(24.dp))
                         }
                         Spacer(modifier = Modifier.width(20.dp))
 
@@ -950,12 +1041,13 @@ private fun PlayerControlsOverlay(
 
                         Spacer(modifier = Modifier.width(20.dp))
                         IconButton(onClick = onSeekForward) {
-                            Icon(LucideIcons.Forward10, contentDescription = "Forward", tint = NetflixWhite, modifier = Modifier.size(24.dp))
+                            Icon(LucideIcons.Forward5, contentDescription = "Forward", tint = NetflixWhite, modifier = Modifier.size(24.dp))
                         }
 
                         Spacer(modifier = Modifier.weight(1f))
 
-                        Text(text = "-${formatTime((uiState.duration - uiState.currentPosition).coerceAtLeast(0L))}", color = NetflixWhite, fontSize = 14.sp)
+                        val displayRem = if (uiState.effectiveDuration > 0 || !uiState.isLoading) "-${formatTime((uiState.effectiveDuration - uiState.currentPosition).coerceAtLeast(0L))}" else "--:--"
+                        Text(text = displayRem, color = NetflixWhite, fontSize = 14.sp)
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -1441,9 +1533,13 @@ private fun PlayerSeekBar(
     var sliderPosition by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
 
-    LaunchedEffect(currentPosition) {
-        if (!isDragging && duration > 0) {
-            sliderPosition = (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+    LaunchedEffect(currentPosition, duration) {
+        if (!isDragging) {
+            if (duration > 0) {
+                sliderPosition = (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            } else {
+                sliderPosition = 0f
+            }
         }
     }
 

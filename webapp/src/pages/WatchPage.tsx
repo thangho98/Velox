@@ -29,6 +29,7 @@ import {
 import {
   useMediaWithFiles,
   useUpdateProgress,
+  useProgress,
   useStreamUrls,
   useSubtitles,
   useAudioTracks,
@@ -317,6 +318,17 @@ export default function WatchPage() {
     return seasonEpisodes[currentIdx + 1]
   })()
   const nextEpisodeMediaId = nextEpisode?.media_id
+
+  const nextNextEpisode = (() => {
+    if (!isEpisode || seasonEpisodes.length === 0) return null
+    const currentIdx = seasonEpisodes.findIndex((ep) => ep.media_id === mediaId)
+    if (currentIdx === -1 || currentIdx >= seasonEpisodes.length - 2) return null
+    return seasonEpisodes[currentIdx + 2]
+  })()
+  const nextNextEpisodeMediaId = nextNextEpisode?.media_id
+
+  const { data: nextEpisodeProgress } = useProgress(nextEpisodeMediaId ?? 0)
+  const [showWatchedWarning, setShowWatchedWarning] = useState(false)
 
   useEffect(() => {
     if (!isEpisode || seasonId <= 0) {
@@ -608,6 +620,8 @@ export default function WatchPage() {
 
   // Seek feedback
   const [seekFeedback, setSeekFeedback] = useState<{ dir: 'back' | 'fwd'; n: number } | null>(null)
+  const seekAccumulatorRef = useRef(0)
+  const seekExecuteTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Progress bar hover/drag
   const [isHoveringBar, setIsHoveringBar] = useState(false)
@@ -703,12 +717,32 @@ export default function WatchPage() {
     setShowAudioMenu(false)
     setShowSpeedMenu(false)
     setShowSettings(false)
-    // Start controls auto-hide timer when playing
-    if (willPlay) {
-      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
-      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3500)
-    }
+    // Start or restart controls auto-hide timer
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
+    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000)
   }
+
+  const handleNextEpisode = useCallback(() => {
+    if (!nextEpisodeMediaId) return
+    if (nextEpisodeProgress?.completed) {
+      if (isPlaying) {
+        videoRef.current?.pause()
+        setIsPlaying(false)
+      }
+      setShowWatchedWarning(true)
+    } else {
+      updateProgress({ mediaId, data: { position: currentTime, completed: false } })
+      navigate(`/watch/${nextEpisodeMediaId}`)
+    }
+  }, [
+    nextEpisodeMediaId,
+    nextEpisodeProgress,
+    navigate,
+    isPlaying,
+    updateProgress,
+    mediaId,
+    currentTime,
+  ])
 
   const showSeekFeedback = (dir: 'back' | 'fwd', n: number) => {
     setSeekFeedback({ dir, n })
@@ -793,9 +827,30 @@ export default function WatchPage() {
     return clampedTime
   }
 
+  const accumulateSeek = (seconds: number) => {
+    if (seconds === 0) return
+
+    // Standardize addition direction
+    if (seconds > 0) {
+      if (seekAccumulatorRef.current <= 0) seekAccumulatorRef.current = seconds
+      else seekAccumulatorRef.current += seconds
+    } else {
+      if (seekAccumulatorRef.current >= 0) seekAccumulatorRef.current = seconds
+      else seekAccumulatorRef.current += seconds
+    }
+
+    showSeekFeedback(seconds > 0 ? 'fwd' : 'back', Math.abs(seekAccumulatorRef.current))
+
+    if (seekExecuteTimeoutRef.current) clearTimeout(seekExecuteTimeoutRef.current)
+    seekExecuteTimeoutRef.current = setTimeout(() => {
+      applySeek((videoRef.current?.currentTime ?? 0) + seekAccumulatorRef.current)
+      seekAccumulatorRef.current = 0
+      setSeekFeedback(null)
+    }, 800)
+  }
+
   const seek = (seconds: number) => {
-    applySeek(currentTime + seconds)
-    showSeekFeedback(seconds > 0 ? 'fwd' : 'back', Math.abs(seconds))
+    accumulateSeek(seconds)
   }
 
   const changeVolume = (delta: number) => {
@@ -810,8 +865,8 @@ export default function WatchPage() {
     setShowControls(true)
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
     controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlaying) setShowControls(false)
-    }, 3500)
+      setShowControls(false)
+    }, 3000)
   }
 
   // ── Progress bar ────────────────────────────────────────────────────────────
@@ -1406,6 +1461,101 @@ export default function WatchPage() {
   const bufferWidthPercent = duration ? Math.max(0, (bufferedRange.end / duration) * 100) : 0
   const remainingTime = duration > 0 ? duration - displayTime : 0
 
+  // ── Gesture tracking ───────────────────────────────────────────────────────
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null)
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Ignore clicks on controls or links
+      if ((e.target as Element).closest('button, input, a, [role="button"], .pointer-events-auto'))
+        return
+      if (isLocked) return
+
+      const now = Date.now()
+      const lastTap = lastTapRef.current
+      const rect = e.currentTarget.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+
+      // Loosen the strict distance check for rapid subsequent taps.
+      // And if we are already actively seeking, ANY tap in the zone within the 800ms window counts!
+      const isStrictDoubleTap =
+        lastTap &&
+        now - lastTap.time < 300 &&
+        Math.abs(e.clientX - lastTap.x) < 60 &&
+        Math.abs(e.clientY - lastTap.y) < 60
+      const zoneWidth = rect.width / 3
+      const isActivelySeekingBack = seekAccumulatorRef.current < 0 && x < zoneWidth
+      const isActivelySeekingFwd = seekAccumulatorRef.current > 0 && x > rect.width - zoneWidth
+
+      if (isStrictDoubleTap || isActivelySeekingBack || isActivelySeekingFwd) {
+        // Treat as a double tap or a continuation of an active seek
+        lastTapRef.current = null
+
+        if (e.pointerType === 'mouse') {
+          toggleFullscreen()
+        } else {
+          // Touch double tap / seeking continuation
+          if (x < zoneWidth) {
+            accumulateSeek(-5)
+          } else if (x > rect.width - zoneWidth) {
+            accumulateSeek(5)
+          } else {
+            // Center double tap
+            if (!showControls) {
+              setShowControls(true)
+              if (isPlaying) togglePlay()
+            } else {
+              togglePlay()
+            }
+          }
+        }
+      } else {
+        // Single tap candidate
+        lastTapRef.current = { time: now, x: e.clientX, y: e.clientY }
+
+        const v = videoRef.current
+        const isInsideViewport = () => {
+          if (!v) return true
+          const vw = v.videoWidth || 16
+          const vh = v.videoHeight || 9
+          const aspect = vw / vh
+          const screenAspect = rect.width / rect.height
+          let viewW = rect.width
+          let viewH = rect.height
+          if (aspectRatio === 'contain') {
+            if (aspect > screenAspect) viewH = rect.width / aspect
+            else viewW = rect.height * aspect
+          }
+          const pillar = Math.max(0, (rect.width - viewW) / 2)
+          const letter = Math.max(0, (rect.height - viewH) / 2)
+          return x >= pillar && x <= rect.width - pillar && y >= letter && y <= rect.height - letter
+        }
+
+        if (e.pointerType === 'mouse') {
+          // Instant play/pause for mouse
+          if (isInsideViewport()) togglePlay()
+        } else {
+          // Delayed single tap for touch
+          setTimeout(() => {
+            if (lastTapRef.current?.time === now) {
+              lastTapRef.current = null
+              if (showControls) {
+                setShowControls(false)
+              } else {
+                setShowControls(true)
+                if (isPlaying && isInsideViewport()) {
+                  togglePlay()
+                }
+              }
+            }
+          }, 300)
+        }
+      }
+    },
+    [isLocked, showControls, isPlaying, aspectRatio, toggleFullscreen, togglePlay],
+  )
+
   // ── Loading/Error ──────────────────────────────────────────────────────────
   if (mediaLoading || streamLoading) {
     return (
@@ -1432,12 +1582,19 @@ export default function WatchPage() {
   return (
     <div
       ref={containerRef}
-      className={`fixed inset-0 bg-[#141414] select-none overflow-hidden ${
+      className={`fixed inset-0 bg-[#141414] select-none touch-none overflow-hidden ${
         !showControls && isPlaying ? 'cursor-none' : ''
       }`}
       onMouseMove={() => {
         if (!isLocked) resetControlsTimeout()
       }}
+      onMouseLeave={() => {
+        if (!isLocked) {
+          if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
+          setShowControls(false)
+        }
+      }}
+      onPointerUp={handlePointerUp}
       onClick={(e) => {
         if (isLocked) {
           e.stopPropagation()
@@ -1463,7 +1620,7 @@ export default function WatchPage() {
             return
           }
           if (repeatMode === 'all' && nextEpisodeMediaId) {
-            navigate(`/watch/${nextEpisodeMediaId}`)
+            handleNextEpisode()
             return
           }
           setIsPlaying(false)
@@ -1518,13 +1675,51 @@ export default function WatchPage() {
 
       {/* Seek feedback */}
       {seekFeedback && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="flex items-center gap-2 rounded-full bg-black/50 px-6 py-3 text-white text-base font-medium backdrop-blur-sm">
-            {seekFeedback.dir === 'back' ? <LuRotateCcw size={20} /> : <LuRotateCw size={20} />}
-            {seekFeedback.dir === 'back' ? '-' : '+'}
-            {seekFeedback.n}s
+        <>
+          <style>{`
+            @keyframes seekArrowFade {
+              0%, 100% { opacity: 0.2; }
+              50% { opacity: 1; }
+            }
+            .seek-arrow-1 { animation: seekArrowFade 0.6s infinite 0s; }
+            .seek-arrow-2 { animation: seekArrowFade 0.6s infinite 0.15s; }
+            .seek-arrow-3 { animation: seekArrowFade 0.6s infinite 0.3s; }
+            @keyframes scaleFadeIn {
+              0% { opacity: 0; transform: scale(0.95); }
+              100% { opacity: 1; transform: scale(1); }
+            }
+            .animate-scale-fade {
+              animation: scaleFadeIn 0.15s ease-out forwards;
+            }
+          `}</style>
+          <div
+            className={`pointer-events-none absolute inset-y-0 flex w-[40%] items-center animate-scale-fade ${
+              seekFeedback.dir === 'back'
+                ? 'left-0 justify-start pl-[10%]'
+                : 'right-0 justify-end pr-[10%]'
+            }`}
+          >
+            <div className="flex flex-col items-center justify-center text-white text-base sm:text-lg font-bold drop-shadow-lg">
+              {seekFeedback.dir === 'back' ? (
+                <div className="flex -space-x-3 mb-1">
+                  <LuChevronLeft className="seek-arrow-3" size={32} />
+                  <LuChevronLeft className="seek-arrow-2" size={32} />
+                  <LuChevronLeft className="seek-arrow-1" size={32} />
+                </div>
+              ) : (
+                <div className="flex -space-x-3 mb-1">
+                  <LuChevronRight className="seek-arrow-1" size={32} />
+                  <LuChevronRight className="seek-arrow-2" size={32} />
+                  <LuChevronRight className="seek-arrow-3" size={32} />
+                </div>
+              )}
+              <span>
+                {seekFeedback.dir === 'back' ? '-' : '+'}
+                {seekFeedback.n}s
+              </span>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Quality indicator */}
@@ -1565,7 +1760,7 @@ export default function WatchPage() {
           <p className="mb-3 text-sm font-semibold text-white line-clamp-2">{nextEpisode?.title}</p>
           <div className="flex gap-2">
             <button
-              onClick={() => navigate(`/watch/${nextEpisodeMediaId}`)}
+              onClick={handleNextEpisode}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-netflix-red px-3 py-2 text-sm font-medium text-white hover:bg-netflix-red/90"
             >
               <LuPlay size={13} className="fill-white" /> Play Next
@@ -1627,9 +1822,8 @@ export default function WatchPage() {
               ? 'opacity-100'
               : 'opacity-0 pointer-events-none'
         }`}
-        onClick={togglePlay}
       >
-        <div onClick={(e) => e.stopPropagation()}>
+        <div onClick={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
           <WatchTopBar
             isMuted={isMuted}
             volume={volume}
@@ -1679,6 +1873,7 @@ export default function WatchPage() {
               'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.7) 70%, transparent 100%)',
           }}
           onClick={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
         >
           <WatchDetailSheet
             activeTab={activeTab}
@@ -2113,7 +2308,7 @@ export default function WatchPage() {
                   {/* Next episode */}
                   {nextEpisodeMediaId && (
                     <button
-                      onClick={() => navigate(`/watch/${nextEpisodeMediaId}`)}
+                      onClick={handleNextEpisode}
                       className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/5 text-white/70 transition-colors hover:border-white/60 hover:text-white sm:h-10 sm:w-10"
                       title="Next episode"
                     >
@@ -2261,6 +2456,50 @@ export default function WatchPage() {
           </div>
         </div>
       </div>
+
+      {/* Watched Warning Overlay */}
+      {showWatchedWarning && (
+        <div className="absolute inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="w-[400px] max-w-[90vw] rounded-2xl bg-[#1e1e1e] border border-white/10 p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-2">Đã xem tập này</h3>
+            <p className="text-sm text-gray-400 mb-6">
+              Bạn đã xem xong tập phim tiếp theo. Bạn muốn xem lại từ đầu hay chuyển qua tập kế
+              tiếp?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                className="flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowWatchedWarning(false)
+                  updateProgress({
+                    mediaId: nextEpisodeMediaId!,
+                    data: { position: 0, completed: false },
+                  })
+                  navigate(`/watch/${nextEpisodeMediaId}`)
+                }}
+              >
+                <LuRotateCcw size={16} />
+                <span>Xem lại từ đầu</span>
+              </button>
+              {nextNextEpisodeMediaId && (
+                <button
+                  className="flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowWatchedWarning(false)
+                    updateProgress({ mediaId, data: { position: currentTime, completed: false } })
+                    navigate(`/watch/${nextNextEpisodeMediaId}`)
+                  }}
+                >
+                  <LuSkipForward size={16} />
+                  <span>Tập kế tiếp</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

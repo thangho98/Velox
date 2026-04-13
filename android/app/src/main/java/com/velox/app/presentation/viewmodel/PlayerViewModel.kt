@@ -109,6 +109,9 @@ data class PlayerUiState(
     val upNextCountdown: Int = 15,
     val nextEpisodeId: Int? = null,
     val nextEpisodeTitle: String? = null,
+    val nextEpisodeWatched: Boolean = false,
+    val nextNextEpisodeId: Int? = null,
+    val showWatchedWarning: Boolean = false,
 
     // Watch detail panel
     val activeDetailPanel: DetailPanelUi = DetailPanelUi.None,
@@ -116,7 +119,13 @@ data class PlayerUiState(
     val seasonPanelSeasonId: Int = 0,
     val seasonPanelEpisodes: List<DomainEpisode> = emptyList(),
     val isSeasonPanelLoading: Boolean = false,
-)
+) {
+    val effectiveDuration: Long
+        get() {
+            val apiDur = playbackInfo?.duration?.let { (it * 1000).toLong() } ?: 0L
+            return maxOf(duration, apiDur)
+        }
+}
 
 enum class DetailPanelUi {
     None, Info, Season
@@ -468,9 +477,22 @@ class PlayerViewModel @Inject constructor(
                 android.util.Log.d("PlayerVM", "episodes: count=${episodes.size} currentIdx=$currentIdx mediaId=$mediaId")
                 if (currentIdx != -1 && currentIdx < episodes.size - 1) {
                     val next = episodes[currentIdx + 1]
+                    val nextNext = if (currentIdx + 2 < episodes.size) episodes[currentIdx + 2] else null
                     android.util.Log.d("PlayerVM", "nextEpisode: id=${next.mediaId} title=${next.title}")
+                    
                     _uiState.update {
-                        it.copy(nextEpisodeId = next.mediaId, nextEpisodeTitle = next.title)
+                        it.copy(
+                            nextEpisodeId = next.mediaId, 
+                            nextEpisodeTitle = next.title,
+                            nextNextEpisodeId = nextNext?.mediaId
+                        )
+                    }
+
+                    // Check if the next episode is already watched
+                    mediaRepository.getProgress(next.mediaId).onSuccess { progress ->
+                        if (progress != null && progress.completed) {
+                            _uiState.update { it.copy(nextEpisodeWatched = true) }
+                        }
                     }
                 }
             }.onFailure { e ->
@@ -872,8 +894,15 @@ class PlayerViewModel @Inject constructor(
     }
 
     // Seek feedback
+    private var seekFeedbackJob: kotlinx.coroutines.Job? = null
+
     fun showSeekFeedback(side: String, amount: Int) {
         _uiState.update { it.copy(showSeekFeedback = true, seekFeedbackSide = side, seekFeedbackAmount = amount) }
+        seekFeedbackJob?.cancel()
+        seekFeedbackJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(800)
+            hideSeekFeedback()
+        }
     }
 
     fun hideSeekFeedback() {
@@ -1025,6 +1054,22 @@ class PlayerViewModel @Inject constructor(
                 .onFailure {
                     _isTranslatingSubtitle.value = false
                 }
+        }
+    }
+
+    // Watched Warning
+    fun showWatchedWarning() {
+        _uiState.update { it.copy(showWatchedWarning = true) }
+    }
+
+    fun hideWatchedWarning() {
+        _uiState.update { it.copy(showWatchedWarning = false) }
+    }
+
+    fun resetProgressAndNavigate(targetMediaId: Int, navigate: (Int) -> Unit) {
+        viewModelScope.launch {
+            mediaRepository.updateProgress(targetMediaId, 0f, false)
+            navigate(targetMediaId)
         }
     }
 

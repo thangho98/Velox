@@ -10,6 +10,7 @@ import {
 } from '@/hooks/stores/useAuth'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
+import { Select } from '@/components/ui/Select'
 import { LuLogOut, LuMonitor } from 'react-icons/lu'
 
 export default function ProfilePage() {
@@ -168,60 +169,60 @@ function PreferencesTab() {
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
         <label className="mb-2 block text-sm font-medium text-gray-400">Subtitle Language</label>
-        <select
+        <Select
           value={prefs.subtitle_language}
           onChange={(e) => setPrefs({ ...prefs, subtitle_language: e.target.value })}
-          className="w-full rounded bg-netflix-gray px-4 py-3 text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
+          className="w-full bg-netflix-gray transition-all focus:border-netflix-red"
         >
           <option value="">Auto</option>
           <option value="vi">Vietnamese</option>
           <option value="en">English</option>
-        </select>
+        </Select>
       </div>
 
       <div>
         <label className="mb-2 block text-sm font-medium text-gray-400">Audio Language</label>
-        <select
+        <Select
           value={prefs.audio_language}
           onChange={(e) => setPrefs({ ...prefs, audio_language: e.target.value })}
-          className="w-full rounded bg-netflix-gray px-4 py-3 text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
+          className="w-full bg-netflix-gray transition-all focus:border-netflix-red"
         >
           <option value="">Auto</option>
           <option value="vi">Vietnamese</option>
           <option value="en">English</option>
-        </select>
+        </Select>
       </div>
 
       <div>
         <label className="mb-2 block text-sm font-medium text-gray-400">
           Max Streaming Quality
         </label>
-        <select
+        <Select
           value={prefs.max_streaming_quality}
           onChange={(e) => setPrefs({ ...prefs, max_streaming_quality: e.target.value })}
-          className="w-full rounded bg-netflix-gray px-4 py-3 text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
+          className="w-full bg-netflix-gray transition-all focus:border-netflix-red"
         >
           <option value="original">Original</option>
           <option value="4k">4K</option>
           <option value="1080p">1080p</option>
           <option value="720p">720p</option>
           <option value="480p">480p</option>
-        </select>
+        </Select>
       </div>
 
       <div>
         <label className="mb-2 block text-sm font-medium text-gray-400">Theme</label>
-        <select
+        <Select
           value={theme}
           onChange={(e) =>
             setPrefs({ ...prefs, theme: e.target.value as 'light' | 'dark' | 'system' })
           }
-          className="w-full rounded bg-netflix-gray px-4 py-3 text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
+          className="w-full bg-netflix-gray transition-all focus:border-netflix-red"
         >
           <option value="system">System</option>
           <option value="light">Light</option>
           <option value="dark">Dark</option>
-        </select>
+        </Select>
       </div>
 
       <button

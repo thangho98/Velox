@@ -28,7 +28,7 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.Forward10
+import androidx.compose.material.icons.rounded.Forward5
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.GridView
@@ -50,7 +50,7 @@ import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
-import androidx.compose.material.icons.rounded.Replay10
+import androidx.compose.material.icons.rounded.Replay5
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
@@ -114,8 +114,8 @@ object LucideIcons {
     val RepeatOne get() = Icons.Rounded.RepeatOne
     val Repeat get() = Icons.Rounded.Repeat
     val ShowChart get() = Icons.AutoMirrored.Rounded.ShowChart
-    val Replay10 get() = Icons.Rounded.Replay10
-    val Forward10 get() = Icons.Rounded.Forward10
+    val Replay5 get() = Icons.Rounded.Replay5
+    val Forward5 get() = Icons.Rounded.Forward5
     val SkipNext get() = Icons.Rounded.SkipNext
     val MusicTrack get() = Icons.Rounded.MusicNote
     val Pause get() = Icons.Rounded.Pause
@@ -143,4 +143,5 @@ object LucideIcons {
     val House get() = Icons.Rounded.Home
     val Edit get() = Icons.Rounded.Edit
     val Subtitles get() = Icons.Rounded.Subtitles
+    val Replay get() = Icons.Rounded.Refresh
 }

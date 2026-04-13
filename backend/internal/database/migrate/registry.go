@@ -186,6 +186,18 @@ func All() []Migration {
 			Up:      up030,
 			Down:    down030,
 		},
+		{
+			Version: 31,
+			Name:    "scheduled_tasks",
+			Up:      up031,
+			Down:    down031,
+		},
+		{
+			Version: 32,
+			Name:    "seed_app_versions",
+			Up:      up032,
+			Down:    down032,
+		},
 	}
 }
 

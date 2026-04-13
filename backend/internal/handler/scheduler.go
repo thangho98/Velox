@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/thawng/velox/internal/service"
 )
@@ -37,4 +38,40 @@ func (h *SchedulerHandler) RunTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "task": name})
+}
+
+// UpdateTask updates a scheduled task's settings.
+// PATCH /api/admin/tasks/{name}
+func (h *SchedulerHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "task name is required")
+		return
+	}
+
+	var req struct {
+		Interval string `json:"interval"`
+	}
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Interval == "" {
+		respondError(w, http.StatusBadRequest, "interval is required")
+		return
+	}
+
+	dur, err := time.ParseDuration(req.Interval)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid duration format (e.g. 24h, 30m)")
+		return
+	}
+
+	if err := h.scheduler.UpdateInterval(r.Context(), name, dur); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "updated", "task": name})
 }

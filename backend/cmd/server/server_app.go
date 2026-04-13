@@ -71,6 +71,7 @@ type serverRepos struct {
 	appSettings        *repository.AppSettingsRepo
 	pretranscodeStatus *repository.PretranscodeRepo
 	appVersion         *repository.AppVersionRepo
+	scheduledTask      *repository.ScheduledTaskRepository
 }
 
 type serverServices struct {
@@ -232,6 +233,7 @@ func newServerRepos(db *sql.DB) serverRepos {
 		appSettings:        repository.NewAppSettingsRepo(db),
 		pretranscodeStatus: repository.NewPretranscodeRepo(db),
 		appVersion:         repository.NewAppVersionRepo(db),
+		scheduledTask:      repository.NewScheduledTaskRepository(db),
 	}
 }
 
@@ -315,7 +317,7 @@ func (app *serverApp) initServices() error {
 	app.services.subtitleSearch.SetBuiltinSubdlKey(app.cfg.SubdlAPIKey)
 	app.services.subtitleSearch.SetNotificationService(app.services.notification)
 	app.services.pipeline.SetSubtitleAutoDownloader(app.services.subtitleSearch)
-	app.services.scheduler = service.NewScheduler()
+	app.services.scheduler = service.NewScheduler(repos.scheduledTask)
 	app.services.verifier = scanner.NewVerifier(repos.mediaFile)
 
 	return app.initTrickplayGenerator()

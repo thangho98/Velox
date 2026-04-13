@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { LuX } from 'react-icons/lu'
 import { useCreateLibrary } from '@/hooks/stores/useMedia'
+import { Select } from '@/components/ui/Select'
 
 interface CreateLibraryModalProps {
   onClose: () => void
@@ -80,15 +81,15 @@ export function CreateLibraryModal({ onClose }: CreateLibraryModalProps) {
 
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-400">Type</label>
-            <select
+            <Select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="w-full rounded-lg bg-netflix-gray px-4 py-3 text-white outline-none ring-1 ring-transparent transition-all focus:ring-netflix-red"
+              className="w-full bg-netflix-gray transition-all focus:border-netflix-red"
             >
               <option value="movies">Movies</option>
               <option value="tv">TV Shows</option>
               <option value="mixed">Mixed</option>
-            </select>
+            </Select>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">

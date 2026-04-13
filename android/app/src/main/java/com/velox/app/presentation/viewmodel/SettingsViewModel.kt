@@ -176,6 +176,13 @@ data class SettingsUiState(
     // Admin - Webhooks
     val webhooks: List<Webhook> = emptyList(),
 
+    // App Version
+    val latestVersion: String? = null,
+    val updateDownloadUrl: String? = null,
+    val updateIsMandatory: Boolean = false,
+    val updateStatus: String = "",
+    val isCheckingUpdate: Boolean = false,
+
     // General
     val error: String? = null,
     val successMessage: String? = null,
@@ -728,6 +735,61 @@ class SettingsViewModel @Inject constructor(
                 // Failure
             } finally {
                 _uiState.update { it.copy(runningTaskName = null) }
+            }
+        }
+    }
+
+    fun checkAppUpdate() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCheckingUpdate = true, updateStatus = "Checking...") }
+            try {
+                val currentVersionCode = com.velox.app.BuildConfig.VERSION_CODE
+                val response = veloxApi.getLatestAppVersion("android")
+                
+                if (response.isSuccessful) {
+                    val data = response.body()
+                    if (data != null && data.error == null) {
+                        if (data.versionCode > currentVersionCode) {
+                            _uiState.update {
+                                it.copy(
+                                    isCheckingUpdate = false,
+                                    latestVersion = data.versionName,
+                                    updateDownloadUrl = data.downloadUrl,
+                                    updateIsMandatory = data.isMandatory,
+                                    updateStatus = if (data.isMandatory) "Breaking change! Mandatory update required: ${data.versionName}" 
+                                                  else "New version available: ${data.versionName}"
+                                )
+                            }
+                        } else {
+                            _uiState.update { it.copy(isCheckingUpdate = false, updateStatus = "App is up to date") }
+                        }
+                    } else {
+                        // Backend returned 404 handled as success maybe? No, 404 is response.isSuccessful == false
+                        _uiState.update { it.copy(isCheckingUpdate = false, updateStatus = "App is up to date (or none found)") }
+                    }
+                } else if (response.code() == 404) {
+                    _uiState.update { it.copy(isCheckingUpdate = false, updateStatus = "App is up to date") }
+                } else {
+                    _uiState.update { it.copy(isCheckingUpdate = false, updateStatus = "Update check failed (Code: ${response.code()})") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isCheckingUpdate = false, updateStatus = "Error checking update: ${e.message}") }
+            }
+        }
+    }
+
+    fun updateTaskInterval(name: String, interval: String) {
+        viewModelScope.launch {
+            try {
+                val response = veloxApi.updateTaskInterval(name, com.velox.app.data.model.UpdateTaskIntervalRequest(interval))
+                if (response.isSuccessful) {
+                    loadTasks()
+                    _uiState.update { it.copy(successMessage = "Task interval updated") }
+                } else {
+                    _uiState.update { it.copy(error = "Failed to update interval") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "Failed to update interval: ${e.message}") }
             }
         }
     }

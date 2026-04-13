@@ -157,6 +157,7 @@ func (app *serverApp) registerAdminOperationsRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /api/admin/settings/pretranscode", middleware.RequireAdmin(http.HandlerFunc(app.handlers.pretranscode.UpdateSettings)))
 	mux.Handle("GET /api/admin/tasks", middleware.RequireAdmin(http.HandlerFunc(app.handlers.scheduler.ListTasks)))
 	mux.Handle("POST /api/admin/tasks/{name}/run", middleware.RequireAdmin(http.HandlerFunc(app.handlers.scheduler.RunTask)))
+	mux.Handle("PATCH /api/admin/tasks/{name}", middleware.RequireAdmin(http.HandlerFunc(app.handlers.scheduler.UpdateTask)))
 }
 
 func (app *serverApp) registerLibraryRoutes(mux *http.ServeMux) {

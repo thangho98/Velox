@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -28,12 +29,15 @@ func (h *AppVersionHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
+
+	// Create a dummy record if none exists to allow GitHub checking to still work
 	if latest == nil {
-		// Return 404 but as JSON so client can explicitly handle no updates
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "no version found for platform"})
-		return
+		latest = &repository.AppVersion{
+			Platform:    platform,
+			VersionName: "0.1.0",
+			VersionCode: 1,
+			IsMandatory: false,
+		}
 	}
 
 	downloadUrl := ""
@@ -43,7 +47,8 @@ func (h *AppVersionHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 			defer githubResp.Body.Close()
 			if githubResp.StatusCode == 200 {
 				var release struct {
-					Assets []struct {
+					TagName string `json:"tag_name"`
+					Assets  []struct {
 						Name               string `json:"name"`
 						BrowserDownloadUrl string `json:"browser_download_url"`
 					} `json:"assets"`
@@ -51,6 +56,18 @@ func (h *AppVersionHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 				}
 				if err := json.NewDecoder(githubResp.Body).Decode(&release); err == nil {
 					downloadUrl = release.HtmlUrl
+					if release.TagName != "" {
+						latest.VersionName = strings.TrimPrefix(release.TagName, "v")
+						// simple heuristic for version_code: "0.1.5" -> 105
+						parts := strings.Split(latest.VersionName, ".")
+						if len(parts) >= 3 {
+							var major, minor, patch int
+							fmt.Sscanf(parts[0], "%d", &major)
+							fmt.Sscanf(parts[1], "%d", &minor)
+							fmt.Sscanf(parts[2], "%d", &patch)
+							latest.VersionCode = major*10000 + minor*100 + patch
+						}
+					}
 					for _, asset := range release.Assets {
 						if strings.HasSuffix(asset.Name, ".apk") {
 							downloadUrl = asset.BrowserDownloadUrl

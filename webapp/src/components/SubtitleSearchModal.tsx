@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { LuX, LuDownload, LuCheck, LuLoaderCircle, LuSearch } from 'react-icons/lu'
 import { useSubtitleSearch, useDownloadSubtitle } from '@/hooks/stores/useMedia'
+import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/Toast'
 import { ApiError } from '@/lib/fetch'
 import type { SubtitleSearchResult } from '@/types/api'
@@ -155,17 +156,17 @@ export function SubtitleSearchModal({
         {/* Language selector */}
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-3">
           <label className="text-xs font-medium text-white/50">Language</label>
-          <select
+          <Select
             value={lang}
             onChange={(e) => setLang(e.target.value)}
-            className="rounded-lg bg-white/8 px-3 py-1.5 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+            className="bg-white/8 outline-none ring-1 ring-white/10 focus:ring-white/30"
           >
             {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>
+              <option key={l.code} value={l.code} className="bg-[#1a1a1a] text-white">
                 {l.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {downloadError && (

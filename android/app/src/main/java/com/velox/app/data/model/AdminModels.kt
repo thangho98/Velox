@@ -5,6 +5,17 @@ import kotlinx.serialization.Serializable
 
 // Server Info
 @Serializable
+data class AppVersionDto(
+    val platform: String,
+    @SerialName("version_name") val versionName: String,
+    @SerialName("version_code") val versionCode: Int,
+    @SerialName("download_url") val downloadUrl: String,
+    @SerialName("is_mandatory") val isMandatory: Boolean,
+    @SerialName("release_notes") val releaseNotes: String? = null,
+    val error: String? = null
+)
+
+@Serializable
 data class ServerInfoDto(
     val version: String,
     val uptime: String,
@@ -100,6 +111,11 @@ data class TaskDto(
     val running: Boolean,
     @SerialName("last_run") val lastRun: String? = null,
     @SerialName("next_run") val nextRun: String,
+)
+
+@Serializable
+data class UpdateTaskIntervalRequest(
+    val interval: String,
 )
 
 // Admin Webhooks

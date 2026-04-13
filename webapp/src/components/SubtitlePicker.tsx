@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { LuCaptions, LuSearch } from 'react-icons/lu'
 import { SubtitleSearchModal } from '@/components/SubtitleSearchModal'
 import { SubtitleTranslate } from '@/components/SubtitleTranslate'
+import { Select } from '@/components/ui/Select'
 import { parseSubtitleLabel, languageMatches, buildVisibleSubtitles } from '@/lib/languages'
 import type { PlaybackSubtitleTrack } from '@/types/api'
 
@@ -200,17 +201,17 @@ function SourceSelector({
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-white/40">
         {title}
       </p>
-      <select
+      <Select
         value={selectedTrackId ?? ''}
         onChange={(e) => onSelect(e.target.value ? Number(e.target.value) : null)}
-        className="w-full rounded-lg bg-white/6 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 transition-colors hover:bg-white/10 focus:ring-white/20"
+        className="w-full bg-white/6 outline-none ring-1 ring-white/10 transition-colors hover:bg-white/10 focus:ring-white/20"
       >
         {sources.map((source) => (
           <option key={source.id} value={source.id} className="bg-[#242424] text-white">
             {buildSourceLabel(source)}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { LuPlus, LuTrash2 } from 'react-icons/lu'
+import { Select } from '@/components/ui/Select'
 import type { CreditInput } from '@/types/api'
 
 interface CreditEditorProps {
@@ -115,14 +116,14 @@ export function CreditEditor({ credits, onChange }: CreditEditorProps) {
                   placeholder="Name"
                   className="flex-1 rounded-lg bg-[#2a2a2a] px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500"
                 />
-                <select
+                <Select
                   value={c.role}
                   onChange={(e) => updateCredit(gi, 'role', e.target.value)}
-                  className="rounded-lg bg-[#2a2a2a] px-2 py-1.5 text-sm text-white outline-none"
+                  className="bg-[#2a2a2a] border-none"
                 >
                   <option value="director">Director</option>
                   <option value="writer">Writer</option>
-                </select>
+                </Select>
                 <button
                   onClick={() => removeCredit(gi)}
                   className="text-gray-500 hover:text-red-400"

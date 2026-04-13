@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { LuLanguages } from 'react-icons/lu'
 import { useTranslateSubtitle } from '@/hooks/stores/useMedia'
+import { Select } from '@/components/ui/Select'
 import type { PlaybackSubtitleTrack } from '@/types/api'
 
 const TRANSLATE_LANGS = [
@@ -66,23 +67,23 @@ export function SubtitleTranslate({
       </p>
 
       {textSubs.length > 1 && (
-        <select
+        <Select
           value={sourceId ?? textSubs[0]?.id ?? ''}
           onChange={(e) => setSourceId(Number(e.target.value))}
-          className="w-full rounded-lg bg-white/6 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10"
+          className="w-full bg-[#242424] border-none ring-1 ring-white/10"
         >
           {textSubs.map((s) => (
             <option key={s.id} value={s.id} className="bg-[#242424] text-white">
               {s.label || s.language} ({s.format})
             </option>
           ))}
-        </select>
+        </Select>
       )}
 
-      <select
+      <Select
         value={targetLang}
         onChange={(e) => setTargetLang(e.target.value)}
-        className="w-full rounded-lg bg-white/6 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10"
+        className="w-full bg-[#242424] border-none ring-1 ring-white/10"
       >
         <option value="" className="bg-[#242424] text-white">
           Translate to...
@@ -92,7 +93,7 @@ export function SubtitleTranslate({
             {l.label}
           </option>
         ))}
-      </select>
+      </Select>
 
       <div className="flex gap-2">
         <button

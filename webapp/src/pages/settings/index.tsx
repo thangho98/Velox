@@ -19,6 +19,7 @@ import {
 } from 'react-icons/lu'
 import { useAuthStore } from '@/stores/auth'
 import { useTranslation } from '@/hooks/useTranslation'
+import { Select } from '@/components/ui/Select'
 import { ProfileSection } from './components/ProfileSection'
 import { PreferencesSection } from './components/PreferencesSection'
 import { SecuritySection } from './components/SecuritySection'
@@ -213,10 +214,10 @@ export default function SettingsPage() {
     <div className="flex min-h-[calc(100vh-4rem)] flex-col md:flex-row">
       {/* Mobile: dropdown navigation */}
       <div className="border-b border-netflix-gray/50 bg-netflix-black/50 p-3 md:hidden">
-        <select
+        <Select
           value={actualSection}
           onChange={(e) => setSection(e.target.value)}
-          className="w-full appearance-none rounded-lg border border-gray-700 bg-[#1a1a1a] px-4 py-3 text-sm font-medium text-white outline-none focus:border-netflix-red"
+          className="w-full bg-[#1a1a1a] px-4 py-3 font-medium transition-all focus:border-netflix-red"
         >
           {Object.entries(groups).map(([group, items]) => (
             <optgroup key={group} label={t(`groups.${group.toLowerCase().replace(/ /g, '')}`)}>
@@ -227,7 +228,7 @@ export default function SettingsPage() {
               ))}
             </optgroup>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Desktop: sidebar */}

@@ -11,6 +11,7 @@ import type { CreditWithPerson } from '@/types/api'
 import { GenreEditor } from './GenreEditor'
 import { CreditEditor } from './CreditEditor'
 import { ImageUploader } from './ImageUploader'
+import { Select } from '@/components/ui/Select'
 import { tmdbImage } from '@/lib/image'
 
 interface MediaEditorProps {
@@ -220,16 +221,16 @@ export function MetadataEditor(props: MetadataEditorProps) {
                 <>
                   <div>
                     <label className="mb-1 block text-sm text-gray-300">Status</label>
-                    <select
+                    <Select
                       value={status}
                       onChange={(e) => setStatus(e.target.value)}
-                      className="w-full rounded-lg bg-[#2a2a2a] px-3 py-2 text-white outline-none"
+                      className="w-full bg-[#2a2a2a] border-none"
                     >
                       <option value="">Unknown</option>
                       <option value="Returning Series">Returning Series</option>
                       <option value="Ended">Ended</option>
                       <option value="Canceled">Canceled</option>
-                    </select>
+                    </Select>
                   </div>
                   <div className="col-span-2">
                     <label className="mb-1 block text-sm text-gray-300">Network</label>

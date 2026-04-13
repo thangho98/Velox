@@ -284,7 +284,7 @@ fun SettingsContent(
                     }
 
                     item {
-                        AppVersionCard()
+                        AppVersionCard(uiState = uiState, onCheckUpdate = { viewModel?.checkAppUpdate() })
                     }
                 }
             } else {
@@ -2685,6 +2685,26 @@ private fun ActionBadge(action: String) {
 
 @Composable
 private fun TasksSection(viewModel: SettingsViewModel, uiState: SettingsUiState) {
+    var editingTask by remember { mutableStateOf<com.velox.app.data.model.TaskDto?>(null) }
+
+    fun cleanInterval(valStr: String?): String {
+        if (valStr == null) return ""
+        return valStr.replace("0m0s", "").replace("0s", "")
+    }
+
+    if (editingTask != null) {
+        val task = editingTask!!
+        EditIntervalDialog(
+            taskName = task.name,
+            currentInterval = cleanInterval(task.interval),
+            onDismiss = { editingTask = null },
+            onSave = { interval ->
+                viewModel.updateTaskInterval(task.name, interval)
+                editingTask = null
+            }
+        )
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Scheduled Tasks", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
@@ -2731,8 +2751,10 @@ private fun TasksSection(viewModel: SettingsViewModel, uiState: SettingsUiState)
                         }
                         TaskTableRow(
                             task = task, 
+                            cleanedInterval = cleanInterval(task.interval),
                             runningTaskName = uiState.runningTaskName, 
-                            onRun = { viewModel.runTask(task.name) }
+                            onRun = { viewModel.runTask(task.name) },
+                            onEdit = { editingTask = task }
                         )
                     }
                 }
@@ -2744,8 +2766,10 @@ private fun TasksSection(viewModel: SettingsViewModel, uiState: SettingsUiState)
 @Composable
 private fun TaskTableRow(
     task: com.velox.app.data.model.TaskDto,
+    cleanedInterval: String,
     runningTaskName: String?,
-    onRun: () -> Unit
+    onRun: () -> Unit,
+    onEdit: () -> Unit
 ) {
     val isRunning = task.running || runningTaskName == task.name
     
@@ -2777,7 +2801,16 @@ private fun TaskTableRow(
         Text(task.name, color = NetflixWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2f))
         
         // Interval
-        Text(task.interval, color = NetflixLightGray, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(cleanedInterval, color = NetflixLightGray, fontSize = 13.sp)
+            Spacer(modifier = Modifier.width(4.dp))
+            IconButton(
+                onClick = onEdit,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(LucideIcons.Edit, contentDescription = "Edit Interval", tint = NetflixLightGray, modifier = Modifier.size(14.dp))
+            }
+        }
         
         // Timestamps
         Column(modifier = Modifier.weight(2f)) {
@@ -2818,6 +2851,81 @@ private fun TaskTableRow(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditIntervalDialog(
+    taskName: String,
+    currentInterval: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    val presets = listOf("30m", "1h", "12h", "24h", "168h", "custom")
+    val presetLabels = mapOf(
+        "30m" to "Every 30 Minutes",
+        "1h" to "Every 1 Hour",
+        "12h" to "Every 12 Hours",
+        "24h" to "Every 24 Hours",
+        "168h" to "Every 7 Days",
+        "custom" to "Custom..."
+    )
+
+    var selectedPreset by remember { mutableStateOf(if (presets.contains(currentInterval)) currentInterval else "custom") }
+    var customValue by remember { mutableStateOf(if (!presets.contains(currentInterval)) currentInterval else "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = NetflixDark,
+        title = {
+            Text("Edit Schedule", color = NetflixWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(taskName, color = NetflixLightGray, fontSize = 14.sp)
+
+                SettingsDropdown(
+                    label = "Interval",
+                    value = selectedPreset,
+                    options = presetLabels.map { it.key to it.value },
+                    onValueChange = { selectedPreset = it }
+                )
+
+                if (selectedPreset == "custom") {
+                    OutlinedTextField(
+                        value = customValue,
+                        onValueChange = { customValue = it },
+                        label = { Text("Custom Value (e.g. 2h30m)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = textFieldColors(),
+                        singleLine = true,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalVal = if (selectedPreset == "custom") customValue else selectedPreset
+                    if (finalVal.isNotBlank()) {
+                        onSave(finalVal)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text("Save", color = NetflixWhite)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = NetflixLightGray)
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -3427,73 +3535,12 @@ fun FeedbackCard() {
 }
 
 @Composable
-fun AppVersionCard() {
+@Composable
+fun AppVersionCard(uiState: SettingsUiState, onCheckUpdate: () -> Unit) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    var latestVersion by remember { mutableStateOf<String?>(null) }
-    var downloadUrl by remember { mutableStateOf<String?>(null) }
-    var isChecking by remember { mutableStateOf(false) }
-    var updateStatus by remember { mutableStateOf("") }
-    var isMandatory by remember { mutableStateOf(false) }
     
     val currentVersion = com.velox.app.BuildConfig.VERSION_NAME
     val currentVersionCode = com.velox.app.BuildConfig.VERSION_CODE
-
-    val checkUpdate = {
-        isChecking = true
-        updateStatus = "Checking..."
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                // Remove trailing slash if present, then append API path
-                val baseUrl = com.velox.app.BuildConfig.BASE_URL.trimEnd('/')
-                val url = URL("$baseUrl/app-versions/latest?platform=android")
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("Accept", "application/json")
-                
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().readText()
-                    val json = JSONObject(response)
-                    val vName = json.getString("version_name")
-                    val vCode = json.getInt("version_code")
-                    val dUrl = json.getString("download_url")
-                    val isMandatoryFlag = json.optBoolean("is_mandatory", false)
-                    
-                    withContext(Dispatchers.Main) {
-                        isChecking = false
-                        if (vCode > currentVersionCode) {
-                            latestVersion = vName
-                            downloadUrl = dUrl
-                            isMandatory = isMandatoryFlag
-                            
-                            updateStatus = if (isMandatoryFlag) {
-                                "Breaking change! Mandatory update required: $vName"
-                            } else {
-                                "New version available: $vName"
-                            }
-                        } else {
-                            updateStatus = "App is up to date"
-                        }
-                    }
-                } else if (connection.responseCode == 404) {
-                    withContext(Dispatchers.Main) {
-                        isChecking = false
-                        updateStatus = "App is up to date"
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        isChecking = false
-                        updateStatus = "Update check failed (Code: ${connection.responseCode})"
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    isChecking = false
-                    updateStatus = "Error checking update: ${e.message}"
-                }
-            }
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -3531,12 +3578,12 @@ fun AppVersionCard() {
                     }
                     
                     // Refresh Button
-                    if (latestVersion == null) {
+                    if (uiState.latestVersion == null) {
                         IconButton(
-                            onClick = { if (!isChecking) checkUpdate() },
+                            onClick = { if (!uiState.isCheckingUpdate) onCheckUpdate() },
                             modifier = Modifier.background(NetflixGray.copy(alpha = 0.2f), RoundedCornerShape(50))
                         ) {
-                            if (isChecking) {
+                            if (uiState.isCheckingUpdate) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp), color = NetflixWhite, strokeWidth = 2.dp)
                             } else {
                                 Icon(LucideIcons.Refresh, contentDescription = "Check for Updates", tint = NetflixWhite, modifier = Modifier.size(20.dp))
@@ -3545,34 +3592,33 @@ fun AppVersionCard() {
                     }
                 }
                 
-                if (updateStatus.isNotEmpty()) {
+                if (uiState.updateStatus.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
                     HorizontalDivider(color = NetflixGray.copy(alpha = 0.2f))
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    if (latestVersion != null && downloadUrl != null) {
+                    if (uiState.latestVersion != null && uiState.updateDownloadUrl != null) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Update Available", color = NetflixWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                Text(updateStatus, color = if (isMandatory) NetflixRed else NetflixLightGray, fontSize = 13.sp)
+                                Text(uiState.updateStatus, color = if (uiState.updateIsMandatory) NetflixRed else NetflixLightGray, fontSize = 13.sp)
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Button(
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
-                                    context.startActivity(intent)
+                                    com.velox.app.utils.AppUpdater.downloadAndInstall(context, uiState.updateDownloadUrl)
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                             ) {
-                                Text(if (isMandatory) "UPDATE" else "DOWNLOAD", fontWeight = FontWeight.Bold)
+                                Text(if (uiState.updateIsMandatory) "UPDATE" else "DOWNLOAD", fontWeight = FontWeight.Bold)
                             }
                         }
                     } else {
-                        Text(updateStatus, color = NetflixLightGray, fontSize = 13.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                        Text(uiState.updateStatus, color = NetflixLightGray, fontSize = 13.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                     }
                 }
             }

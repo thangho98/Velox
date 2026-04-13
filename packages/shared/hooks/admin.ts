@@ -118,6 +118,17 @@ export function useRunTask() {
   })
 }
 
+export function useUpdateTaskInterval() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, interval }: { name: string; interval: string }) =>
+      api.patch(`/admin/tasks/${name}`, { interval }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.tasks() })
+    },
+  })
+}
+
 // ── Marker Admin ─────────────────────────────────────────────────────────────
 
 export interface MarkerStats {

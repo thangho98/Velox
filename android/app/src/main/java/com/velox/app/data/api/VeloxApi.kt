@@ -221,9 +221,13 @@ interface VeloxApi {
         @Path("id") seriesId: Int,
     ): Response<DataWrapper<CinemaDto>>
 
-    // Admin - Server
     @GET("admin/server")
     suspend fun getServerInfo(): Response<DataWrapper<ServerInfoDto>>
+
+    @GET("app-versions/latest")
+    suspend fun getLatestAppVersion(
+        @Query("platform") platform: String = "android"
+    ): Response<AppVersionDto>
 
     @GET("admin/stats/libraries")
     suspend fun getLibraryStats(): Response<DataWrapper<List<LibraryStatsDto>>>
@@ -285,6 +289,12 @@ interface VeloxApi {
     @POST("admin/tasks/{name}/run")
     suspend fun runTask(
         @Path("name") name: String,
+    ): Response<MessageResponse>
+
+    @PATCH("admin/tasks/{name}")
+    suspend fun updateTaskInterval(
+        @Path("name") name: String,
+        @Body request: UpdateTaskIntervalRequest,
     ): Response<MessageResponse>
 
     // Admin - Webhooks
