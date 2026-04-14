@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.components
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.layout.*
@@ -184,7 +186,7 @@ fun CinemaOverlay(
                                 modifier = Modifier.size(16.dp),
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Skip", fontSize = 14.sp)
+                            Text(stringResource(R.string.player_skip_intro), fontSize = 14.sp)
                         }
 
                         Spacer(modifier = Modifier.width(12.dp))
@@ -207,7 +209,7 @@ fun CinemaOverlay(
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     ) {
-                        Text("Skip to Movie", fontSize = 14.sp)
+                        Text(stringResource(R.string.player_skip_to_movie), fontSize = 14.sp)
                     }
                 }
             }

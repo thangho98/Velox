@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.screens.detail
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.clickable
@@ -219,7 +221,7 @@ fun SeriesDetailContent(
                         onClick = onRefresh,
                         colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                     ) {
-                        Text("Retry")
+                        Text(stringResource(R.string.action_retry))
                     }
                 }
             }
@@ -723,7 +725,7 @@ fun EpisodeEditDialog(
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Title") },
+                    label = { Text(stringResource(R.string.detail_title)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NetflixRed,
                         unfocusedBorderColor = NetflixGray,
@@ -744,7 +746,7 @@ fun EpisodeEditDialog(
                         // Only allow digits
                         episodeNumber = value.filter { it.isDigit() }
                     },
-                    label = { Text("Episode Number") },
+                    label = { Text(stringResource(R.string.detail_episode_number)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NetflixRed,
                         unfocusedBorderColor = NetflixGray,
@@ -763,8 +765,8 @@ fun EpisodeEditDialog(
                 OutlinedTextField(
                     value = airDate,
                     onValueChange = { airDate = it },
-                    label = { Text("Air Date") },
-                    placeholder = { Text("YYYY-MM-DD", color = NetflixGray) },
+                    label = { Text(stringResource(R.string.detail_air_date)) },
+                    placeholder = { Text(stringResource(R.string.detail_date_placeholder), color = NetflixGray) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NetflixRed,
                         unfocusedBorderColor = NetflixGray,
@@ -782,7 +784,7 @@ fun EpisodeEditDialog(
                 OutlinedTextField(
                     value = overview,
                     onValueChange = { overview = it },
-                    label = { Text("Overview") },
+                    label = { Text(stringResource(R.string.detail_overview)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NetflixRed,
                         unfocusedBorderColor = NetflixGray,
@@ -809,7 +811,7 @@ fun EpisodeEditDialog(
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = NetflixWhite),
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.action_cancel))
                     }
                     Button(
                         onClick = {

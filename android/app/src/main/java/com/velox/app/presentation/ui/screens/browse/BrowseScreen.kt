@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.screens.browse
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.ui.components.NotificationBell
@@ -101,7 +103,7 @@ fun BrowseScreenContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Browse", color = NetflixWhite, fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.nav_browse), color = NetflixWhite, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     if (uiState.currentPath.isNotEmpty()) {
                         IconButton(onClick = onBackClick) {
@@ -212,7 +214,7 @@ fun BrowseScreenContent(
                             onClick = onRetryClick,
                             colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                         ) {
-                            Text("Retry")
+                            Text(stringResource(R.string.action_retry))
                         }
                     }
                 }

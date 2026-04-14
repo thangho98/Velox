@@ -48,7 +48,9 @@ const (
 
 // Known setting keys for subtitle translation.
 const (
-	SettingDeepLAPIKey = "deepl_api_key"
+	SettingDeepLAPIKey            = "deepl_api_key"
+	SettingAutoTranslateEnabled   = "auto_translate_enabled"
+	SettingAutoTranslateLanguages = "auto_translate_languages"
 )
 
 // Known setting keys for AI subtitle translation/localization.

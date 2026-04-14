@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.screens.movies
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.ui.components.NotificationBell
@@ -130,7 +132,7 @@ fun MoviesContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Movies", color = NetflixWhite, fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.nav_movies), color = NetflixWhite, fontWeight = FontWeight.Bold) },
                 actions = {
                     NotificationBell(onClick = onNotificationsClick)
                     IconButton(onClick = onSearchClick) {
@@ -160,7 +162,7 @@ fun MoviesContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    placeholder = { Text("Search movies...", color = NetflixLightGray) },
+                    placeholder = { Text(stringResource(R.string.nav_movies_search), color = NetflixLightGray) },
                     leadingIcon = { Icon(LucideIcons.Search, contentDescription = "Search", tint = NetflixLightGray) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = NetflixWhite,
@@ -227,7 +229,7 @@ fun MoviesContent(
                         FilterChip(
                             selected = false,
                             onClick = onClearFilters,
-                            label = { Text("Clear") },
+                            label = { Text(stringResource(R.string.action_clear)) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = NetflixRed,
                                 selectedLabelColor = NetflixWhite,
@@ -269,7 +271,7 @@ fun MoviesContent(
                                 onClick = onRefresh,
                                 colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                             ) {
-                                Text("Retry")
+                                Text(stringResource(R.string.action_retry))
                             }
                         }
                     }

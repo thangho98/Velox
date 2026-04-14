@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.screens.settings
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.clickable
@@ -116,7 +118,7 @@ fun NotificationsContent(
                         onClick = onRefresh,
                         colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                     ) {
-                        Text("Retry")
+                        Text(stringResource(R.string.action_retry))
                     }
                 }
             }

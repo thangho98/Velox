@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.screens.series
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.ui.components.NotificationBell
@@ -227,7 +229,7 @@ fun SeriesContent(
                         FilterChip(
                             selected = false,
                             onClick = onClearFilters,
-                            label = { Text("Clear") },
+                            label = { Text(stringResource(R.string.action_clear)) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = NetflixRed,
                                 selectedLabelColor = NetflixWhite,
@@ -269,7 +271,7 @@ fun SeriesContent(
                                 onClick = onRefresh,
                                 colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                             ) {
-                                Text("Retry")
+                                Text(stringResource(R.string.action_retry))
                             }
                         }
                     }

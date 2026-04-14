@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.screens.search
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.ui.components.NotificationBell
@@ -82,7 +84,7 @@ fun SearchContent(
                         value = uiState.query,
                         onValueChange = onQueryChange,
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Search movies, series...", color = NetflixLightGray) },
+                        placeholder = { Text(stringResource(R.string.nav_search_placeholder), color = NetflixLightGray) },
                         leadingIcon = { Icon(LucideIcons.Search, contentDescription = "Search", tint = NetflixLightGray) },
                         trailingIcon = {
                             if (uiState.query.isNotEmpty()) {

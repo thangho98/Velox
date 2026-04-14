@@ -5,6 +5,8 @@ import com.velox.app.presentation.ui.components.LucideIcons
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -93,7 +95,7 @@ fun YouTubePlayer(
                     tint = NetflixWhite,
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Skip to Movie", color = NetflixWhite)
+                Text(stringResource(R.string.player_skip_to_movie), color = NetflixWhite)
             }
         }
     }

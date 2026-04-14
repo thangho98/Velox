@@ -30,6 +30,11 @@ interface AutoSubSettings {
   languages: string;
 }
 
+interface AutoTranslateSettings {
+  enabled: boolean;
+  languages: string;
+}
+
 // --- Hooks ---
 
 export const [useSubdlSettings, useUpdateSubdlSettings] = createSettingsHooks<
@@ -45,3 +50,6 @@ export const [useAITranslationSettings, useUpdateAITranslationSettings] =
 
 export const [useAutoSubSettings, useUpdateAutoSubSettings] =
   createSettingsHooks<AutoSubSettings>("auto-subtitles");
+
+export const [useAutoTranslateSettings, useUpdateAutoTranslateSettings] =
+  createSettingsHooks<AutoTranslateSettings>("auto-translate");

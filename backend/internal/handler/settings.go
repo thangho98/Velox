@@ -402,3 +402,43 @@ func (h *SettingsHandler) UpdateAITranslation(w http.ResponseWriter, r *http.Req
 
 	respondJSON(w, http.StatusOK, settings)
 }
+
+// autoTranslateResponse is the JSON shape for GET /api/admin/settings/auto-translate.
+type autoTranslateResponse struct {
+	Enabled   bool   `json:"enabled"`
+	Languages string `json:"languages"` // comma-separated: "en,vi"
+}
+
+// autoTranslateRequest is the JSON shape for PUT /api/admin/settings/auto-translate.
+type autoTranslateRequest struct {
+	Enabled   bool   `json:"enabled"`
+	Languages string `json:"languages"`
+}
+
+// GetAutoTranslate returns the auto-translate subtitle configuration.
+// GET /api/admin/settings/auto-translate
+func (h *SettingsHandler) GetAutoTranslate(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.settingsSvc.GetAutoTranslate(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	respondJSON(w, http.StatusOK, settings)
+}
+
+// UpdateAutoTranslate saves the auto-translate subtitle configuration.
+// PUT /api/admin/settings/auto-translate
+func (h *SettingsHandler) UpdateAutoTranslate(w http.ResponseWriter, r *http.Request) {
+	var req autoTranslateRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	settings, err := h.settingsSvc.UpdateAutoTranslate(r.Context(), req.Enabled, req.Languages)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save setting")
+		return
+	}
+	respondJSON(w, http.StatusOK, settings)
+}

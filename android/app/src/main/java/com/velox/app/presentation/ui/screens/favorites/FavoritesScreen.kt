@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.screens.favorites
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.ui.components.NotificationBell
@@ -71,7 +73,7 @@ private fun FavoritesScreenContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Favorites", color = NetflixWhite, fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.nav_favorites), color = NetflixWhite, fontWeight = FontWeight.Bold) },
                 actions = {
                     NotificationBell(onClick = onNotificationsClick)
                     IconButton(onClick = onSearchClick) {
@@ -114,7 +116,7 @@ private fun FavoritesScreenContent(
                             onClick = onRetry,
                             colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                         ) {
-                            Text("Retry")
+                            Text(stringResource(R.string.action_retry))
                         }
                     }
                 }

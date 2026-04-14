@@ -12,6 +12,8 @@ import {
   useUpdateDeepLSettings,
   useAutoSubSettings,
   useUpdateAutoSubSettings,
+  useAutoTranslateSettings,
+  useUpdateAutoTranslateSettings,
 } from '@/hooks/stores/useSettings'
 import { useTranslation } from '@/hooks/useTranslation'
 import { SectionHeader, Field, Spinner, inputClass } from './shared'
@@ -190,6 +192,9 @@ export function SubtitlesSection() {
 
       {/* Auto-Download */}
       <AutoSubCard />
+
+      {/* Auto-Translate */}
+      <AutoTranslateCard />
     </div>
   )
 }
@@ -620,6 +625,124 @@ function AutoSubCard() {
         onClick={handleSave}
         disabled={isSaving || edited === null}
         className="flex items-center gap-2 rounded bg-netflix-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-netflix-red-hover disabled:opacity-50"
+      >
+        {saved ? (
+          <>
+            <LuCheck size={14} /> {t('actions.saved')}
+          </>
+        ) : (
+          <>
+            <LuSave size={14} /> {isSaving ? t('actions.saving') : t('actions.save')}
+          </>
+        )}
+      </button>
+    </div>
+  )
+}
+
+function AutoTranslateCard() {
+  const { t } = useTranslation('settings')
+  const { data: settings, isLoading } = useAutoTranslateSettings()
+  const { mutate: updateSettings, isPending: isSaving } = useUpdateAutoTranslateSettings()
+  const [editedEnabled, setEditedEnabled] = useState<boolean | null>(null)
+  const [editedLanguages, setEditedLanguages] = useState<string[] | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const enabled = editedEnabled ?? settings?.enabled ?? false
+  const selectedLanguages =
+    editedLanguages ?? (settings?.languages ? settings.languages.split(',').filter(Boolean) : [])
+
+  const toggleLang = (code: string) => {
+    const current = [...selectedLanguages]
+    const idx = current.indexOf(code)
+    if (idx >= 0) {
+      current.splice(idx, 1)
+    } else {
+      current.push(code)
+    }
+    setEditedLanguages(current)
+  }
+
+  const handleSave = () => {
+    updateSettings(
+      { enabled, languages: selectedLanguages.join(',') },
+      {
+        onSuccess: () => {
+          setEditedEnabled(null)
+          setEditedLanguages(null)
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2000)
+        },
+      },
+    )
+  }
+
+  if (isLoading) return <Spinner />
+
+  return (
+    <div className="rounded-lg bg-netflix-dark p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-white">Auto-Translate Subtitles</h3>
+          {enabled ? (
+            <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+              Enabled
+            </span>
+          ) : (
+            <span className="rounded bg-gray-500/20 px-2 py-0.5 text-[10px] font-medium text-gray-400">
+              Disabled
+            </span>
+          )}
+        </div>
+        <label className="relative inline-flex cursor-pointer items-center">
+          <input
+            type="checkbox"
+            className="peer sr-only"
+            checked={enabled}
+            onChange={(e) => setEditedEnabled(e.target.checked)}
+          />
+          <div className="peer h-5 w-9 rounded-full bg-netflix-gray after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-netflix-red peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none" />
+        </label>
+      </div>
+
+      <p className="mb-4 text-xs text-gray-400">
+        Automatically run background tasks to translate existing subtitles to the requested
+        languages. It will only translate if the subtitle does not already exist. Requires AI or
+        DeepL.
+      </p>
+
+      <div
+        className={`transition-opacity ${enabled ? 'opacity-100' : 'pointer-events-none opacity-50'}`}
+      >
+        <div className="mb-4 flex flex-wrap gap-2">
+          {COMMON_LANGUAGES.map((lang) => (
+            <button
+              key={lang.code}
+              type="button"
+              onClick={() => toggleLang(lang.code)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                selectedLanguages.includes(lang.code)
+                  ? 'bg-netflix-red text-white'
+                  : 'bg-netflix-gray text-gray-300 hover:bg-netflix-gray/80'
+              }`}
+            >
+              {lang.label}
+            </button>
+          ))}
+        </div>
+
+        {selectedLanguages.length === 0 && (
+          <p className="mb-4 text-[11px] text-gray-500">
+            {t('subtitles.targetLanguagesDescription')}
+          </p>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={isSaving || (editedEnabled === null && editedLanguages === null)}
+        className="mt-2 flex items-center gap-2 rounded bg-netflix-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-netflix-red-hover disabled:opacity-50"
       >
         {saved ? (
           <>

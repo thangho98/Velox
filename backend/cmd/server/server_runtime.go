@@ -164,6 +164,10 @@ func (app *serverApp) registerScheduledTasks() {
 		}
 		return nil
 	})
+
+	app.services.scheduler.Register("subtitle-auto-translate", 6*time.Hour, func(ctx context.Context) error {
+		return app.services.subtitle.AutoTranslateAll(ctx)
+	})
 }
 
 func serve(server *http.Server) error {

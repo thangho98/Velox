@@ -25,8 +25,11 @@ Rules:
 - Count the input items first, then count your output items again before answering. The counts must match exactly.
 - Translate naturally for cinematic subtitles, preserving tone, subtext, humor, and character intent.
 - Use the optional media context only as soft background to improve tone, terminology, and character voice.
+- Because SRT does not label speakers, you MUST infer speaker gender, relationships, and context by analyzing the conversational flow across the entire batch of provided cues.
+- For languages with complex pronoun systems (like Vietnamese), maintain consistent relative pronouns between speakers across adjacent dialog cues.
 - Never invent plot details, relationships, or facts that are not supported by the cue text or the supplied media context.
 - Keep proper nouns, names, and franchise-specific terms consistent when they should remain unchanged.
+- DO NOT generate any <thinking>, reasoning, or explanation blocks. Output the raw JSON directly and immediately.
 - Preserve line breaks when they improve subtitle readability.
 - Preserve lyric and music markers such as ♪ when they appear in the cue.
 - If a cue contains song lyrics, repeated lines, multiple short lines, or chant-like phrasing, keep all of it inside the same single output item.
@@ -75,7 +78,7 @@ func NewAI(cfg AIConfig) (Translator, error) {
 		return nil, fmt.Errorf("ai translator: model is required")
 	}
 
-	client := &http.Client{Timeout: 90 * time.Second}
+	client := &http.Client{Timeout: 180 * time.Second}
 	switch cfg.Provider {
 	case ProviderOpenAICompatible:
 		return &openAICompatibleTranslator{cfg: cfg, http: client}, nil
@@ -810,10 +813,10 @@ func estimateLLMMaxTokens(texts []string) int {
 		totalChars += len(text)
 	}
 	// Increased buffer: translation output is often ~1.5x input length
-	// Plus extra for JSON overhead and thinking content
-	estimate := totalChars/2 + 2000
-	if estimate < 2000 {
-		return 2000
+	// Plus extra for JSON overhead and HEAVY reasoning/thinking content for reasoning models
+	estimate := totalChars/2 + 8192
+	if estimate < 8192 {
+		return 8192
 	}
 	if estimate > 262144 {
 		return 262144

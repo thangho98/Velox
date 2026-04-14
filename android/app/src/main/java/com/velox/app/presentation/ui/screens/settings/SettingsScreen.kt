@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.screens.settings
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import com.velox.app.presentation.ui.components.LucideIcons
@@ -434,7 +436,7 @@ private fun ProfileSection(viewModel: SettingsViewModel, uiState: SettingsUiStat
         OutlinedTextField(
             value = uiState.username,
             onValueChange = {},
-            label = { Text("Username") },
+            label = { Text(stringResource(R.string.login_username)) },
             enabled = false,
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -1139,7 +1141,7 @@ private fun OpenSubsSettingsCard(
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
-                label = { Text("Username") },
+                label = { Text(stringResource(R.string.login_username)) },
                 modifier = Modifier.fillMaxWidth().padding(start = 28.dp),
                 colors = textFieldColors(),
                 shape = RoundedCornerShape(8.dp),
@@ -1252,7 +1254,7 @@ private fun AutoSubSettingsCard(
 private fun PlaybackSection(viewModel: SettingsViewModel, uiState: SettingsUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Column {
-            Text("Playback", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.player_playback), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Text("Configure global playback streaming policy", color = NetflixLightGray, fontSize = 14.sp)
         }
@@ -1705,7 +1707,7 @@ private fun PretranscodeSection(viewModel: SettingsViewModel, uiState: SettingsU
             },
             dismissButton = {
                 TextButton(onClick = { showCleanupConfirm = false }) {
-                    Text("Cancel", color = NetflixWhite)
+                    Text(stringResource(R.string.action_cancel), color = NetflixWhite)
                 }
             }
         )
@@ -2922,7 +2924,7 @@ private fun EditIntervalDialog(
                 onClick = onDismiss,
                 colors = ButtonDefaults.textButtonColors(contentColor = NetflixLightGray)
             ) {
-                Text("Cancel")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
@@ -3098,7 +3100,7 @@ private fun LibraryDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = NetflixLightGray)
+                Text(stringResource(R.string.action_cancel), color = NetflixLightGray)
             }
         },
         containerColor = NetflixDark,
@@ -3124,7 +3126,7 @@ private fun UserDialog(
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
-                    label = { Text("Username") },
+                    label = { Text(stringResource(R.string.login_username)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = textFieldColors(),
                     enabled = user == null, // Can't change username when editing
@@ -3133,7 +3135,7 @@ private fun UserDialog(
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("Password") },
+                        label = { Text(stringResource(R.string.login_password)) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = textFieldColors(),
                     )
@@ -3173,7 +3175,7 @@ private fun UserDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = NetflixLightGray)
+                Text(stringResource(R.string.action_cancel), color = NetflixLightGray)
             }
         },
         containerColor = NetflixDark,
@@ -3242,7 +3244,7 @@ private fun WebhookDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = NetflixLightGray)
+                Text(stringResource(R.string.action_cancel), color = NetflixLightGray)
             }
         },
         containerColor = NetflixDark,
@@ -3534,7 +3536,6 @@ fun FeedbackCard() {
     }
 }
 
-@Composable
 @Composable
 fun AppVersionCard(uiState: SettingsUiState, onCheckUpdate: () -> Unit) {
     val context = LocalContext.current

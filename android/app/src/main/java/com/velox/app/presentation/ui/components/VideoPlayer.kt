@@ -10,6 +10,8 @@ import android.util.Rational
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -647,8 +649,8 @@ fun VideoPlayer(
         if (uiState.showWatchedWarning) {
             AlertDialog(
                 onDismissRequest = viewModel::hideWatchedWarning,
-                title = { Text("Đã xem tập này", color = Color.White) },
-                text = { Text("Bạn đã xem xong tập phim tiếp theo. Bạn muốn xem lại từ đầu hay chuyển qua tập kế tiếp?", color = Color.Gray) },
+                title = { Text(stringResource(R.string.player_watched_title), color = Color.White) },
+                text = { Text(stringResource(R.string.player_watched_desc), color = Color.Gray) },
                 confirmButton = {
                     TextButton(onClick = {
                         viewModel.hideWatchedWarning()
@@ -659,7 +661,7 @@ fun VideoPlayer(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(LucideIcons.Replay, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Xem lại từ đầu", color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.player_watch_again), color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 },
@@ -673,7 +675,7 @@ fun VideoPlayer(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(LucideIcons.SkipNext, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Tập kế tiếp", color = Color.White)
+                                Text(stringResource(R.string.player_next_episode), color = Color.White)
                             }
                         }
                     }
@@ -736,7 +738,7 @@ fun VideoPlayer(
                         onClick = { viewModel.loadPlaybackInfo() },
                         colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                     ) {
-                        Text("Retry")
+                        Text(stringResource(R.string.action_retry))
                     }
                 }
             }
@@ -1653,7 +1655,7 @@ private fun SettingsMenu(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Icon(LucideIcons.ChevronLeft, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White.copy(0.7f))
-                        Text("Quality", color = Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.player_quality), color = Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
 
@@ -1700,7 +1702,7 @@ private fun SettingsMenu(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text("Auto", color = if (maxQuality == 0) Color.White else Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                            Text(stringResource(R.string.player_auto), color = if (maxQuality == 0) Color.White else Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
                             if (maxQuality == 0) {
                                 Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
                             }
@@ -1782,7 +1784,7 @@ private fun SettingsMenu(
                             .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Delay", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                            Text(stringResource(R.string.player_delay), color = Color.White.copy(0.7f), fontSize = 12.sp)
                             Text(if (subtitleDelay > 0) "+${String.format("%.2f", subtitleDelay)}s" else "${String.format("%.2f", subtitleDelay)}s", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
@@ -1796,7 +1798,7 @@ private fun SettingsMenu(
                         Box(modifier = Modifier.weight(1f).height(32.dp)
                             .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
                             .clickable { onAdjustSubtitleDelay(-subtitleDelay) }, contentAlignment = Alignment.Center) {
-                            Text("Reset", color = Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.player_reset), color = Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
                         }
                         Box(modifier = Modifier.weight(1f).height(32.dp)
                             .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
@@ -1819,7 +1821,7 @@ private fun SettingsMenu(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(LucideIcons.FlashOn, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White.copy(0.5f))
                             Spacer(Modifier.width(5.dp))
-                            Text("Quality", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                            Text(stringResource(R.string.player_quality), color = Color.White.copy(0.7f), fontSize = 12.sp)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(if (maxQuality == 0) "Auto" else "${maxQuality}p", color = Color.White.copy(0.5f), fontSize = 12.sp)
@@ -1861,7 +1863,7 @@ private fun SettingsMenu(
                     ) {
                         Icon(LucideIcons.ShowChart, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White.copy(0.5f))
                         Spacer(Modifier.width(5.dp))
-                        Text("Playback Info", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                        Text(stringResource(R.string.player_playback_info), color = Color.White.copy(0.7f), fontSize = 12.sp)
                     }
                 }
             }
@@ -1913,7 +1915,7 @@ private fun PlaybackStatsOverlay(
                         // Playback Method
                         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Playback", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.player_playback), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 MethodBadge(playbackInfo.method)
                             }
                             if (playbackInfo.decisionReason != null) {
@@ -1933,7 +1935,7 @@ private fun PlaybackStatsOverlay(
                         // Video
                         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Video", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.player_video), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 when {
                                     playbackInfo.method == "FullTranscode" -> StatusBadge("Transcoding", Color(0xFFF87171))
                                     isPreTranscode -> StatusBadge("PreTranscode", Color(0xFF22D3EE))
@@ -1969,7 +1971,7 @@ private fun PlaybackStatsOverlay(
                             Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("Audio", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.player_audio), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                     when {
                                         isTranscoding -> StatusBadge("Transcoding", Color(0xFFFACC15))
                                         isPreTranscode -> StatusBadge("PreTranscode", Color(0xFF22D3EE))
@@ -2002,7 +2004,7 @@ private fun PlaybackStatsOverlay(
                         // Stream
                         Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
                         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                            Text("Stream", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.player_stream), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(6.dp))
                             val streamType = when {
                                 playbackInfo.method == "DirectPlay" -> "HTTP Range"
@@ -2268,14 +2270,14 @@ fun SubtitleTranslateSection(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                     }
-                    Text("Translate")
+                    Text(stringResource(R.string.player_translate))
                 }
 
                 TextButton(
                     onClick = onDismiss,
                     colors = ButtonDefaults.textButtonColors(contentColor = NetflixWhite.copy(alpha = 0.7f)),
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         }

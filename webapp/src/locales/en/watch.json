@@ -62,5 +62,15 @@
     "previousEpisodes": "Previous episodes",
     "nextEpisodes": "Next episodes",
     "noEpisodesFound": "No episodes found for this season."
+  },
+  "messages": {
+    "seeking": "Seeking to {{time}}...",
+    "weakConnection": "Weak connection, video quality may decrease"
+  },
+  "watchedWarning": {
+    "title": "Episode Already Watched",
+    "description": "You have already finished the next episode. Do you want to watch it again from the beginning or skip to the following episode?",
+    "watchAgain": "Watch from beginning",
+    "nextEpisode": "Next episode"
   }
 }

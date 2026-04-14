@@ -126,6 +126,8 @@ func (app *serverApp) registerAdminSettingsRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /api/admin/settings/ai-translation", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.UpdateAITranslation)))
 	mux.Handle("GET /api/admin/settings/auto-subtitles", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.GetAutoSubtitles)))
 	mux.Handle("PUT /api/admin/settings/auto-subtitles", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.UpdateAutoSubtitles)))
+	mux.Handle("GET /api/admin/settings/auto-translate", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.GetAutoTranslate)))
+	mux.Handle("PUT /api/admin/settings/auto-translate", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.UpdateAutoTranslate)))
 	mux.Handle("GET /api/admin/settings/playback", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.GetPlayback)))
 	mux.Handle("PUT /api/admin/settings/playback", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.UpdatePlayback)))
 	mux.Handle("GET /api/admin/settings/cinema", middleware.RequireAdmin(http.HandlerFunc(app.handlers.cinema.GetSettings)))

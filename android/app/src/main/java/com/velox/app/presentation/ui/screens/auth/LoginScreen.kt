@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.screens.auth
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.clickable
@@ -245,7 +247,7 @@ private fun ServerUrlStep(
     // Title
     val screenWidth = LocalConfiguration.current.screenWidthDp
     Text(
-        text = "Connect to Server",
+        text = stringResource(R.string.login_title_connect),
         fontSize = if (screenWidth < 600) 22.sp else 28.sp,
         fontWeight = FontWeight.SemiBold,
         color = NetflixWhite,
@@ -254,7 +256,7 @@ private fun ServerUrlStep(
     Spacer(modifier = Modifier.height(8.dp))
 
     Text(
-        text = "Enter your Velox server address",
+        text = stringResource(R.string.login_subtitle_connect),
         fontSize = 14.sp,
         color = NetflixLightGray,
     )
@@ -265,8 +267,8 @@ private fun ServerUrlStep(
     OutlinedTextField(
         value = serverUrl,
         onValueChange = onServerUrlChange,
-        label = { Text("Server URL") },
-        placeholder = { Text("http://192.168.1.100:8098") },
+        label = { Text(stringResource(R.string.login_server_url)) },
+        placeholder = { Text(stringResource(R.string.login_server_url_hint)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
         leadingIcon = {
@@ -296,7 +298,7 @@ private fun ServerUrlStep(
                 )
             } else {
                 Text(
-                    text = "Don't include /api suffix",
+                    text = stringResource(R.string.login_no_api_suffix),
                     color = NetflixLightGray,
                 )
             }
@@ -347,7 +349,7 @@ private fun ServerUrlStep(
             )
         } else {
             Text(
-                text = "Continue",
+                text = stringResource(R.string.login_continue),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -358,7 +360,7 @@ private fun ServerUrlStep(
 
     // Footer
     Text(
-        text = "Contact your server administrator for the server address.",
+        text = stringResource(R.string.login_contact_admin),
         fontSize = 12.sp,
         color = NetflixGray,
         textAlign = TextAlign.Center,
@@ -386,7 +388,7 @@ private fun CredentialsStep(
     // Title
     val screenWidth = LocalConfiguration.current.screenWidthDp
     Text(
-        text = "Sign In",
+        text = stringResource(R.string.login_sign_in),
         fontSize = if (screenWidth < 600) 22.sp else 28.sp,
         fontWeight = FontWeight.SemiBold,
         color = NetflixWhite,
@@ -419,7 +421,7 @@ private fun CredentialsStep(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Change",
+                text = stringResource(R.string.login_change),
                 color = NetflixRed,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -483,7 +485,7 @@ private fun CredentialsStep(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Retry Connection",
+                        text = stringResource(R.string.login_retry_connection),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -498,7 +500,7 @@ private fun CredentialsStep(
     OutlinedTextField(
         value = username,
         onValueChange = onUsernameChange,
-        label = { Text("Username") },
+        label = { Text(stringResource(R.string.login_username)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
         colors = OutlinedTextFieldDefaults.colors(
@@ -525,7 +527,7 @@ private fun CredentialsStep(
     OutlinedTextField(
         value = password,
         onValueChange = onPasswordChange,
-        label = { Text("Password") },
+        label = { Text(stringResource(R.string.login_password)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
         colors = OutlinedTextFieldDefaults.colors(
@@ -590,7 +592,7 @@ private fun CredentialsStep(
             )
         } else {
             Text(
-                text = "Sign In",
+                text = stringResource(R.string.login_sign_in),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -601,7 +603,7 @@ private fun CredentialsStep(
 
     // Footer
     Text(
-        text = "Questions? Contact your server administrator.",
+        text = stringResource(R.string.login_questions_contact_admin),
         fontSize = 12.sp,
         color = NetflixGray,
         textAlign = TextAlign.Center,
@@ -670,10 +672,10 @@ private fun ConnectionStatusBanner(
 
             Text(
                 text = when (connectionInfo.status) {
-                    ConnectionStatus.CHECKING -> "Checking connection..."
-                    ConnectionStatus.CONNECTED -> "Connected${connectionInfo.latencyMs?.let { " · ${it}ms" } ?: ""}"
-                    ConnectionStatus.FAILED -> connectionInfo.errorMessage ?: "Connection failed"
-                    ConnectionStatus.UNKNOWN -> "Not checked"
+                    ConnectionStatus.CHECKING -> stringResource(R.string.login_checking_connection)
+                    ConnectionStatus.CONNECTED -> stringResource(R.string.login_connected) + "${connectionInfo.latencyMs?.let { " · ${it}ms" } ?: ""}"
+                    ConnectionStatus.FAILED -> connectionInfo.errorMessage ?: stringResource(R.string.login_connection_failed)
+                    ConnectionStatus.UNKNOWN -> stringResource(R.string.login_not_checked)
                 },
                 color = textColor,
                 fontSize = 13.sp,

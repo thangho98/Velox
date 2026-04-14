@@ -4,7 +4,7 @@
   "tech_stack": {
       "frontend": { "web": "React 19 + TypeScript + Vite 8 + TailwindCSS 4" },
       "android": { "lang": "Kotlin", "ui": "Jetpack Compose", "di": "Dagger Hilt", "player": "Media3 ExoPlayer", "icons": "Material Icons Rounded (via LucideIcons alias object)" },
-      "backend": { "lang": "Go 1.26", "framework": "stdlib net/http", "transcoding": "FFmpeg 8.0" },
+      "backend": { "lang": "Go 1.26", "framework": "stdlib net/http", "transcoding": "FFmpeg 8.0 (jellyfin-ffmpeg 7.1.3 in Docker)" },
       "database": { "main": "SQLite (WAL mode)" }
   },
   "database_schema": {
@@ -27,7 +27,10 @@
       "Direct Play first; HLS/transcode only when codec/container/audio incompatible.",
       "Keep screen on while video is playing or locked; allow screen off when paused.",
       "Stream URL TTL (expires_in) is calculated from media file duration, not fixed.",
-      "Scheduled tasks persist to SQLite tasks table. Intervals are configurable from admin UI."
+      "Scheduled tasks persist to SQLite tasks table. Intervals are configurable from admin UI.",
+      "HDR tonemapping uses tonemapx (Jellyfin SIMD). Handles HDR10, HLG, and Dolby Vision (including DV Profile 5 IPT-PQ-C2).",
+      "DV content without standard color metadata (NeedsServerTonemap) always tonemapped server-side for browsers. Android direct plays natively.",
+      "All HDR transcode uses software decode to preserve color metadata. HW encoders (VAAPI/NVENC/VT) still used for encoding."
   ],
   "features": [
       "Skip Intro / Credits",
@@ -41,8 +44,10 @@
       "Pre-transcode",
       "Android Mobile App (Jetpack Compose)",
       "AI Subtitle Translation",
+      "Background Subtitle Auto Translate",
       "In-App Updates (Android)",
-      "Scheduled Tasks Management"
+      "Scheduled Tasks Management",
+      "HDR/Dolby Vision Tonemapping (tonemapx)"
   ],
   "knowledge_items": {
       "patterns": [
@@ -52,7 +57,11 @@
           "LucideIcons object is a thin alias layer over Material Icons Rounded — change icons by editing the alias, no caller changes needed.",
           "VideoPlayer gesture hierarchy: root pointerInput for tap/drag when controls hidden, controls overlay handles its own events when visible.",
           "In-app updates: Use Android DownloadManager + REQUEST_INSTALL_PACKAGES + Intent.ACTION_VIEW for native APK install flow.",
-          "Scheduled tasks: Persist to SQLite 'tasks' table with configurable intervals. Repository pattern in backend/internal/repository/scheduled_task.go."
+          "Scheduled tasks: Persist to SQLite 'tasks' table with configurable intervals. Repository pattern in backend/internal/repository/scheduled_task.go.",
+          "HDR tonemapping: tonemapx filter for ALL paths (live transcode, pretranscode, trickplay, ABR). Scale filter AFTER tonemap for HDR.",
+          "HDR decode: Always software decode for HDR content (all hwAccel types). HW decoders strip color metadata.",
+          "DV detection: IsHDRLike() detects via color tags + side_data DV profile + filename. NeedsHDRColorMetadataFallback() for DV P5 (missing color tags).",
+          "AI Translation: For reasoning models (Anthropic Claude 3.7, MiniMax), explicitly disable <thinking> blocks in prompt and bump MaxTokens (to 8192) and HTTP Timeout (to 180s) to prevent 'no text content returned' or timeout errors."
       ],
       "gotchas": [
           "Android app lacks websocket implementation; polling/fire-and-forget is required for background tasks for now.",
@@ -63,7 +72,11 @@
           "FLAG_KEEP_SCREEN_ON must be tied to isPlaying (not just isLocked) to prevent screen timeout during playback.",
           "Double subtitle rendering: Disable C.TRACK_TYPE_TEXT in ExoPlayer when DualSubtitleOverlay handles display.",
           "AppVersionCard must use AuthManager's dynamic URL, NOT hardcoded BuildConfig.BASE_URL — causes connection failures on different networks.",
-          "GetLatest app version API must handle empty DB gracefully — return baseline version, not 404."
+          "GetLatest app version API must handle empty DB gracefully — return baseline version, not 404.",
+          "DV Profile 5 (IPT-PQ-C2) breaks zscale tonemap chain — zscale assumes BT.2020nc matrix, producing green/magenta tint. Use tonemapx instead.",
+          "Placing scale filter BEFORE tonemapx corrupts HDR color pipeline — swscale strips BT.2020 metadata. Always scale AFTER tonemap.",
+          "HLS remux from MKV loses Dolby Vision RPU metadata — browsers cannot render DV natively via HLS. Must tonemap server-side.",
+          "jellyfin-ffmpeg Docker image does NOT include libdovi — DV P5 IPT→BT.2020 conversion relies on FFmpeg 7.x native DV RPU parsing + tonemapx."
       ],
       "conventions": [
           "Use Netflix theme colors (NetflixRed, NetflixWhite, NetflixBlack, NetflixDark, NetflixGray, NetflixLightGray) across Android app UI.",

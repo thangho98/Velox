@@ -62,5 +62,15 @@
     "previousEpisodes": "Tập trước",
     "nextEpisodes": "Tập sau",
     "noEpisodesFound": "Không có tập nào trong mùa này."
+  },
+  "messages": {
+    "seeking": "Đang tua tới {{time}}...",
+    "weakConnection": "Kết nối yếu, chất lượng video có thể giảm"
+  },
+  "watchedWarning": {
+    "title": "Đã xem tập này",
+    "description": "Bạn đã xem xong tập phim tiếp theo. Bạn muốn xem lại từ đầu hay chuyển qua tập kế tiếp?",
+    "watchAgain": "Xem lại từ đầu",
+    "nextEpisode": "Tập kế tiếp"
   }
 }

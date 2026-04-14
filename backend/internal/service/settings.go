@@ -41,6 +41,12 @@ type PlaybackSettings struct {
 	PlaybackMode string `json:"playback_mode"`
 }
 
+// AutoTranslateSettings is the auto translate payload.
+type AutoTranslateSettings struct {
+	Enabled   bool   `json:"enabled"`
+	Languages string `json:"languages"`
+}
+
 // AITranslationSettings configures AI subtitle localization providers.
 type AITranslationSettings struct {
 	Provider string `json:"provider"`
@@ -333,4 +339,41 @@ func (s *SettingsService) UpdateAITranslation(
 		BaseURL:  baseURL,
 		Model:    modelName,
 	}, nil
+}
+
+// GetAutoTranslate returns the auto-translate subtitle configuration.
+func (s *SettingsService) GetAutoTranslate(ctx context.Context) (*AutoTranslateSettings, error) {
+	vals, err := s.repo.GetMulti(
+		ctx,
+		model.SettingAutoTranslateEnabled,
+		model.SettingAutoTranslateLanguages,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AutoTranslateSettings{
+		Enabled:   vals[model.SettingAutoTranslateEnabled] == "true" || vals[model.SettingAutoTranslateEnabled] == "1",
+		Languages: vals[model.SettingAutoTranslateLanguages],
+	}, nil
+}
+
+// UpdateAutoTranslate saves the auto-translate subtitle configuration.
+func (s *SettingsService) UpdateAutoTranslate(
+	ctx context.Context,
+	enabled bool,
+	languages string,
+) (*AutoTranslateSettings, error) {
+	strEnabled := "0"
+	if enabled {
+		strEnabled = "1"
+	}
+	if err := s.repo.Set(ctx, model.SettingAutoTranslateEnabled, strEnabled); err != nil {
+		return nil, err
+	}
+	if err := s.repo.Set(ctx, model.SettingAutoTranslateLanguages, languages); err != nil {
+		return nil, err
+	}
+
+	return &AutoTranslateSettings{Enabled: enabled, Languages: languages}, nil
 }

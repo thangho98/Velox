@@ -1,5 +1,7 @@
 package com.velox.app.presentation.ui.components
 
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.foundation.background
 import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.layout.*
@@ -114,7 +116,7 @@ fun SubtitleSearchModal(
             ) {
                 Icon(LucideIcons.Search, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Search")
+                Text(stringResource(R.string.action_search))
             }
 
             Spacer(modifier = Modifier.height(16.dp))

@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -133,14 +135,14 @@ fun HomeContent(
                     ) {
                         val greeting = uiState.user?.displayName?.let { ", $it" } ?: ""
                         Text(
-                            text = "Welcome back$greeting",
+                            text = stringResource(R.string.home_welcome_back) + greeting,
                             color = NetflixWhite,
                             fontSize = if (screenWidth < 600) 22.sp else 26.sp,
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Your personal media server.",
+                            text = stringResource(R.string.home_personal_media_server),
                             color = NetflixLightGray,
                             fontSize = 14.sp,
                         )
@@ -158,7 +160,7 @@ fun HomeContent(
                                     contentColor = NetflixWhite
                                 )
                             ) {
-                                Text("Movies", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text(stringResource(R.string.home_movies), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             }
                             OutlinedButton(
                                 onClick = onNavigateToSeries,
@@ -169,7 +171,7 @@ fun HomeContent(
                                     contentColor = NetflixWhite
                                 )
                             ) {
-                                Text("Series", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text(stringResource(R.string.home_series), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -179,7 +181,7 @@ fun HomeContent(
                 // Continue Watching section
                 if (uiState.continueWatching.isNotEmpty()) {
                     item {
-                        SectionHeader(title = "Continue Watching")
+                        SectionHeader(title = stringResource(R.string.home_continue_watching))
                     }
                     item {
                         LazyRow(
@@ -202,7 +204,7 @@ fun HomeContent(
                 if (uiState.nextUp.isNotEmpty()) {
                     item {
                         SectionHeader(
-                            title = "Next Up",
+                            title = stringResource(R.string.home_next_up),
                             onSeeAll = onNavigateToSeries
                         )
                     }

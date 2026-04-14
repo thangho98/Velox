@@ -785,7 +785,7 @@ export default function WatchPage() {
     })
     setIsBuffering(true)
     setHlsStartOffset(nextOffset)
-    showToastInfo(`Đang tua tới ${formatTime(globalTarget)}...`)
+    showToastInfo(t('messages.seeking', { time: formatTime(globalTarget) }))
 
     return globalTarget
   }
@@ -1048,7 +1048,7 @@ export default function WatchPage() {
             setBandwidth(mbps)
             if (mbps < 1.5 && mbps > 0 && !lowBandwidthToastShown.current) {
               lowBandwidthToastShown.current = true
-              showToastInfo('Kết nối yếu, chất lượng video có thể giảm')
+              showToastInfo(t('messages.weakConnection'))
             }
           }
         }
@@ -2461,11 +2461,8 @@ export default function WatchPage() {
       {showWatchedWarning && (
         <div className="absolute inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
           <div className="w-[400px] max-w-[90vw] rounded-2xl bg-[#1e1e1e] border border-white/10 p-6 shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-2">Đã xem tập này</h3>
-            <p className="text-sm text-gray-400 mb-6">
-              Bạn đã xem xong tập phim tiếp theo. Bạn muốn xem lại từ đầu hay chuyển qua tập kế
-              tiếp?
-            </p>
+            <h3 className="text-xl font-bold text-white mb-2">{t('watchedWarning.title')}</h3>
+            <p className="text-sm text-gray-400 mb-6">{t('watchedWarning.description')}</p>
             <div className="flex justify-end gap-3">
               <button
                 className="flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors"
@@ -2480,7 +2477,7 @@ export default function WatchPage() {
                 }}
               >
                 <LuRotateCcw size={16} />
-                <span>Xem lại từ đầu</span>
+                <span>{t('watchedWarning.watchAgain')}</span>
               </button>
               {nextNextEpisodeMediaId && (
                 <button
@@ -2493,7 +2490,7 @@ export default function WatchPage() {
                   }}
                 >
                   <LuSkipForward size={16} />
-                  <span>Tập kế tiếp</span>
+                  <span>{t('watchedWarning.nextEpisode')}</span>
                 </button>
               )}
             </div>

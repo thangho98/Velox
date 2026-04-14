@@ -228,7 +228,7 @@ private fun MediaDetailContent(
                             onClick = onRetryClick,
                             colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                         ) {
-                            Text("Retry")
+                            Text(stringResource(R.string.action_retry))
                         }
                     }
                 }

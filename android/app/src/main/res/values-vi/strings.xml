@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Velox</string>
+    <string name="stream_url_copied">Đã sao chép link stream</string>
+    <string name="stream_url_copy_failed">Lỗi sao chép link stream</string>
+    
+    <!-- Login Screen -->
+    <string name="login_title_connect">Kết nối máy chủ</string>
+    <string name="login_subtitle_connect">Nhập địa chỉ máy chủ Velox của bạn</string>
+    <string name="login_server_url">Địa chỉ máy chủ</string>
+    <string name="login_server_url_hint">http://192.168.1.100:8098</string>
+    <string name="login_no_api_suffix">Không bao gồm /api ở cuối</string>
+    <string name="login_continue">Tiếp tục</string>
+    <string name="login_contact_admin">Liên hệ quản trị viên để biết địa chỉ máy chủ.</string>
+    <string name="login_sign_in">Đăng nhập</string>
+    <string name="login_change">Thay đổi</string>
+    <string name="login_username">Tên đăng nhập</string>
+    <string name="login_password">Mật khẩu</string>
+    <string name="login_questions_contact_admin">Có câu hỏi? Liên hệ quản trị viên.</string>
+    <string name="login_checking_connection">Đang kiểm tra kết nối...</string>
+    <string name="login_connected">Đã kết nối</string>
+    <string name="login_not_checked">Chưa kiểm tra</string>
+    <string name="login_connection_failed">Lỗi kết nối</string>
+    <string name="login_retry_connection">Thử lại</string>
+    <string name="login_error_empty_url">Vui lòng nhập địa chỉ máy chủ</string>
+    <string name="login_error_invalid_url">Không thể kết nối. Vui lòng kiểm tra địa chỉ.</string>
+
+    <!-- Home Screen -->
+    <string name="home_welcome_back">Chào mừng trở lại</string>
+    <string name="home_personal_media_server">Hệ thống giải trí cá nhân.</string>
+    <string name="home_movies">Phim lẻ</string>
+    <string name="home_series">Phim bộ</string>
+    <string name="home_continue_watching">Tiếp tục xem</string>
+    <string name="home_next_up">Tập tiếp theo</string>
+    <string name="home_your_libraries">Thư viện của bạn</string>
+    <!-- Browse & Search & Movies -->
+    <string name="nav_browse">Khám phá</string>
+    <string name="nav_search_placeholder">Tìm phim, series...</string>
+    <string name="nav_movies">Phim lẻ</string>
+    <string name="nav_movies_search">Tìm phim lẻ...</string>
+    <string name="nav_favorites">Yêu thích</string>
+    <string name="action_clear">Xóa</string>
+    <string name="action_retry">Thử lại</string>
+    <string name="action_search">Tìm kiếm</string>
+    <string name="action_cancel">Hủy</string>
+
+    <!-- Details -->
+    <string name="detail_title">Tiêu đề</string>
+    <string name="detail_episode_number">Số tập</string>
+    <string name="detail_air_date">Ngày phát sóng</string>
+    <string name="detail_date_placeholder">YYYY-MM-DD</string>
+    <string name="detail_overview">Nội dung</string>
+
+    <!-- Video Player -->
+    <string name="player_skip_intro">Bỏ qua giới thiệu</string>
+    <string name="player_skip_credits">Bỏ qua credits</string>
+    <string name="player_skip_to_movie">Vào phim</string>
+    <string name="player_watched_title">Đã xem tập này</string>
+    <string name="player_watched_desc">Bạn đã xem xong tập phim tiếp theo. Bạn muốn xem lại từ đầu hay chuyển qua tập kế tiếp?</string>
+    <string name="player_watch_again">Xem lại từ đầu</string>
+    <string name="player_next_episode">Tập kế tiếp</string>
+    <string name="player_quality">Chất lượng</string>
+    <string name="player_auto">Tự động</string>
+    <string name="player_delay">Độ trễ</string>
+    <string name="player_reset">Đặt lại</string>
+    <string name="player_playback_info">Thông tin phát</string>
+    <string name="player_playback">Phát</string>
+    <string name="player_video">Video</string>
+    <string name="player_audio">Âm thanh</string>
+    <string name="player_stream">Luồng stream</string>
+    <string name="player_translate">Dịch</string>
+</resources>
