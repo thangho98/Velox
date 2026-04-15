@@ -115,10 +115,11 @@ func (t *openAICompatibleTranslator) Translate(ctx context.Context, texts []stri
 	}
 
 	body := map[string]any{
-		"model":           t.cfg.Model,
-		"temperature":     0.2,
-		"max_tokens":      estimateLLMMaxTokens(texts),
-		"response_format": map[string]string{"type": "json_object"},
+		"model":            t.cfg.Model,
+		"temperature":      0.2,
+		"max_tokens":       estimateLLMMaxTokens(texts),
+		"response_format":  map[string]string{"type": "json_object"},
+		"reasoning_effort": "low",
 		"messages": []map[string]string{
 			{"role": "system", "content": defaultAIModelPrompt},
 			{"role": "user", "content": userPrompt},
@@ -177,8 +178,11 @@ func (t *openAICompatibleTranslator) Translate(ctx context.Context, texts []stri
 	if parseErr != nil {
 		slog.Warn("ai_translate_openai_parse_failed",
 			"provider", t.Name(),
+			"model", t.cfg.Model,
+			"batch_size", len(texts),
 			"error", parseErr,
-			"content_preview", truncate(content, 300),
+			"content_full", content,
+			"raw_response", string(raw),
 		)
 	}
 	return translations, parseErr
@@ -255,6 +259,9 @@ func (t *geminiTranslator) Translate(ctx context.Context, texts []string, target
 		"generationConfig": map[string]any{
 			"temperature":      0.2,
 			"responseMimeType": "application/json",
+			"thinkingConfig": map[string]any{
+				"thinkingBudget": -1,
+			},
 		},
 	}
 
@@ -328,8 +335,11 @@ func (t *geminiTranslator) Translate(ctx context.Context, texts []string, target
 	if parseErr != nil {
 		slog.Warn("ai_translate_gemini_parse_failed",
 			"provider", t.Name(),
+			"model", t.cfg.Model,
+			"batch_size", len(texts),
 			"error", parseErr,
-			"content_preview", truncate(result.Candidates[0].Content.Parts[0].Text, 300),
+			"content_full", result.Candidates[0].Content.Parts[0].Text,
+			"raw_response", string(raw),
 		)
 	}
 	return translations, parseErr
@@ -358,6 +368,7 @@ func (t *anthropicTranslator) Translate(ctx context.Context, texts []string, tar
 		"temperature": 0.2,
 		"max_tokens":  estimateLLMMaxTokens(texts),
 		"system":      defaultAIModelPrompt,
+		"thinking":    map[string]any{"type": "disabled"},
 		"messages": []map[string]string{
 			{"role": "user", "content": userPrompt},
 		},
@@ -431,6 +442,12 @@ func (t *anthropicTranslator) Translate(ctx context.Context, texts []string, tar
 		}
 	}
 	if sb.Len() == 0 {
+		slog.Warn("ai_translate_anthropic_no_text_content",
+			"provider", t.Name(),
+			"model", t.cfg.Model,
+			"batch_size", len(texts),
+			"raw_response", string(raw),
+		)
 		return nil, fmt.Errorf("anthropic compatible: no text content returned")
 	}
 
@@ -438,8 +455,11 @@ func (t *anthropicTranslator) Translate(ctx context.Context, texts []string, tar
 	if parseErr != nil {
 		slog.Warn("ai_translate_anthropic_parse_failed",
 			"provider", t.Name(),
+			"model", t.cfg.Model,
+			"batch_size", len(texts),
 			"error", parseErr,
-			"content_preview", truncate(sb.String(), 300),
+			"content_full", sb.String(),
+			"raw_response", string(raw),
 		)
 	}
 	return translations, parseErr
@@ -642,7 +662,8 @@ func extractCodeFenceBlocks(raw string) []string {
 
 func decodeLLMTranslations(jsonBlock string, expected int) ([]string, error) {
 	// Try indexed format first
-	if translations, missing, err := tryDecodeIndexedTranslations(jsonBlock); err == nil {
+	translations, missing, err := tryDecodeIndexedTranslations(jsonBlock, expected)
+	if err == nil {
 		if len(missing) == 0 {
 			return translations, nil
 		}
@@ -652,6 +673,13 @@ func decodeLLMTranslations(jsonBlock string, expected int) ([]string, error) {
 			missing:      missing,
 			expected:     expected,
 		}
+	}
+	// Validation errors (out-of-range, duplicate, etc.) must not fall through
+	// to the non-indexed path — the payload IS indexed, just malformed.
+	// Shape-mismatch errors (no translations key, empty, etc.) may fall through
+	// because the payload might actually use a different shape.
+	if _, isValidation := err.(*indexValidationError); isValidation {
+		return nil, err
 	}
 
 	// Fallback to non-indexed format
@@ -685,9 +713,22 @@ func (e *partialTranslationError) Error() string {
 	return fmt.Sprintf("parse llm translations: expected %d items, got %d (missing indexes: %v)", e.expected, len(e.translations), e.missing)
 }
 
-// tryDecodeIndexedTranslations attempts to parse indexed response format
-// Returns translations in order (by index), missing indexes if any, and error if parsing failed
-func tryDecodeIndexedTranslations(jsonBlock string) ([]string, []int, error) {
+// indexValidationError signals that the indexed payload parsed but violated
+// integrity rules (out-of-range, duplicate, negative index). decodeLLMTranslations
+// must treat this as a hard reject rather than falling through to non-indexed
+// shape decoding — the payload IS indexed, just malformed.
+type indexValidationError struct {
+	msg string
+}
+
+func (e *indexValidationError) Error() string {
+	return "parse llm translations: " + e.msg
+}
+
+// tryDecodeIndexedTranslations attempts to parse indexed response format.
+// When expected >= 0, every index must be unique and lie in [0, expected).
+// Returns translations in order (by index), missing indexes if any, and error if parsing failed.
+func tryDecodeIndexedTranslations(jsonBlock string, expected int) ([]string, []int, error) {
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(jsonBlock), &payload); err != nil {
 		return nil, nil, fmt.Errorf("decode indexed: %w", err)
@@ -707,8 +748,26 @@ func tryDecodeIndexedTranslations(jsonBlock string) ([]string, []int, error) {
 		return nil, nil, fmt.Errorf("empty translations")
 	}
 
-	// Sort by index and reconstruct
-	byIndex := make(map[int]string)
+	// Strict validation when caller knows expected count: every index must be
+	// unique and within [0, expected). This blocks three silent-corruption bugs:
+	//   1. LLM returns extra items (e.g. 6 for expected=3) — caller would
+	//      overwrite cues of the next batch.
+	//   2. Duplicate indexes — map writes silently drop earlier values.
+	//   3. Negative indexes — prior reconstruction loop ignored them.
+	if expected >= 0 {
+		seen := make(map[int]bool, len(indexed))
+		for _, t := range indexed {
+			if t.Index < 0 || t.Index >= expected {
+				return nil, nil, &indexValidationError{msg: fmt.Sprintf("index %d out of range [0, %d)", t.Index, expected)}
+			}
+			if seen[t.Index] {
+				return nil, nil, &indexValidationError{msg: fmt.Sprintf("duplicate index %d", t.Index)}
+			}
+			seen[t.Index] = true
+		}
+	}
+
+	byIndex := make(map[int]string, len(indexed))
 	maxIndex := -1
 	for _, t := range indexed {
 		byIndex[t.Index] = t.Text
@@ -717,10 +776,18 @@ func tryDecodeIndexedTranslations(jsonBlock string) ([]string, []int, error) {
 		}
 	}
 
-	// Check for missing indexes (between 0 and maxIndex)
+	// When expected is known, always reconstruct against [0, expected) so
+	// missing detection covers trailing gaps (e.g. LLM returns only [0] for
+	// expected=3). When unknown (legacy nested-decode path, expected=-1),
+	// fall back to maxIndex-based reconstruction.
+	bound := expected
+	if bound < 0 {
+		bound = maxIndex + 1
+	}
+
 	var missing []int
-	translations := make([]string, 0, len(indexed))
-	for i := 0; i <= maxIndex; i++ {
+	translations := make([]string, 0, bound)
+	for i := 0; i < bound; i++ {
 		if text, ok := byIndex[i]; ok {
 			translations = append(translations, text)
 		} else {
