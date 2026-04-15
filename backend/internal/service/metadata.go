@@ -33,11 +33,43 @@ type MetadataService struct {
 	genreRepo       *repository.GenreRepo
 	personRepo      *repository.PersonRepo
 	notificationSvc *NotificationService
+	imagemetaSvc    imagemetaProcessor
 
 	// Mutexes protecting find-or-create operations against concurrent duplicate
 	// creation when the scanner processes multiple episodes in parallel.
 	seriesCreateMu sync.Mutex
 	seasonCreateMu sync.Mutex
+}
+
+// imagemetaProcessor defines the interface for async image metadata processing.
+type imagemetaProcessor interface {
+	Enqueue(path string)
+	SaveManual(ctx context.Context, meta *model.ImageMetadata) error
+}
+
+// SetImageMetaService sets the optional image meta service.
+func (s *MetadataService) SetImageMetaService(svc imagemetaProcessor) {
+	s.imagemetaSvc = svc
+}
+
+// enqueueImageForCompute queues an image path for async blurhash calculation.
+func (s *MetadataService) enqueueImageForCompute(path string) {
+	if s.imagemetaSvc != nil && path != "" {
+		s.imagemetaSvc.Enqueue(path)
+	}
+}
+
+// SaveImageMeta directly upserts a computed blurhash for an image.
+func (s *MetadataService) SaveImageMeta(ctx context.Context, path string, blurhash string, width int, height int) {
+	if s.imagemetaSvc == nil {
+		return
+	}
+	_ = s.imagemetaSvc.SaveManual(ctx, &model.ImageMetadata{
+		Path:     path,
+		Blurhash: blurhash,
+		Width:    width,
+		Height:   height,
+	})
 }
 
 // SetNotificationService sets the optional notification service for identify events.
@@ -123,8 +155,10 @@ func (s *MetadataService) MatchAndPersistMovie(ctx context.Context, media *model
 	media.Overview = result.Overview
 	media.ReleaseDate = result.ReleaseDate
 	media.Rating = result.Rating
-	media.PosterPath = result.PosterPath
-	media.BackdropPath = result.BackdropPath
+	media.PosterPath = model.PosterPath(result.PosterPath)
+	media.BackdropPath = model.BackdropPath(result.BackdropPath)
+	s.enqueueImageForCompute(result.PosterPath)
+	s.enqueueImageForCompute(result.BackdropPath)
 
 	if err := s.mediaRepo.Update(ctx, media); err != nil {
 		return err
@@ -191,18 +225,20 @@ func (s *MetadataService) MatchAndPersistEpisode(ctx context.Context, media *mod
 	media.ReleaseDate = result.ReleaseDate
 	media.Rating = result.Rating
 	if result.StillPath != "" {
-		media.PosterPath = result.StillPath
+		media.PosterPath = model.PosterPath(result.StillPath)
 	} else {
-		media.PosterPath = result.PosterPath
+		media.PosterPath = model.PosterPath(result.PosterPath)
 	}
-	media.BackdropPath = result.BackdropPath
+	media.BackdropPath = model.BackdropPath(result.BackdropPath)
+	s.enqueueImageForCompute(string(media.PosterPath))
+	s.enqueueImageForCompute(string(media.BackdropPath))
 
 	if err := s.mediaRepo.Update(ctx, media); err != nil {
 		return err
 	}
 
 	// Link episode to series/season
-	s.linkEpisode(ctx, media.ID, series.ID, season.ID, result.EpisodeNumber, media.Title, media.Overview, media.PosterPath)
+	s.linkEpisode(ctx, media.ID, series.ID, season.ID, result.EpisodeNumber, media.Title, media.Overview, string(media.PosterPath))
 
 	return nil
 }
@@ -260,8 +296,8 @@ func (s *MetadataService) ensureSeries(ctx context.Context, result *metadata.TVM
 		SortTitle:    seriesTitle,
 		Overview:     seriesOverview,
 		FirstAirDate: result.SeriesAirDate,
-		PosterPath:   result.SeriesPoster,
-		BackdropPath: result.BackdropPath,
+		PosterPath:   model.PosterPath(result.SeriesPoster),
+		BackdropPath: model.BackdropPath(result.BackdropPath),
 	}
 	if result.SeriesID > 0 {
 		tmdbID := int64(result.SeriesID)
@@ -275,6 +311,10 @@ func (s *MetadataService) ensureSeries(ctx context.Context, result *metadata.TVM
 	if err := s.seriesRepo.Create(ctx, series); err != nil {
 		return nil, false, err
 	}
+
+	s.enqueueImageForCompute(string(series.PosterPath))
+	s.enqueueImageForCompute(string(series.BackdropPath))
+
 	return series, true, nil
 }
 
@@ -320,7 +360,7 @@ func (s *MetadataService) linkEpisode(ctx context.Context, mediaID, seriesID, se
 		if (existing.Title == "" && title != "") || (existing.StillPath == "" && stillPath != "") || (existing.Overview == "" && overview != "") {
 			existing.Title = title
 			existing.Overview = overview
-			existing.StillPath = stillPath
+			existing.StillPath = model.StillPath(stillPath)
 			if updateErr := s.episodeRepo.Update(ctx, existing); updateErr != nil {
 				log.Printf("Failed to update episode metadata: %v", updateErr)
 			}
@@ -335,7 +375,7 @@ func (s *MetadataService) linkEpisode(ctx context.Context, mediaID, seriesID, se
 		EpisodeNumber: episodeNumber,
 		Title:         title,
 		Overview:      overview,
-		StillPath:     stillPath,
+		StillPath:     model.StillPath(stillPath),
 	}
 	if err := s.episodeRepo.Create(ctx, ep); err != nil {
 		log.Printf("Failed to link episode: %v", err)

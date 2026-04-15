@@ -12,10 +12,15 @@ import (
 
 type ProfileHandler struct {
 	profileSvc *service.ProfileService
+	mediaSvc   *service.MediaService
 }
 
 func NewProfileHandler(profileSvc *service.ProfileService) *ProfileHandler {
 	return &ProfileHandler{profileSvc: profileSvc}
+}
+
+func (h *ProfileHandler) SetMediaService(s *service.MediaService) {
+	h.mediaSvc = s
 }
 
 // GetPreferences returns user preferences
@@ -186,6 +191,10 @@ func (h *ProfileHandler) ListFavorites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.mediaSvc != nil {
+		_ = h.mediaSvc.AttachImageResourcesForUserData(r.Context(), favorites)
+	}
+
 	respondJSON(w, http.StatusOK, favorites)
 }
 
@@ -228,6 +237,10 @@ func (h *ProfileHandler) ListRecentlyWatched(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if h.mediaSvc != nil {
+		_ = h.mediaSvc.AttachImageResourcesForUserData(r.Context(), items)
+	}
+
 	respondJSON(w, http.StatusOK, items)
 }
 
@@ -247,6 +260,10 @@ func (h *ProfileHandler) ContinueWatching(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if h.mediaSvc != nil {
+		_ = h.mediaSvc.AttachImageResourcesForContinueWatching(r.Context(), items)
+	}
+
 	respondJSON(w, http.StatusOK, items)
 }
 
@@ -264,6 +281,10 @@ func (h *ProfileHandler) NextUp(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	if h.mediaSvc != nil {
+		_ = h.mediaSvc.AttachImageResourcesForNextUp(r.Context(), items)
 	}
 
 	respondJSON(w, http.StatusOK, items)

@@ -93,7 +93,7 @@ export default function SearchPage() {
                     key={`media-${item.id}`}
                     id={item.id}
                     title={item.title}
-                    posterPath={item.poster_path}
+                    poster={item.poster}
                     type="movie"
                     year={item.release_date ? new Date(item.release_date).getFullYear() : undefined}
                     rating={item.rating}
@@ -126,7 +126,7 @@ export default function SearchPage() {
                     key={`series-${item.id}`}
                     id={item.id}
                     title={item.title}
-                    posterPath={item.poster_path}
+                    poster={item.poster}
                     type="series"
                     seriesId={item.id}
                     year={

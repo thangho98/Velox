@@ -1,9 +1,12 @@
 import { LuFolder } from 'react-icons/lu'
-import { mediaImage } from '@/lib/image'
+import { resolveImageUrl } from '@/lib/image'
 
 interface FolderCardProps {
   name: string
   path: string
+  // Backend sends a pre-normalized URL string for folder previews; no
+  // ImageResource available (folders derive poster from the first contained
+  // media's path, not an image_metadata row). Blurhash not applicable here.
   poster?: string
   mediaCount?: number
   onClick: () => void
@@ -18,7 +21,7 @@ export function FolderCard({ name, poster, mediaCount, onClick }: FolderCardProp
       <div className="aspect-[2/3] overflow-hidden rounded-lg bg-[#1a1a1a] border border-gray-800 group-hover:border-[#e50914] transition-colors">
         {poster ? (
           <img
-            src={mediaImage(poster)}
+            src={resolveImageUrl(poster)}
             alt={name}
             className="h-full w-full object-cover transition-opacity group-hover:opacity-80"
             loading="lazy"

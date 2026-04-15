@@ -11,7 +11,8 @@ func TestUserMarshalJSONIncludesAvatarAndProfilePath(t *testing.T) {
 		Username:    "tester",
 		DisplayName: "Test User",
 		IsAdmin:     false,
-		AvatarPath:  "/avatars/tester.png",
+		// Stored form: local:// scheme (as produced by ImageStorage).
+		AvatarPath: "local://user/7/avatar.jpg",
 	}
 
 	body, err := json.Marshal(user)
@@ -24,11 +25,13 @@ func TestUserMarshalJSONIncludesAvatarAndProfilePath(t *testing.T) {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
 
-	if got, want := payload["avatar_path"], user.AvatarPath; got != want {
-		t.Fatalf("avatar_path = %v, want %q", got, want)
+	// ImagePath.MarshalJSON normalizes local:// to the served /api/images URL.
+	const wantNormalized = "/api/images/local/user/7/avatar.jpg"
+	if got := payload["avatar_path"]; got != wantNormalized {
+		t.Fatalf("avatar_path = %v, want %q", got, wantNormalized)
 	}
-	if got, want := payload["profile_path"], user.AvatarPath; got != want {
-		t.Fatalf("profile_path = %v, want %q", got, want)
+	if got := payload["profile_path"]; got != wantNormalized {
+		t.Fatalf("profile_path = %v, want %q", got, wantNormalized)
 	}
 	if _, ok := payload["password_hash"]; ok {
 		t.Fatal("password_hash should never be serialized")

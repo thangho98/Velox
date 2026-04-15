@@ -8,10 +8,15 @@ import (
 
 type CatalogHandler struct {
 	catalogSvc *service.CatalogService
+	mediaSvc   *service.MediaService
 }
 
 func NewCatalogHandler(catalogSvc *service.CatalogService) *CatalogHandler {
 	return &CatalogHandler{catalogSvc: catalogSvc}
+}
+
+func (h *CatalogHandler) SetMediaService(m *service.MediaService) {
+	h.mediaSvc = m
 }
 
 func (h *CatalogHandler) ListGenres(w http.ResponseWriter, r *http.Request) {
@@ -103,5 +108,15 @@ func (h *CatalogHandler) Search(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	if h.mediaSvc != nil {
+		if len(result.Movies) > 0 {
+			_ = h.mediaSvc.AttachImageResourcesForList(r.Context(), result.Movies)
+		}
+		if len(result.Series) > 0 {
+			_ = h.mediaSvc.AttachImageResourcesForSeriesList(r.Context(), result.Series)
+		}
+	}
+
 	respondJSON(w, http.StatusOK, result)
 }

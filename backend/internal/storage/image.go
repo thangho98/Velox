@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bbrks/go-blurhash"
 	"github.com/disintegration/imaging"
 	_ "golang.org/x/image/webp"
 )
@@ -25,22 +26,28 @@ func NewImageStorage(dataDir string) *ImageStorage {
 	return &ImageStorage{dataDir: dataDir}
 }
 
+type ImageMetaResult struct {
+	Blurhash string
+	Width    int
+	Height   int
+}
+
 // Save processes and saves an image. Returns the local:// path for DB storage.
 // entityType is "media" or "series". imageType is "poster" or "backdrop".
-func (s *ImageStorage) Save(entityType string, id int64, imageType string, data []byte) (string, error) {
+func (s *ImageStorage) Save(entityType string, id int64, imageType string, data []byte) (string, ImageMetaResult, error) {
 	// Validate MIME type from magic bytes
 	mime := http.DetectContentType(data)
 	switch mime {
 	case "image/jpeg", "image/png", "image/webp":
 		// OK
 	default:
-		return "", fmt.Errorf("unsupported image format: %s", mime)
+		return "", ImageMetaResult{}, fmt.Errorf("unsupported image format: %s", mime)
 	}
 
 	// Decode
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return "", fmt.Errorf("decoding image: %w", err)
+		return "", ImageMetaResult{}, fmt.Errorf("decoding image: %w", err)
 	}
 
 	// Resize based on image type
@@ -51,7 +58,7 @@ func (s *ImageStorage) Save(entityType string, id int64, imageType string, data 
 	case "backdrop":
 		maxW, maxH = 1920, 1080
 	default:
-		return "", fmt.Errorf("unsupported image type: %s", imageType)
+		return "", ImageMetaResult{}, fmt.Errorf("unsupported image type: %s", imageType)
 	}
 
 	bounds := img.Bounds()
@@ -62,7 +69,7 @@ func (s *ImageStorage) Save(entityType string, id int64, imageType string, data 
 	// Ensure directory exists
 	dir := s.dir(entityType, id)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", fmt.Errorf("creating image dir: %w", err)
+		return "", ImageMetaResult{}, fmt.Errorf("creating image dir: %w", err)
 	}
 
 	filename := imageType + ".jpg"
@@ -71,16 +78,26 @@ func (s *ImageStorage) Save(entityType string, id int64, imageType string, data 
 	// Write as JPEG quality 90
 	f, err := os.Create(absPath)
 	if err != nil {
-		return "", fmt.Errorf("creating image file: %w", err)
+		return "", ImageMetaResult{}, fmt.Errorf("creating image file: %w", err)
 	}
 	defer f.Close()
 
 	if err := jpeg.Encode(f, img, &jpeg.Options{Quality: 90}); err != nil {
-		return "", fmt.Errorf("encoding jpeg: %w", err)
+		return "", ImageMetaResult{}, fmt.Errorf("encoding jpeg: %w", err)
 	}
 
-	localPath := fmt.Sprintf("local://%d/%s", id, filename)
-	return localPath, nil
+	hash, _ := blurhash.Encode(4, 3, img)
+	bounds = img.Bounds()
+
+	metaResult := ImageMetaResult{
+		Blurhash: hash,
+		Width:    bounds.Dx(),
+		Height:   bounds.Dy(),
+	}
+
+	// Self-describing path: local://{entityType}/{id}/{filename}.
+	localPath := fmt.Sprintf("local://%s/%d/%s", entityType, id, filename)
+	return localPath, metaResult, nil
 }
 
 // Delete removes a local image file.

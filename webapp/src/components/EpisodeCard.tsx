@@ -10,7 +10,7 @@ import { usePlayerStore } from '@/stores/player'
 import { LuFilm, LuPlay, LuPencil, LuLink, LuCheck, LuCircle, LuRotateCcw } from 'react-icons/lu'
 import { useToast } from '@/components/Toast'
 import { copyTextToClipboard } from '@/lib/clipboard'
-import { tmdbImage } from '@/lib/image'
+import { ResponsiveImage } from '@/components/ResponsiveImage'
 import { ActionMenu } from '@/components/ActionMenu'
 import type { ActionMenuItem } from '@/components/ActionMenu'
 import type { Episode } from '@/types/api'
@@ -94,11 +94,12 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
     <div className="group flex items-start gap-3 rounded-lg bg-netflix-dark/80 p-3 backdrop-blur-sm transition-colors hover:bg-netflix-gray sm:items-center sm:gap-4 sm:p-4">
       {/* Thumbnail */}
       <div className="relative flex h-16 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-netflix-black sm:h-20 sm:w-32">
-        {episode.still_path ? (
-          <img
-            src={tmdbImage(episode.still_path, 'w300')!}
+        {episode.still ? (
+          <ResponsiveImage
+            data={episode.still}
+            sizes="300px"
             alt={episode.title}
-            className="h-full w-full object-cover"
+            className="h-full w-full"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">

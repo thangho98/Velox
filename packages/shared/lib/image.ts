@@ -1,8 +1,13 @@
 /**
- * Image URL utilities — platform-agnostic
+ * Image URL utilities — platform-agnostic.
  *
- * Note: This file uses relative URLs (/api/...). Web uses Vite proxy,
- * mobile will need to use the platform's getApiBaseUrl().
+ * Backend returns fully-routed relative paths like `/api/images/local/...` or
+ * `/api/images/tmdb/abc.jpg` (no size segment). The helper prefixes the API
+ * base and optionally appends a `width=N` query param. The backend maps that
+ * to the nearest TMDb size bucket and, for local uploads, serves the stored
+ * asset.
+ *
+ * External URLs (http/https) pass through untouched.
  */
 
 import { getPlatform } from '../platform'
@@ -12,51 +17,41 @@ function getApiBaseUrl(): string {
 }
 
 /**
- * Convert a TMDb image path to the local proxy URL.
- * Returns undefined if the path is empty/null so callers can use it directly
- * in optional props: `posterPath={tmdbImage(media.poster_path, 'w500')}`.
+ * Accepts either a numeric width, a TMDb-style size token (`w500`, `h632`),
+ * or `original`. Returns a query-safe width value or `undefined` to skip the
+ * query param entirely.
  */
-export function tmdbImage(
-  path: string | null | undefined,
-  size: string = 'w500',
-): string | undefined {
-  if (!path) return undefined
-  // Local uploaded image — serve from local endpoint
-  if (path.startsWith('local://')) {
-    return `${getApiBaseUrl()}/images/local/media/${path.slice(8)}`
-  }
-  // Already a full URL or local API path — pass through
-  if (path.startsWith('http') || path.startsWith('/api/')) return path
-  // Strip leading slash for the proxy route
-  const cleaned = path.startsWith('/') ? path.slice(1) : path
-  return `${getApiBaseUrl()}/images/tmdb/${size}/${cleaned}`
+function coerceWidth(size: number | string | undefined): string | undefined {
+  if (size === undefined || size === null) return undefined
+  if (typeof size === 'number') return size > 0 ? String(size) : undefined
+  if (size === 'original') return 'original'
+  // `w500`, `h632`, etc. → strip leading letter
+  const match = /^[a-z](\d+)$/i.exec(size)
+  if (match) return match[1]
+  const n = Number(size)
+  return Number.isFinite(n) && n > 0 ? String(n) : undefined
 }
 
 /**
- * Resolve a media image path — handles both TMDb and local:// paths.
- * For media entities (movies, episodes).
+ * Resolve any image path returned by the backend. Returns `undefined` for
+ * empty input so it slots directly into optional props.
  */
-export function mediaImage(
+export function resolveImageUrl(
   path: string | null | undefined,
-  size: string = 'w500',
+  size?: number | string,
 ): string | undefined {
   if (!path) return undefined
-  if (path.startsWith('local://')) {
-    return `${getApiBaseUrl()}/images/local/media/${path.slice(8)}`
-  }
-  return tmdbImage(path, size)
-}
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
 
-/**
- * Resolve a series image path — handles both TMDb and local:// paths.
- */
-export function seriesImage(
-  path: string | null | undefined,
-  size: string = 'w500',
-): string | undefined {
-  if (!path) return undefined
-  if (path.startsWith('local://')) {
-    return `${getApiBaseUrl()}/images/local/series/${path.slice(8)}`
-  }
-  return tmdbImage(path, size)
+  const base = getApiBaseUrl()
+  // baseUrl ends at `/api`; strip the leading `/api` from the path before
+  // joining so we don't get `/api/api/...`.
+  const joined = path.startsWith('/api/')
+    ? `${base}${path.slice(4)}`
+    : `${base}${path.startsWith('/') ? path : '/' + path}`
+
+  const width = coerceWidth(size)
+  if (!width) return joined
+  const separator = joined.includes('?') ? '&' : '?'
+  return `${joined}${separator}width=${width}`
 }

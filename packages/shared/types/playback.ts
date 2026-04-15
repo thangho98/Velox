@@ -1,4 +1,5 @@
 // Playback, Streaming, Subtitle types
+import type { ImageResource } from './common'
 
 export interface StreamUrls {
   /** Original file with pm=direct (forces backend to bypass pretranscode lookup). */
@@ -163,7 +164,7 @@ export interface UserData {
   updated_at: string
   // JOIN fields
   media_title?: string
-  media_poster?: string
+  poster?: ImageResource | null
   media_duration?: number
 }
 
@@ -192,8 +193,8 @@ export interface ContinueWatchingItem {
   completed: boolean
   last_played_at?: string
   title: string
-  poster_path: string
-  backdrop_path: string
+  poster?: ImageResource | null
+  backdrop?: ImageResource | null
   media_type: 'movie' | 'episode'
   duration: number
   series_title?: string
@@ -207,13 +208,13 @@ export interface NextUpItem {
   title: string
   episode_title: string
   media_type: 'episode'
-  still_path: string
-  backdrop_path: string
+  poster?: ImageResource | null
+  backdrop?: ImageResource | null
+  still?: ImageResource | null
   duration: number
   season_number: number
   episode_number: number
   series_title: string
-  series_poster: string
   last_watched_at?: string
 }
 

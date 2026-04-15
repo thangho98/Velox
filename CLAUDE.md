@@ -7,6 +7,17 @@ Velox is a self-hosted home media server (like Jellyfin/Emby but lighter).
 - **Transcoding:** FFmpeg 8.0 / FFprobe
 - **Android App:** Kotlin + Jetpack Compose + Dagger Hilt + Media3 ExoPlayer
 
+## Development Rules
+
+**⚠️ Before writing code in any part of the repo, read the matching rules file:**
+
+- [docs/development-rules-backend.md](docs/development-rules-backend.md) — Go (Handler/Service/Repository/Model, error handling, split pattern, testing)
+- [docs/development-rules-webapp.md](docs/development-rules-webapp.md) — React 19 + Compiler, TailwindCSS 4, React Query, Zustand
+- [docs/development-rules-mobile.md](docs/development-rules-mobile.md) — Jetpack Compose + Hilt + Media3, Clean Architecture + MVVM
+- [docs/development-rules.md](docs/development-rules.md) — Index + shared conventions (commit, naming, anti-abstractions)
+
+These files are the source of truth for conventions, patterns, and anti-patterns. The sections below in this file only cover project-wide context (structure, architecture decisions, build commands).
+
 ## Project Structure
 ```
 backend/
@@ -34,14 +45,14 @@ webapp/
     types/             # Shared TypeScript types
     lib/               # Utilities
 
-android/               # Native Android application
-  app/src/main/
-    java/.../velox/app/
-      data/            # API clients, repositories, DTOs
-      domain/          # Core models, interfaces
-      presentation/    # Jetpack Compose UI, ViewModels, Navigation
-      service/         # Foreground Services (Player Service, MediaSession)
-      ui/theme/        # Netflix-inspired Compose Theme definitions
+android/               # Native Android application (Kotlin + Jetpack Compose)
+  app/src/main/java/com/velox/app/
+    data/              # API clients, repositories, DTOs, DataStore
+    domain/            # Pure Kotlin models, repository interfaces, use cases
+    presentation/      # Compose UI, ViewModels, Navigation, Cast
+    di/                # Hilt modules (Network, Repository)
+    ui/theme/          # Netflix-inspired Compose theme tokens
+    utils/             # Extension functions, helpers
 ```
 
 ## Architecture Decisions
@@ -50,116 +61,51 @@ android/               # Native Android application
 - **No ORM:** Use sqlc (generated from SQL) or raw `database/sql`. Never GORM.
 - **Migrations:** All schema changes via `internal/database/migrate/registry.go`. Never inline CREATE TABLE.
 - **Auth:** JWT (short-lived 15min access + 7-day refresh). bcrypt cost 12.
+- **Stream URLs (mobile/external players):** Jellyfin-style `api_key` (32-char hex, 2h) via `POST /api/stream/{id}/url`.
 - **Playback:** Direct Play first. HLS/transcode only when codec/container/audio incompatible.
 - **Metadata:** TMDb as primary provider. NFO/local files override TMDb.
+- **Android architecture:** Clean Architecture (data/domain/presentation) + MVVM with Hilt.
 
-## Backend Rules (Go)
+## Build & Run Quick Reference
 
-### Code Style
-- Follow standard Go conventions (`gofmt`, `go vet`)
-- Error handling: always check errors, wrap with context (`fmt.Errorf("doing X: %w", err)`)
-- Use `context.Context` as first parameter in service/repository methods
-- Name receivers with 1-2 letter abbreviations (`func (s *MediaService)`, `func (r *MediaRepo)`)
-- Package names: singular, lowercase (`handler`, `service`, `repository`, `model`)
-- No `utils` or `helpers` packages. Put functions where they belong.
-
-### Patterns
-- **Handler:** Parse request → call service → write JSON response. No business logic.
-- **Service:** Business logic + orchestration. Calls repository. Returns domain errors.
-- **Repository:** Pure SQL queries. One repo per table/aggregate. Returns model structs.
-- **Model:** Plain structs with `json` tags. No methods beyond simple formatting.
-- **Migrations:** Append new `{Version, Name, Up, Down}` to `All()` in registry.go. Each migration is transactional.
-
-### Testing
-- Table-driven tests: `tests := []struct{ name string; ... }{ ... }`
-- Use `t.Run(tt.name, ...)` for subtests
-- Test files next to source: `foo.go` → `foo_test.go`
-- In-memory SQLite for DB tests: `sql.Open("sqlite3", ":memory:?_foreign_keys=on")`
-- Run: `cd backend && make test`
-
-### Linting
-- `go vet` + `golangci-lint` (config: `backend/.golangci.yml`)
-- Enabled linters: errcheck, staticcheck, sqlclosecheck, misspell, bodyclose
-
-### Build & Run
 ```sh
+# Backend
 cd backend
-make dev          # go run ./cmd/server
-make build        # go build -o bin/velox
-make test         # go test ./... -v -count=1
-make test-short   # go test ./... -short
-make lint         # go vet + golangci-lint
-make fmt          # gofmt -w -s
-make migrate      # run migrations up
-```
+make dev             # go run ./cmd/server
+make test            # go test ./... -v -count=1
+make lint            # go vet + golangci-lint
 
-## Frontend Rules (React/TypeScript)
-
-### Code Style
-- TypeScript strict mode (no `any` unless absolutely necessary)
-- Functional components only. No class components.
-- React Compiler enabled — no manual `useMemo`/`useCallback` needed
-- TailwindCSS 4 for styling. No CSS modules, no styled-components.
-- Named exports for components, default exports only for pages.
-
-### Patterns
-- Pages in `src/pages/`, components in `src/components/`
-- API calls in `src/api/` — thin wrappers returning typed data
-- Custom hooks in `src/hooks/` — prefix with `use`
-- Types in `src/types/` for shared interfaces
-- No prop drilling > 2 levels. Use context or composition.
-
-### Formatting & Linting
-- Prettier (config: `webapp/.prettierrc`) — no semicolons, single quotes, 100 char width
-- ESLint flat config with TypeScript + React Hooks + React Refresh
-- Path alias: `@/` maps to `src/` (configured in vite.config.ts + tsconfig.app.json)
-
-### Build & Run
-```sh
+# Webapp
 cd webapp
 npm run dev          # Vite dev server (port 3000, proxy /api → backend:8080)
 npm run build        # TypeScript check + Vite build
 npm run lint         # ESLint
-npm run format       # Prettier format src/
-npm run format:check # Prettier check (CI)
-```
 
-## Android Rules (Kotlin/Jetpack Compose)
-
-### Code Style & Architecture
-- **Architecture:** MVVM (Model-View-ViewModel) with Clean Architecture principles.
-- **UI:** 100% Jetpack Compose. No XML layouts unless strictly required.
-- **Dependency Injection:** Dagger Hilt.
-- **Async Execution:** Kotlin Coroutines and StateFlow for state management.
-- **Networking:** Retrofit / HttpURLConnection (or native implementations) wrapped in repository layer.
-- **Media Player:** AndroidX Media3 (ExoPlayer) wrapped in a decoupled service.
-
-### Formatting & Linting
-- Follow standard Kotlin style guide.
-- Break up large Composables into smaller, reusable pieces.
-- Define colors and themes globally in `ui/theme/`.
-
-### Build & Run
-```sh
+# Android
 cd android
-./gradlew build          # Compile app
-./gradlew installDebug   # Install debug APK to connected device/emulator
+./gradlew build          # Compile + lint + unit tests
+./gradlew installDebug   # Install debug APK on connected device
+./gradlew test           # Unit tests
 ```
+
+Full build/lint/test commands for each platform live in the matching rules file.
 
 ## Git Hooks (Husky)
 Pre-commit hook auto-formats staged files:
 - `.ts/.tsx` files → Prettier
 - `.go` files → gofmt
+- `.kt` files → ktlint (if configured)
+
 Config: root `package.json` (lint-staged) + `.husky/pre-commit`
 
 ## Key Design Documents
-- `docs/development-rules.md` — **Development rules, conventions, patterns** (backend + frontend)
-- `docs/database-design.md` — Full schema, ERD, query patterns
-- `plans/` — Implementation roadmap (Plans A-R)
+- [docs/development-rules.md](docs/development-rules.md) — Rules index (backend / webapp / mobile)
+- [docs/database-design.md](docs/database-design.md) — Full schema, ERD, query patterns
+- `plans/` — Implementation roadmap (Plans A-S)
 
 ## Important Conventions
 - Vietnamese comments in plan files are intentional. Code comments in English.
-- Commit messages in English.
+- Commit messages in English, prefixed: `Add(scope)`, `Fix(scope)`, `Enhance(scope)`, `Refactor(scope)`, `Chore:`.
 - API responses: `{"data": ...}` for success, `{"error": "message"}` for errors.
 - All timestamps in ISO 8601 format.
 - File paths in database are always absolute paths.

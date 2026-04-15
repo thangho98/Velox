@@ -13,10 +13,10 @@ import (
 
 // BrowseFolderItem represents a subfolder in browse results
 type BrowseFolderItem struct {
-	Name       string `json:"name"`
-	Path       string `json:"path"`             // library-relative path for navigation
-	MediaCount int    `json:"media_count"`      // number of media files under this folder
-	Poster     string `json:"poster,omitempty"` // poster from first media in folder (Emby-style)
+	Name       string           `json:"name"`
+	Path       string           `json:"path"`             // library-relative path for navigation
+	MediaCount int              `json:"media_count"`      // number of media files under this folder
+	Poster     model.PosterPath `json:"poster,omitempty"` // poster from first media in folder (Emby-style)
 }
 
 // BrowseResult represents the result of a folder browse operation.
@@ -112,7 +112,7 @@ func (r *MediaFileRepo) BrowseFolders(ctx context.Context, libraryID int64, absD
 			Name:       name,
 			Path:       folderRelPath,
 			MediaCount: dirCounts[name],
-			Poster:     poster.String,
+			Poster:     model.PosterPath(poster.String),
 		})
 	}
 

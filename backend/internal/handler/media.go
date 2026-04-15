@@ -37,6 +37,7 @@ func (h *MediaHandler) List(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = h.svc.AttachImageResourcesForList(r.Context(), items)
 	respondJSON(w, http.StatusOK, items)
 }
 
@@ -56,6 +57,7 @@ func (h *MediaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = h.svc.AttachImageResources(r.Context(), m)
 	respondJSON(w, http.StatusOK, m)
 }
 
@@ -75,6 +77,7 @@ func (h *MediaHandler) GetWithFiles(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = h.svc.AttachImageResources(r.Context(), &m.Media)
 	respondJSON(w, http.StatusOK, m)
 }
 

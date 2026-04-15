@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import type { NextUpItem } from '@/types/api'
-import { tmdbImage } from '@/lib/image'
+import { ResponsiveImage } from '@/components/ResponsiveImage'
 
 interface NextUpCardProps {
   item: NextUpItem
@@ -10,12 +10,8 @@ export function NextUpCard({ item }: NextUpCardProps) {
   // Format: "S04E24 · Friends"
   const displayTitle = `S${item.season_number}E${item.episode_number} · ${item.series_title}`
 
-  // Use still image if available, fallback to series poster, then backdrop
-  const imageUrl =
-    tmdbImage(item.still_path, 'w780') ||
-    tmdbImage(item.backdrop_path, 'w780') ||
-    tmdbImage(item.series_poster, 'w500') ||
-    '/placeholder.png'
+  // Prefer episode still → episode backdrop → series poster.
+  const imgData = item.still || item.backdrop || item.poster
 
   return (
     <Link
@@ -24,12 +20,16 @@ export function NextUpCard({ item }: NextUpCardProps) {
     >
       {/* Thumbnail */}
       <div className="aspect-video w-full overflow-hidden">
-        <img
-          src={imageUrl}
-          alt={item.episode_title}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-          loading="lazy"
-        />
+        {imgData ? (
+          <ResponsiveImage
+            data={imgData}
+            sizes="780px"
+            alt={item.episode_title}
+            className="h-full w-full"
+          />
+        ) : (
+          <div className="h-full w-full bg-netflix-gray" />
+        )}
       </div>
 
       {/* Info overlay */}

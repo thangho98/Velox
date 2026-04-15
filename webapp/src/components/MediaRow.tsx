@@ -98,7 +98,7 @@ export function MediaRow({ title, seeAllLink, items, isLoading, showProgress }: 
                     <MediaCard
                       id={item.media_id}
                       title={item.media_title || 'Unknown'}
-                      posterPath={item.media_poster}
+                      poster={item.poster}
                       showProgress={showProgress}
                       progress={{
                         position: item.position,
@@ -115,7 +115,7 @@ export function MediaRow({ title, seeAllLink, items, isLoading, showProgress }: 
                   <MediaCard
                     id={item.id}
                     title={item.title}
-                    posterPath={item.poster_path}
+                    poster={item.poster}
                     type={item.type ?? (item.media_type === 'episode' ? 'series' : 'movie')}
                     seriesId={
                       'series_id' in item ? (item as { series_id?: number }).series_id : undefined

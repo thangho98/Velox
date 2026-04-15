@@ -42,7 +42,6 @@ import { usePreferences } from '@/hooks/stores/useAuth'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { getCapabilities } from '@/lib/capabilities'
-import { tmdbImage } from '@/lib/image'
 import { DualSubtitleOverlay } from '@/components/DualSubtitleOverlay'
 import { SubtitlePicker } from '@/components/SubtitlePicker'
 import { AudioPicker } from '@/components/AudioPicker'
@@ -382,7 +381,7 @@ export default function WatchPage() {
       isEpisode && media.season_number && media.episode_number
         ? `S${media.season_number}E${media.episode_number}`
         : ''
-    const posterUrl = media.media.poster_path ? tmdbImage(media.media.poster_path, 'w342') : ''
+    const posterUrl = media.media.poster?.url ?? ''
 
     navigator.mediaSession.metadata = new MediaMetadata({
       title,
@@ -453,7 +452,7 @@ export default function WatchPage() {
     playbackInfo?.audio_tracks?.find((track) => track.selected) ??
     playbackInfo?.audio_tracks?.find((track) => track.is_default) ??
     playbackInfo?.audio_tracks?.[0]
-  const infoLogoUrl = tmdbImage(media?.media.logo_path, 'w500') ?? null
+  const infoLogoUrl = media?.media.logo?.url ?? null
   const infoYear = media?.media.release_date
     ? new Date(media.media.release_date).getFullYear()
     : null
@@ -1846,7 +1845,7 @@ export default function WatchPage() {
                 castMedia(
                   mediaId,
                   media?.media.title ?? '',
-                  media?.media.poster_path ? tmdbImage(media.media.poster_path, 'w342') : undefined,
+                  media?.media.poster?.url ?? undefined,
                   currentTime,
                 )
               } else {

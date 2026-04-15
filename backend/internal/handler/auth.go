@@ -37,11 +37,11 @@ type loginResp struct {
 }
 
 type userInfo struct {
-	ID          int64  `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	IsAdmin     bool   `json:"is_admin"`
-	ProfilePath string `json:"profile_path,omitempty"`
+	ID          int64             `json:"id"`
+	Username    string            `json:"username"`
+	DisplayName string            `json:"display_name"`
+	IsAdmin     bool              `json:"is_admin"`
+	ProfilePath model.ProfilePath `json:"profile_path,omitempty"`
 }
 
 // Login validates credentials and returns tokens

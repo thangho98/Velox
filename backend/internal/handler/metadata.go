@@ -323,7 +323,7 @@ func (h *MetadataHandler) uploadImage(w http.ResponseWriter, r *http.Request, en
 		return
 	}
 
-	localPath, err := h.imgStorage.Save(entityType, id, imageType, data)
+	localPath, imgMeta, err := h.imgStorage.Save(entityType, id, imageType, data)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -344,6 +344,9 @@ func (h *MetadataHandler) uploadImage(w http.ResponseWriter, r *http.Request, en
 			return
 		}
 	}
+
+	// Async compute blurhash for local images via internal enqueue (this is actually handled synchronously now for local)
+	h.metadataSvc.SaveImageMeta(r.Context(), localPath, imgMeta.Blurhash, imgMeta.Width, imgMeta.Height)
 
 	respondJSON(w, http.StatusOK, map[string]string{"path": localPath, "image_type": imageType})
 }

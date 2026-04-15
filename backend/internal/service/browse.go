@@ -126,7 +126,7 @@ func (s *BrowseService) browseLibrariesRoot(ctx context.Context, access libraryA
 		folders = append(folders, repository.BrowseFolderItem{
 			Name:   library.Name,
 			Path:   fmt.Sprintf("lib:%d", library.ID),
-			Poster: s.mediaRepo.FirstPosterByLibrary(ctx, library.ID),
+			Poster: model.PosterPath(s.mediaRepo.FirstPosterByLibrary(ctx, library.ID)),
 		})
 	}
 
@@ -157,7 +157,7 @@ func (s *BrowseService) browseMultiRootLibrary(
 		folders = append(folders, repository.BrowseFolderItem{
 			Name:   name,
 			Path:   fmt.Sprintf("root:%d", index),
-			Poster: s.mediaRepo.FirstPosterByLibraryPath(ctx, libraryID, rootPath),
+			Poster: model.PosterPath(s.mediaRepo.FirstPosterByLibraryPath(ctx, libraryID, rootPath)),
 		})
 	}
 

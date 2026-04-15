@@ -2,28 +2,34 @@ package model
 
 // Media represents a logical media item (movie or episode)
 type Media struct {
-	ID              int64   `json:"id"`
-	LibraryID       int64   `json:"library_id"`
-	MediaType       string  `json:"media_type"` // "movie" | "episode"
-	Title           string  `json:"title"`
-	SortTitle       string  `json:"sort_title"`
-	TmdbID          *int64  `json:"tmdb_id,omitempty"`
-	ImdbID          *string `json:"imdb_id,omitempty"`
-	TvdbID          *int64  `json:"tvdb_id,omitempty"`
-	Overview        string  `json:"overview"`
-	Tagline         string  `json:"tagline"`
-	ReleaseDate     string  `json:"release_date"` // YYYY-MM-DD
-	Rating          float64 `json:"rating"`
-	IMDbRating      float64 `json:"imdb_rating"`
-	RTScore         int     `json:"rt_score"`
-	MetacriticScore int     `json:"metacritic_score"`
-	PosterPath      string  `json:"poster_path"`
-	BackdropPath    string  `json:"backdrop_path"`
-	LogoPath        string  `json:"logo_path"`
-	ThumbPath       string  `json:"thumb_path"`
-	MetadataLocked  bool    `json:"metadata_locked"`
-	CreatedAt       string  `json:"created_at"`
-	UpdatedAt       string  `json:"updated_at"`
+	ID              int64        `json:"id"`
+	LibraryID       int64        `json:"library_id"`
+	MediaType       string       `json:"media_type"` // "movie" | "episode"
+	Title           string       `json:"title"`
+	SortTitle       string       `json:"sort_title"`
+	TmdbID          *int64       `json:"tmdb_id,omitempty"`
+	ImdbID          *string      `json:"imdb_id,omitempty"`
+	TvdbID          *int64       `json:"tvdb_id,omitempty"`
+	Overview        string       `json:"overview"`
+	Tagline         string       `json:"tagline"`
+	ReleaseDate     string       `json:"release_date"` // YYYY-MM-DD
+	Rating          float64      `json:"rating"`
+	IMDbRating      float64      `json:"imdb_rating"`
+	RTScore         int          `json:"rt_score"`
+	MetacriticScore int          `json:"metacritic_score"`
+	PosterPath      PosterPath   `json:"-"`
+	BackdropPath    BackdropPath `json:"-"`
+	LogoPath        LogoPath     `json:"-"`
+	ThumbPath       BackdropPath `json:"-"`
+
+	Poster   *ImageResource `json:"poster,omitempty"`
+	Backdrop *ImageResource `json:"backdrop,omitempty"`
+	Logo     *ImageResource `json:"logo,omitempty"`
+	Thumb    *ImageResource `json:"thumb,omitempty"`
+
+	MetadataLocked bool   `json:"metadata_locked"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
 }
 
 // MetadataEditRequest represents a partial metadata edit for media.
@@ -85,16 +91,17 @@ type MediaWithFiles struct {
 
 // MediaListItem represents a media item for list views with genres
 type MediaListItem struct {
-	ID          int64    `json:"id"`
-	Title       string   `json:"title"`
-	SortTitle   string   `json:"sort_title"`
-	PosterPath  string   `json:"poster_path"`
-	MediaType   string   `json:"media_type"`
-	Genres      []string `json:"genres"`
-	SeriesID    int64    `json:"series_id,omitempty"`
-	ReleaseDate string   `json:"release_date,omitempty"`
-	Rating      float64  `json:"rating,omitempty"`
-	Overview    string   `json:"overview,omitempty"`
+	ID          int64          `json:"id"`
+	Title       string         `json:"title"`
+	SortTitle   string         `json:"sort_title"`
+	PosterPath  PosterPath     `json:"-"`
+	Poster      *ImageResource `json:"poster,omitempty"`
+	MediaType   string         `json:"media_type"`
+	Genres      []string       `json:"genres"`
+	SeriesID    int64          `json:"series_id,omitempty"`
+	ReleaseDate string         `json:"release_date,omitempty"`
+	Rating      float64        `json:"rating,omitempty"`
+	Overview    string         `json:"overview,omitempty"`
 	// Progress (from user_data, populated when UserID filter is set)
 	Position  *float64 `json:"position,omitempty"`
 	Duration  *float64 `json:"duration,omitempty"`

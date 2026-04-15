@@ -16,6 +16,15 @@ type LibraryService struct {
 	pipeline        *scanner.Pipeline
 	notificationSvc *NotificationService
 	pretranscodeSvc *PretranscodeService
+	imagemetaSvc    libraryImagemetaCoordinator
+}
+
+// libraryImagemetaCoordinator is the subset of imagemeta.Service the library
+// scan path needs. Declared here (vs. importing the concrete type) to keep the
+// service testable without pulling imagemeta into tests.
+type libraryImagemetaCoordinator interface {
+	ComputeBatch(ctx context.Context, paths []string) map[string]error
+	InvalidatePaths(ctx context.Context, paths []string) error
 }
 
 func NewLibraryService(repo *repository.LibraryRepo, scanJobRepo *repository.ScanJobRepo, pipeline *scanner.Pipeline) *LibraryService {
@@ -28,6 +37,12 @@ func (s *LibraryService) SetNotificationService(svc *NotificationService) {
 
 func (s *LibraryService) SetPretranscodeService(svc *PretranscodeService) {
 	s.pretranscodeSvc = svc
+}
+
+// SetImagemetaService wires the blurhash/dimensions service so post-scan hooks
+// can backfill missing image metadata for the library.
+func (s *LibraryService) SetImagemetaService(svc libraryImagemetaCoordinator) {
+	s.imagemetaSvc = svc
 }
 
 func (s *LibraryService) List(ctx context.Context) ([]model.Library, error) {
@@ -70,9 +85,40 @@ func (s *LibraryService) Scan(ctx context.Context, id int64, force bool) (*model
 		if s.pretranscodeSvc != nil {
 			s.pretranscodeSvc.EnqueueAudioRemux(bgCtx)
 		}
+		// Backfill blurhash / dimensions for any image paths this library owns.
+		// Incremental scan only picks up paths without a computed row (Compute
+		// is idempotent). Force scan invalidates existing rows first so every
+		// image is recomputed from scratch.
+		if s.imagemetaSvc != nil {
+			go s.backfillLibraryImages(context.Background(), id, force)
+		}
 	}()
 
 	return job, nil
+}
+
+// backfillLibraryImages enumerates every image path owned by a library and
+// drives the imagemeta worker to compute missing (or, when force=true, all)
+// blurhash + dimension rows. Runs in its own goroutine off the scan path.
+func (s *LibraryService) backfillLibraryImages(ctx context.Context, libID int64, force bool) {
+	paths, err := s.repo.AllImagePaths(ctx, libID)
+	if err != nil {
+		log.Printf("scan library %d: list image paths: %v", libID, err)
+		return
+	}
+	if len(paths) == 0 {
+		return
+	}
+	if force {
+		if err := s.imagemetaSvc.InvalidatePaths(ctx, paths); err != nil {
+			// Log and continue — Compute() is still safe, it just won't recompute
+			// paths whose rows we failed to delete.
+			log.Printf("scan library %d: invalidate image metadata: %v", libID, err)
+		}
+	}
+	errs := s.imagemetaSvc.ComputeBatch(ctx, paths)
+	log.Printf("scan library %d blurhash: processed=%d failed=%d force=%t",
+		libID, len(paths), len(errs), force)
 }
 
 func (s *LibraryService) ScanJobs(ctx context.Context, libraryID int64) ([]model.ScanJob, error) {

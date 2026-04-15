@@ -12,7 +12,6 @@ import { GenreEditor } from './GenreEditor'
 import { CreditEditor } from './CreditEditor'
 import { ImageUploader } from './ImageUploader'
 import { Select } from '@/components/ui/Select'
-import { tmdbImage } from '@/lib/image'
 
 interface MediaEditorProps {
   type: 'media'
@@ -112,17 +111,10 @@ export function MetadataEditor(props: MetadataEditorProps) {
     }
   }
 
-  const posterUrl = entity.poster_path
-    ? entity.poster_path.startsWith('local://')
-      ? `/api/images/local/${props.type}/${entity.poster_path.slice(8)}`
-      : tmdbImage(entity.poster_path, 'w342')
-    : undefined
-
-  const backdropUrl = entity.backdrop_path
-    ? entity.backdrop_path.startsWith('local://')
-      ? `/api/images/local/${props.type}/${entity.backdrop_path.slice(8)}`
-      : tmdbImage(entity.backdrop_path, 'w780')
-    : undefined
+  // Backend serves ImageResource objects with prebuilt URL+srcset. Legacy
+  // poster_path / backdrop_path strings no longer appear in responses.
+  const posterUrl = entity.poster?.url
+  const backdropUrl = entity.backdrop?.url
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">

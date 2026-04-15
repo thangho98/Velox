@@ -162,3 +162,46 @@ func (r *LibraryRepo) GetStats(ctx context.Context) ([]model.LibraryStats, error
 	}
 	return stats, rows.Err()
 }
+
+// AllImagePaths returns every distinct non-empty image path stored across
+// media / series / seasons / episodes for a given library. Used by scan
+// post-hooks to drive blurhash backfill scoped to the library.
+func (r *LibraryRepo) AllImagePaths(ctx context.Context, libraryID int64) ([]string, error) {
+	const query = `
+		SELECT DISTINCT path FROM (
+			SELECT poster_path AS path FROM media WHERE library_id = ? AND poster_path != ''
+			UNION SELECT backdrop_path FROM media WHERE library_id = ? AND backdrop_path != ''
+			UNION SELECT logo_path FROM media WHERE library_id = ? AND logo_path != ''
+			UNION SELECT thumb_path FROM media WHERE library_id = ? AND thumb_path != ''
+			UNION SELECT poster_path FROM series WHERE library_id = ? AND poster_path != ''
+			UNION SELECT backdrop_path FROM series WHERE library_id = ? AND backdrop_path != ''
+			UNION SELECT logo_path FROM series WHERE library_id = ? AND logo_path != ''
+			UNION SELECT thumb_path FROM series WHERE library_id = ? AND thumb_path != ''
+			UNION SELECT s.poster_path FROM seasons s
+				JOIN series sr ON s.series_id = sr.id
+				WHERE sr.library_id = ? AND s.poster_path != ''
+			UNION SELECT e.still_path FROM episodes e
+				JOIN series sr ON e.series_id = sr.id
+				WHERE sr.library_id = ? AND e.still_path != ''
+		)
+	`
+	args := make([]interface{}, 10)
+	for i := range args {
+		args[i] = libraryID
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying library image paths: %w", err)
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, fmt.Errorf("scanning image path: %w", err)
+		}
+		paths = append(paths, p)
+	}
+	return paths, rows.Err()
+}

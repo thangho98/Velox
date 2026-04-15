@@ -198,6 +198,18 @@ func All() []Migration {
 			Up:      up032,
 			Down:    down032,
 		},
+		{
+			Version: 33,
+			Name:    "image_path_self_describing",
+			Up:      up033,
+			Down:    down033,
+		},
+		{
+			Version: 34,
+			Name:    "image_metadata",
+			Up:      up034,
+			Down:    down034,
+		},
 	}
 }
 

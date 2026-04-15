@@ -1,6 +1,6 @@
 import { memo, type RefObject } from 'react'
 import { LuChevronLeft, LuChevronRight, LuInfo, LuListMusic, LuPlay } from 'react-icons/lu'
-import { tmdbImage } from '@/lib/image'
+import { ResponsiveImage } from '@/components/ResponsiveImage'
 import type { Episode, MediaWithFiles, Season } from '@/types/api'
 import { DETAIL_PANEL_ANIMATION_MS, formatTime } from './watchHelpers'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -103,17 +103,13 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
           <div className="w-full overflow-hidden rounded-[32px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),rgba(255,255,255,0.03))] shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-2xl">
             <div className="flex flex-col gap-5 px-6 py-6 md:flex-row md:items-start md:gap-7 md:px-8">
               <div className="hidden h-[126px] w-[224px] shrink-0 overflow-hidden rounded-[22px] border border-white/8 bg-black/45 shadow-[0_16px_30px_rgba(0,0,0,0.28)] md:block">
-                {media.media.thumb_path ? (
-                  <img
-                    src={tmdbImage(media.media.thumb_path, 'w500')!}
+                {media.media.thumb || media.media.backdrop ? (
+                  <ResponsiveImage
+                    data={media.media.thumb ?? media.media.backdrop}
+                    sizes="224px"
                     alt={media.media.title}
-                    className="h-full w-full object-cover"
-                  />
-                ) : media.media.backdrop_path ? (
-                  <img
-                    src={tmdbImage(media.media.backdrop_path, 'w780')!}
-                    alt={media.media.title}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full"
+                    loading="eager"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-black/55">
@@ -223,7 +219,6 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
               >
                 {seasonPanelEpisodes.map((episode) => {
                   const isCurrentEpisode = episode.media_id === mediaId
-                  const stillImage = tmdbImage(episode.still_path, 'w300')
 
                   return (
                     <button
@@ -236,11 +231,12 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
                       }`}
                     >
                       <div className="absolute inset-0">
-                        {stillImage ? (
-                          <img
-                            src={stillImage}
+                        {episode.still ? (
+                          <ResponsiveImage
+                            data={episode.still}
+                            sizes="240px"
                             alt={episode.title}
-                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                            className="h-full w-full transition-transform duration-500 group-hover:scale-[1.04]"
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center bg-black/55">

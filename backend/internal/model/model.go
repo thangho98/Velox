@@ -25,10 +25,10 @@ type MediaGenre struct {
 
 // Person represents an actor, director, or writer
 type Person struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	TmdbID      *int64 `json:"tmdb_id,omitempty"`
-	ProfilePath string `json:"profile_path"`
+	ID          int64       `json:"id"`
+	Name        string      `json:"name"`
+	TmdbID      *int64      `json:"tmdb_id,omitempty"`
+	ProfilePath ProfilePath `json:"profile_path"`
 }
 
 // Credit represents a person's role in media or series

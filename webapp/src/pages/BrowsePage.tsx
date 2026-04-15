@@ -147,7 +147,7 @@ export default function BrowsePage() {
                     key={item.id}
                     id={item.id}
                     title={item.title}
-                    posterPath={item.poster_path}
+                    poster={item.poster}
                     type={item.media_type === 'episode' ? 'series' : 'movie'}
                     seriesId={item.series_id || undefined}
                     year={item.release_date ? new Date(item.release_date).getFullYear() : undefined}

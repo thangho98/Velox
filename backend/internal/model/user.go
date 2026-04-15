@@ -4,14 +4,14 @@ import "encoding/json"
 
 // User represents a system user
 type User struct {
-	ID           int64  `json:"id"`
-	Username     string `json:"username"`
-	DisplayName  string `json:"display_name"`
-	PasswordHash string `json:"-"` // never expose
-	IsAdmin      bool   `json:"is_admin"`
-	AvatarPath   string `json:"avatar_path"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	ID           int64       `json:"id"`
+	Username     string      `json:"username"`
+	DisplayName  string      `json:"display_name"`
+	PasswordHash string      `json:"-"` // never expose
+	IsAdmin      bool        `json:"is_admin"`
+	AvatarPath   ProfilePath `json:"avatar_path"`
+	CreatedAt    string      `json:"created_at"`
+	UpdatedAt    string      `json:"updated_at"`
 }
 
 type userJSON User
@@ -19,7 +19,7 @@ type userJSON User
 func (u User) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		userJSON
-		ProfilePath string `json:"profile_path,omitempty"`
+		ProfilePath ProfilePath `json:"profile_path,omitempty"`
 	}{
 		userJSON:    userJSON(u),
 		ProfilePath: u.AvatarPath,
@@ -55,9 +55,10 @@ type UserData struct {
 	UpdatedAt    string   `json:"updated_at"`
 
 	// JOIN fields (populated by queries with media)
-	MediaTitle    string  `json:"media_title,omitempty"`
-	MediaPoster   string  `json:"media_poster,omitempty"`
-	MediaDuration float64 `json:"media_duration,omitempty"`
+	MediaTitle    string         `json:"media_title,omitempty"`
+	MediaPoster   PosterPath     `json:"-"`
+	Poster        *ImageResource `json:"poster,omitempty"`
+	MediaDuration float64        `json:"media_duration,omitempty"`
 }
 
 // UserSeriesData represents series-level favorite/rating
@@ -79,11 +80,13 @@ type ContinueWatchingItem struct {
 	LastPlayedAt *string `json:"last_played_at"`
 
 	// Media fields
-	Title         string  `json:"title"`
-	PosterPath    string  `json:"poster_path"`
-	BackdropPath  string  `json:"backdrop_path"`
-	MediaType     string  `json:"media_type"`
-	MediaDuration float64 `json:"duration"`
+	Title         string         `json:"title"`
+	PosterPath    PosterPath     `json:"-"`
+	BackdropPath  BackdropPath   `json:"-"`
+	Poster        *ImageResource `json:"poster,omitempty"`
+	Backdrop      *ImageResource `json:"backdrop,omitempty"`
+	MediaType     string         `json:"media_type"`
+	MediaDuration float64        `json:"duration"`
 
 	// Episode context (nullable for movies)
 	SeriesTitle   string `json:"series_title,omitempty"`
@@ -93,17 +96,20 @@ type ContinueWatchingItem struct {
 
 // NextUpItem represents the next unwatched episode for a series
 type NextUpItem struct {
-	MediaID       int64   `json:"media_id"`
-	SeriesID      int64   `json:"series_id"`
-	Title         string  `json:"title"`
-	EpisodeTitle  string  `json:"episode_title"`
-	MediaType     string  `json:"media_type"`
-	StillPath     string  `json:"still_path"`
-	BackdropPath  string  `json:"backdrop_path"`
-	Duration      float64 `json:"duration"`
-	SeasonNumber  int     `json:"season_number"`
-	EpisodeNumber int     `json:"episode_number"`
-	SeriesTitle   string  `json:"series_title"`
-	SeriesPoster  string  `json:"series_poster"`
-	LastWatchedAt *string `json:"last_watched_at"`
+	MediaID       int64          `json:"media_id"`
+	SeriesID      int64          `json:"series_id"`
+	Title         string         `json:"title"`
+	EpisodeTitle  string         `json:"episode_title"`
+	MediaType     string         `json:"media_type"`
+	StillPath     StillPath      `json:"-"`
+	BackdropPath  BackdropPath   `json:"-"`
+	Still         *ImageResource `json:"still,omitempty"`
+	Backdrop      *ImageResource `json:"backdrop,omitempty"`
+	Duration      float64        `json:"duration"`
+	SeasonNumber  int            `json:"season_number"`
+	EpisodeNumber int            `json:"episode_number"`
+	SeriesTitle   string         `json:"series_title"`
+	SeriesPoster  PosterPath     `json:"-"`
+	Poster        *ImageResource `json:"poster,omitempty"`
+	LastWatchedAt *string        `json:"last_watched_at"`
 }

@@ -11,11 +11,16 @@ import (
 // SeriesHandler handles series, season, and episode endpoints.
 type SeriesHandler struct {
 	seriesSvc *service.SeriesService
+	mediaSvc  *service.MediaService
 }
 
 // NewSeriesHandler creates a new series handler.
 func NewSeriesHandler(seriesSvc *service.SeriesService) *SeriesHandler {
 	return &SeriesHandler{seriesSvc: seriesSvc}
+}
+
+func (h *SeriesHandler) SetMediaService(m *service.MediaService) {
+	h.mediaSvc = m
 }
 
 // ListSeries returns a list of series with optional filtering.
@@ -39,6 +44,11 @@ func (h *SeriesHandler) ListSeries(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	if h.mediaSvc != nil {
+		_ = h.mediaSvc.AttachImageResourcesForSeriesList(r.Context(), series)
+	}
+
 	respondJSON(w, http.StatusOK, series)
 }
 
@@ -61,6 +71,10 @@ func (h *SeriesHandler) GetSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.mediaSvc != nil {
+		_ = h.mediaSvc.AttachImageResourcesForSeries(r.Context(), series)
+	}
+
 	respondJSON(w, http.StatusOK, series)
 }
 
@@ -81,6 +95,10 @@ func (h *SeriesHandler) SearchSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.mediaSvc != nil {
+		_ = h.mediaSvc.AttachImageResourcesForSeriesBatch(r.Context(), results)
+	}
+
 	respondJSON(w, http.StatusOK, results)
 }
 
@@ -99,6 +117,10 @@ func (h *SeriesHandler) ListSeasons(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.mediaSvc != nil {
+		_ = h.mediaSvc.AttachImageResourcesForSeasons(r.Context(), seasons)
+	}
+
 	respondJSON(w, http.StatusOK, seasons)
 }
 
@@ -115,6 +137,10 @@ func (h *SeriesHandler) ListEpisodes(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	if h.mediaSvc != nil {
+		_ = h.mediaSvc.AttachImageResourcesForEpisodes(r.Context(), episodes)
 	}
 
 	respondJSON(w, http.StatusOK, episodes)

@@ -33,10 +33,11 @@ type PlaybackStatsResult struct {
 
 // MostWatchedItem represents a frequently watched media item
 type MostWatchedItem struct {
-	MediaID    int64  `json:"media_id"`
-	Title      string `json:"title"`
-	PlayCount  int    `json:"play_count"`
-	PosterPath string `json:"poster_path"`
+	MediaID    int64          `json:"media_id"`
+	Title      string         `json:"title"`
+	PlayCount  int            `json:"play_count"`
+	PosterPath PosterPath     `json:"-"`
+	Poster     *ImageResource `json:"poster,omitempty"`
 }
 
 // MostActiveUser represents a user ranked by activity

@@ -18,3 +18,13 @@ export interface FsBrowseResponse {
   parent?: string
   dirs: FsDirEntry[]
 }
+
+export interface ImageResource {
+  url: string
+  srcset: Record<string, string>
+  type: 'poster' | 'backdrop' | 'still' | 'logo'
+  aspect: string
+  width?: number
+  height?: number
+  blurhash?: string | null
+}

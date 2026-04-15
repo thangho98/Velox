@@ -32,7 +32,7 @@ import { ActionMenu } from '@/components/ActionMenu'
 import type { ActionMenuItem } from '@/components/ActionMenu'
 import { useToast } from '@/components/Toast'
 import { copyTextToClipboard } from '@/lib/clipboard'
-import { tmdbImage } from '@/lib/image'
+import { ResponsiveImage } from '@/components/ResponsiveImage'
 import { Select } from '@/components/ui/Select'
 import { MetadataEditor } from '@/components/metadata/MetadataEditor'
 import { useTrailers } from '@/hooks/useCinemaMode'
@@ -120,17 +120,19 @@ export default function MediaDetailPage() {
   return (
     <div className="min-h-screen bg-netflix-black">
       {/* Backdrop — YouTube trailer or static image */}
-      {(youtubeKey || media.media.backdrop_path) && (
+      {(youtubeKey || media.media.backdrop) && (
         <div className="fixed inset-0 h-screen">
           {youtubeKey ? (
             <YouTubeBackground videoId={youtubeKey} muted className="absolute inset-0" />
-          ) : (
-            <img
-              src={tmdbImage(media.media.backdrop_path, 'w1280')!}
+          ) : media.media.backdrop ? (
+            <ResponsiveImage
+              data={media.media.backdrop}
+              sizes="100vw"
               alt={media.media.title}
-              className="h-full w-full object-cover"
+              className="h-full w-full"
+              loading="eager"
             />
-          )}
+          ) : null}
           <div className="absolute inset-0 bg-gradient-to-t from-netflix-black via-netflix-black/80 to-netflix-black/30" />
           <div className="absolute inset-0 bg-gradient-to-r from-netflix-black via-netflix-black/50 to-transparent" />
         </div>
@@ -150,12 +152,15 @@ export default function MediaDetailPage() {
           <div className="flex flex-col gap-8 lg:flex-row">
             {/* Poster */}
             <div className="mx-auto flex-shrink-0 lg:mx-0">
-              {media.media.poster_path ? (
-                <img
-                  src={tmdbImage(media.media.poster_path, 'w500')!}
-                  alt={media.media.title}
-                  className="w-64 rounded-lg shadow-2xl lg:w-80"
-                />
+              {media.media.poster ? (
+                <div className="w-64 lg:w-80 rounded-lg shadow-2xl overflow-hidden shrink-0">
+                  <ResponsiveImage
+                    data={media.media.poster}
+                    sizes="(max-width: 768px) 342px, 500px"
+                    alt={media.media.title}
+                    loading="eager"
+                  />
+                </div>
               ) : (
                 <div className="flex h-96 w-64 items-center justify-center rounded-lg bg-netflix-dark lg:w-80">
                   <LuFilm size={64} className="text-gray-600" />

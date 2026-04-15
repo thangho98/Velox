@@ -37,6 +37,9 @@ func handleCommand(args []string) bool {
 	case "version":
 		fmt.Println(version)
 		return true
+	case "blurhash":
+		runBlurhash()
+		return true
 	default:
 		return false
 	}

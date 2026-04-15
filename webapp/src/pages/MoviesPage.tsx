@@ -88,7 +88,7 @@ export default function MoviesPage() {
                 <MediaCard
                   id={movie.id}
                   title={movie.title}
-                  posterPath={movie.poster_path}
+                  poster={movie.poster}
                   type={movie.media_type === 'episode' ? 'series' : 'movie'}
                   year={movie.release_date ? new Date(movie.release_date).getFullYear() : undefined}
                   rating={movie.rating}

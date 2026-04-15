@@ -88,17 +88,17 @@ func (s *MetadataService) enrichFanartMovie(ctx context.Context, media *model.Me
 
 	if media.LogoPath == "" {
 		if logo := fanart.BestImage(images.HDClearLogo); logo != "" {
-			media.LogoPath = logo
+			media.LogoPath = model.LogoPath(logo)
 			changed = true
 		} else if logo := fanart.BestImage(images.MovieLogo); logo != "" {
-			media.LogoPath = logo
+			media.LogoPath = model.LogoPath(logo)
 			changed = true
 		}
 	}
 
 	if media.ThumbPath == "" {
 		if thumb := fanart.BestImage(images.MovieThumb); thumb != "" {
-			media.ThumbPath = thumb
+			media.ThumbPath = model.BackdropPath(thumb)
 			changed = true
 		}
 	}
@@ -106,6 +106,9 @@ func (s *MetadataService) enrichFanartMovie(ctx context.Context, media *model.Me
 	if changed {
 		if err := s.mediaRepo.Update(ctx, media); err != nil {
 			log.Printf("Failed to save fanart.tv artwork for media %d: %v", media.ID, err)
+		} else {
+			s.enqueueImageForCompute(string(media.LogoPath))
+			s.enqueueImageForCompute(string(media.ThumbPath))
 		}
 	}
 }
@@ -129,17 +132,17 @@ func (s *MetadataService) enrichFanartShow(ctx context.Context, series *model.Se
 
 	if series.LogoPath == "" {
 		if logo := fanart.BestImage(images.HDClearLogo); logo != "" {
-			series.LogoPath = logo
+			series.LogoPath = model.LogoPath(logo)
 			changed = true
 		} else if logo := fanart.BestImage(images.ClearLogo); logo != "" {
-			series.LogoPath = logo
+			series.LogoPath = model.LogoPath(logo)
 			changed = true
 		}
 	}
 
 	if series.ThumbPath == "" {
 		if thumb := fanart.BestImage(images.TVThumb); thumb != "" {
-			series.ThumbPath = thumb
+			series.ThumbPath = model.BackdropPath(thumb)
 			changed = true
 		}
 	}
@@ -147,6 +150,9 @@ func (s *MetadataService) enrichFanartShow(ctx context.Context, series *model.Se
 	if changed {
 		if err := s.seriesRepo.Update(ctx, series); err != nil {
 			log.Printf("Failed to save fanart.tv artwork for series %d: %v", series.ID, err)
+		} else {
+			s.enqueueImageForCompute(string(series.LogoPath))
+			s.enqueueImageForCompute(string(series.ThumbPath))
 		}
 	}
 }

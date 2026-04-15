@@ -13,6 +13,7 @@ type MediaService struct {
 	mediaFileRepo *repository.MediaFileRepo
 	episodeRepo   *repository.EpisodeRepo
 	seasonRepo    *repository.SeasonRepo
+	imageMetaRepo *repository.ImageMetadataRepo
 }
 
 func NewMediaService(repo *repository.MediaRepo, mediaFileRepo *repository.MediaFileRepo) *MediaService {
@@ -27,6 +28,9 @@ func (s *MediaService) SetEpisodeRepo(r *repository.EpisodeRepo) { s.episodeRepo
 
 // SetSeasonRepo sets the season repo for episode info enrichment.
 func (s *MediaService) SetSeasonRepo(r *repository.SeasonRepo) { s.seasonRepo = r }
+
+// SetImageMetadataRepo sets the image metadata repo for attaching rich image resources.
+func (s *MediaService) SetImageMetadataRepo(r *repository.ImageMetadataRepo) { s.imageMetaRepo = r }
 
 func (s *MediaService) List(ctx context.Context, libraryID int64, mediaType string, limit, offset int) ([]model.Media, error) {
 	if limit <= 0 {
@@ -102,4 +106,266 @@ func (s *MediaService) ListVersions(ctx context.Context, mediaID int64) ([]model
 		return nil, err
 	}
 	return s.mediaFileRepo.ListByMediaID(ctx, mediaID)
+}
+
+func (s *MediaService) AttachImageResources(ctx context.Context, m *model.Media) error {
+	if s.imageMetaRepo == nil {
+		return nil
+	}
+	paths := []string{string(m.PosterPath), string(m.BackdropPath), string(m.LogoPath), string(m.ThumbPath)}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	m.Poster = model.BuildImageResource(string(m.PosterPath), "poster", meta[string(m.PosterPath)])
+	m.Backdrop = model.BuildImageResource(string(m.BackdropPath), "backdrop", meta[string(m.BackdropPath)])
+	m.Logo = model.BuildImageResource(string(m.LogoPath), "logo", meta[string(m.LogoPath)])
+	m.Thumb = model.BuildImageResource(string(m.ThumbPath), "backdrop", meta[string(m.ThumbPath)])
+	return nil
+}
+
+func (s *MediaService) AttachImageResourcesForList(ctx context.Context, items []model.MediaListItem) error {
+	if s.imageMetaRepo == nil || len(items) == 0 {
+		return nil
+	}
+	var paths []string
+	for _, item := range items {
+		if item.PosterPath != "" {
+			paths = append(paths, string(item.PosterPath))
+		}
+	}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		p := string(items[i].PosterPath)
+		items[i].Poster = model.BuildImageResource(p, "poster", meta[p])
+	}
+	return nil
+}
+
+func (s *MediaService) AttachImageResourcesForUserData(ctx context.Context, items []*model.UserData) error {
+	if s.imageMetaRepo == nil || len(items) == 0 {
+		return nil
+	}
+	var paths []string
+	for _, item := range items {
+		if item.MediaPoster != "" {
+			paths = append(paths, string(item.MediaPoster))
+		}
+	}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		p := string(items[i].MediaPoster)
+		if p != "" {
+			items[i].Poster = model.BuildImageResource(p, "poster", meta[p])
+		}
+	}
+	return nil
+}
+
+func (s *MediaService) AttachImageResourcesForContinueWatching(ctx context.Context, items []*model.ContinueWatchingItem) error {
+	if s.imageMetaRepo == nil || len(items) == 0 {
+		return nil
+	}
+	var paths []string
+	for _, item := range items {
+		if item.PosterPath != "" {
+			paths = append(paths, string(item.PosterPath))
+		}
+		if item.BackdropPath != "" {
+			paths = append(paths, string(item.BackdropPath))
+		}
+	}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		if items[i].PosterPath != "" {
+			p := string(items[i].PosterPath)
+			items[i].Poster = model.BuildImageResource(p, "poster", meta[p])
+		}
+		if items[i].BackdropPath != "" {
+			p := string(items[i].BackdropPath)
+			items[i].Backdrop = model.BuildImageResource(p, "backdrop", meta[p])
+		}
+	}
+	return nil
+}
+
+func (s *MediaService) AttachImageResourcesForNextUp(ctx context.Context, items []*model.NextUpItem) error {
+	if s.imageMetaRepo == nil || len(items) == 0 {
+		return nil
+	}
+	var paths []string
+	for _, item := range items {
+		if item.SeriesPoster != "" {
+			paths = append(paths, string(item.SeriesPoster))
+		}
+		if item.BackdropPath != "" {
+			paths = append(paths, string(item.BackdropPath))
+		}
+		if item.StillPath != "" {
+			paths = append(paths, string(item.StillPath))
+		}
+	}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		if items[i].SeriesPoster != "" {
+			p := string(items[i].SeriesPoster)
+			items[i].Poster = model.BuildImageResource(p, "poster", meta[p])
+		}
+		if items[i].BackdropPath != "" {
+			p := string(items[i].BackdropPath)
+			items[i].Backdrop = model.BuildImageResource(p, "backdrop", meta[p])
+		}
+		if items[i].StillPath != "" {
+			p := string(items[i].StillPath)
+			items[i].Still = model.BuildImageResource(p, "still", meta[p])
+		}
+	}
+	return nil
+}
+
+func (s *MediaService) AttachImageResourcesForSeriesList(ctx context.Context, items []model.SeriesListItem) error {
+	if s.imageMetaRepo == nil || len(items) == 0 {
+		return nil
+	}
+	var paths []string
+	for _, item := range items {
+		if item.PosterPath != "" {
+			paths = append(paths, string(item.PosterPath))
+		}
+	}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		p := string(items[i].PosterPath)
+		items[i].Poster = model.BuildImageResource(p, "poster", meta[p])
+	}
+	return nil
+}
+
+func (s *MediaService) AttachImageResourcesForSeries(ctx context.Context, m *model.Series) error {
+	if s.imageMetaRepo == nil || m == nil {
+		return nil
+	}
+	paths := []string{string(m.PosterPath), string(m.BackdropPath), string(m.LogoPath), string(m.ThumbPath)}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	m.Poster = model.BuildImageResource(string(m.PosterPath), "poster", meta[string(m.PosterPath)])
+	m.Backdrop = model.BuildImageResource(string(m.BackdropPath), "backdrop", meta[string(m.BackdropPath)])
+	m.Logo = model.BuildImageResource(string(m.LogoPath), "logo", meta[string(m.LogoPath)])
+	m.Thumb = model.BuildImageResource(string(m.ThumbPath), "backdrop", meta[string(m.ThumbPath)])
+	return nil
+}
+
+// AttachImageResourcesForSeriesBatch enriches a slice of full Series with
+// ImageResource metadata using a single GetBatch round-trip (vs N calls for
+// per-row AttachImageResourcesForSeries in search/list loops).
+func (s *MediaService) AttachImageResourcesForSeriesBatch(ctx context.Context, items []model.Series) error {
+	if s.imageMetaRepo == nil || len(items) == 0 {
+		return nil
+	}
+	var paths []string
+	for i := range items {
+		if items[i].PosterPath != "" {
+			paths = append(paths, string(items[i].PosterPath))
+		}
+		if items[i].BackdropPath != "" {
+			paths = append(paths, string(items[i].BackdropPath))
+		}
+		if items[i].LogoPath != "" {
+			paths = append(paths, string(items[i].LogoPath))
+		}
+		if items[i].ThumbPath != "" {
+			paths = append(paths, string(items[i].ThumbPath))
+		}
+	}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		items[i].Poster = model.BuildImageResource(string(items[i].PosterPath), "poster", meta[string(items[i].PosterPath)])
+		items[i].Backdrop = model.BuildImageResource(string(items[i].BackdropPath), "backdrop", meta[string(items[i].BackdropPath)])
+		items[i].Logo = model.BuildImageResource(string(items[i].LogoPath), "logo", meta[string(items[i].LogoPath)])
+		items[i].Thumb = model.BuildImageResource(string(items[i].ThumbPath), "backdrop", meta[string(items[i].ThumbPath)])
+	}
+	return nil
+}
+
+func (s *MediaService) AttachImageResourcesForSeasons(ctx context.Context, items []model.Season) error {
+	if s.imageMetaRepo == nil || len(items) == 0 {
+		return nil
+	}
+	var paths []string
+	for _, item := range items {
+		if item.PosterPath != "" {
+			paths = append(paths, string(item.PosterPath))
+		}
+	}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		p := string(items[i].PosterPath)
+		items[i].Poster = model.BuildImageResource(p, "poster", meta[p])
+	}
+	return nil
+}
+
+func (s *MediaService) AttachImageResourcesForEpisodes(ctx context.Context, items []model.Episode) error {
+	if s.imageMetaRepo == nil || len(items) == 0 {
+		return nil
+	}
+	var paths []string
+	for _, item := range items {
+		if item.StillPath != "" {
+			paths = append(paths, string(item.StillPath))
+		}
+	}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		p := string(items[i].StillPath)
+		items[i].Still = model.BuildImageResource(p, "still", meta[p])
+	}
+	return nil
+}
+
+func (s *MediaService) AttachImageResourcesForMostWatched(ctx context.Context, items []model.MostWatchedItem) error {
+	if s.imageMetaRepo == nil || len(items) == 0 {
+		return nil
+	}
+	var paths []string
+	for _, item := range items {
+		if item.PosterPath != "" {
+			paths = append(paths, string(item.PosterPath))
+		}
+	}
+	meta, err := s.imageMetaRepo.GetBatch(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		p := string(items[i].PosterPath)
+		items[i].Poster = model.BuildImageResource(p, "poster", meta[p])
+	}
+	return nil
 }

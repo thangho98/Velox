@@ -35,7 +35,7 @@ export default function FavoritesPage() {
               key={item.media_id}
               id={item.media_id}
               title={item.media_title || 'Unknown'}
-              posterPath={item.media_poster}
+              poster={item.poster}
               progress={{
                 position: item.position,
                 duration: item.media_duration || 1,

@@ -30,7 +30,7 @@ export default function HomePage() {
     id: s.id,
     title: s.title,
     sort_title: s.sort_title,
-    poster_path: s.poster_path,
+    poster: s.poster,
     media_type: 'episode' as const, // MediaRow uses this for type detection
     type: 'series' as const,
     genres: [] as string[],

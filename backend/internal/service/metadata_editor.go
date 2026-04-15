@@ -36,8 +36,8 @@ func (s *MetadataService) IdentifyByTmdbID(ctx context.Context, media *model.Med
 		media.Overview = details.Overview
 		media.ReleaseDate = details.FirstAirDate
 		media.Rating = details.VoteAverage
-		media.PosterPath = details.PosterPath
-		media.BackdropPath = details.BackdropPath
+		media.PosterPath = model.PosterPath(details.PosterPath)
+		media.BackdropPath = model.BackdropPath(details.BackdropPath)
 	} else {
 		details, err := s.tmdbClient.GetMovieDetails(ctx, tmdbID)
 		if err != nil {
@@ -53,8 +53,8 @@ func (s *MetadataService) IdentifyByTmdbID(ctx context.Context, media *model.Med
 		media.Overview = details.Overview
 		media.ReleaseDate = details.ReleaseDate
 		media.Rating = details.VoteAverage
-		media.PosterPath = details.PosterPath
-		media.BackdropPath = details.BackdropPath
+		media.PosterPath = model.PosterPath(details.PosterPath)
+		media.BackdropPath = model.BackdropPath(details.BackdropPath)
 
 		if err := s.mediaRepo.Update(ctx, media); err != nil {
 			return err
@@ -154,11 +154,11 @@ func (s *MetadataService) refreshEpisodeMetadata(ctx context.Context, media *mod
 	media.ReleaseDate = result.ReleaseDate
 	media.Rating = result.Rating
 	if result.StillPath != "" {
-		media.PosterPath = result.StillPath
+		media.PosterPath = model.PosterPath(result.StillPath)
 	} else if result.PosterPath != "" {
-		media.PosterPath = result.PosterPath
+		media.PosterPath = model.PosterPath(result.PosterPath)
 	}
-	media.BackdropPath = result.BackdropPath
+	media.BackdropPath = model.BackdropPath(result.BackdropPath)
 
 	if err := s.mediaRepo.Update(ctx, media); err != nil {
 		return err

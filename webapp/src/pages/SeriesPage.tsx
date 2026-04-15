@@ -92,7 +92,7 @@ export default function SeriesPage() {
                 <MediaCard
                   id={s.id}
                   title={s.title}
-                  posterPath={s.poster_path}
+                  poster={s.poster}
                   type="series"
                   seriesId={s.id}
                   year={s.first_air_date ? new Date(s.first_air_date).getFullYear() : undefined}

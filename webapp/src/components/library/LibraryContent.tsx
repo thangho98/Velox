@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Link } from 'react-router'
 import { LuChevronRight, LuFilm, LuLayoutGrid, LuList } from 'react-icons/lu'
 import { MediaCard } from '@/components/MediaCard'
+import { ResponsiveImage } from '@/components/ResponsiveImage'
 import { useMediaList } from '@/hooks/stores/useMedia'
 import { useUIStore } from '@/stores/ui'
 
@@ -63,7 +64,7 @@ export const LibraryContent = memo(function LibraryContent({
               key={item.id}
               id={item.id}
               title={item.title}
-              posterPath={item.poster_path}
+              poster={item.poster}
               type={item.media_type === 'episode' ? 'series' : 'movie'}
               seriesId={item.series_id}
               year={item.release_date ? new Date(item.release_date).getFullYear() : undefined}
@@ -84,11 +85,12 @@ export const LibraryContent = memo(function LibraryContent({
               className="flex items-center gap-4 rounded-lg bg-netflix-dark p-3 transition-colors hover:bg-netflix-gray"
             >
               <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded bg-netflix-gray">
-                {item.poster_path ? (
-                  <img
-                    src={item.poster_path}
+                {item.poster ? (
+                  <ResponsiveImage
+                    data={item.poster}
+                    sizes="92px"
                     alt={item.title}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">

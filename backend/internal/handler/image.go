@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"strconv"
 	"time"
+
+	"github.com/thawng/velox/internal/model"
 )
 
 const tmdbImageBase = "https://image.tmdb.org/t/p/"
@@ -22,30 +24,44 @@ func NewImageHandler() *ImageHandler {
 	}
 }
 
-// Serve proxies a TMDb image.
-// GET /api/images/tmdb/{size}/{path...}
-// Example: /api/images/tmdb/w500/abc123.jpg
-func (h *ImageHandler) Serve(w http.ResponseWriter, r *http.Request) {
-	size := r.PathValue("size")
-	imgPath := r.PathValue("path")
-
-	// Validate size — only allow known TMDb sizes
-	validSizes := map[string]bool{
-		"w92": true, "w154": true, "w185": true, "w342": true, "w500": true, "w780": true,
-		"original": true,
-		// Backdrop sizes
-		"w300": true, "w1280": true,
-		// Profile sizes
-		"w45": true, "w138": true, "h632": true,
+func resolveTMDbSize(imageType, widthParam string) (string, bool) {
+	buckets, ok := model.TMDbSizes[imageType]
+	if !ok {
+		return "", false
 	}
-	if !validSizes[size] {
-		respondError(w, http.StatusBadRequest, "invalid image size")
+	if widthParam == "original" {
+		return "original", true
+	}
+	n, err := strconv.Atoi(widthParam)
+	if err != nil || n <= 0 {
+		n = model.TMDbDefaultWidth[imageType]
+	}
+	for _, b := range buckets {
+		if n <= b {
+			return fmt.Sprintf("w%d", b), true
+		}
+	}
+	return "original", true
+}
+
+// Serve proxies a TMDb image.
+// GET /api/images/tmdb/{type}/{path...}?width=N
+//
+// The backend picks the nearest TMDb size variant for the requested width and
+// proxies the upstream file. `width` is optional; default is 500px for posters.
+// Callers that want the full-resolution asset can pass a large value (e.g. width=9999)
+// or "original" explicitly.
+func (h *ImageHandler) Serve(w http.ResponseWriter, r *http.Request) {
+	imgPath := r.PathValue("path")
+	if imgPath == "" || containsDotDot(imgPath) {
+		respondError(w, http.StatusBadRequest, "invalid image path")
 		return
 	}
 
-	// Validate path — must start with / and be a simple filename
-	if imgPath == "" || strings.Contains(imgPath, "..") {
-		respondError(w, http.StatusBadRequest, "invalid image path")
+	imageType := r.PathValue("type")
+	size, ok := resolveTMDbSize(imageType, r.URL.Query().Get("width"))
+	if !ok {
+		respondError(w, http.StatusBadRequest, "invalid image type")
 		return
 	}
 
@@ -63,10 +79,16 @@ func (h *ImageHandler) Serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Forward content type
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
-	// Cache for 7 days (images rarely change)
 	w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
-
 	io.Copy(w, resp.Body)
+}
+
+func containsDotDot(s string) bool {
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] == '.' && s[i+1] == '.' {
+			return true
+		}
+	}
+	return false
 }

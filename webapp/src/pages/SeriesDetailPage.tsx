@@ -14,14 +14,14 @@ import {
 } from '@/hooks/stores/useMedia'
 import { useAuthStore } from '@/stores/auth'
 import { EpisodeCard } from '@/components/EpisodeCard'
-import { LuChevronLeft, LuFilm, LuPlay, LuTv, LuPencil, LuLock } from 'react-icons/lu'
-import { seriesImage } from '@/lib/image'
+import { ResponsiveImage } from '@/components/ResponsiveImage'
 import { MetadataEditor } from '@/components/metadata/MetadataEditor'
 import { EpisodeEditDialog } from '@/components/metadata/EpisodeEditDialog'
 import { useSeriesTrailers } from '@/hooks/useCinemaMode'
 import { YouTubeBackground } from '@/components/YouTubeBackground'
 import { useTranslation } from '@/hooks/useTranslation'
 import type { Episode } from '@/types/api'
+import { LuChevronLeft, LuFilm, LuTv, LuLock, LuPencil, LuPlay } from 'react-icons/lu'
 
 export default function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>()
@@ -103,17 +103,19 @@ export default function SeriesDetailPage() {
   return (
     <div className="min-h-screen bg-netflix-black">
       {/* Backdrop — YouTube trailer or static image */}
-      {(youtubeKey || series.backdrop_path) && (
+      {(youtubeKey || series.backdrop) && (
         <div className="fixed inset-0 h-screen">
           {youtubeKey ? (
             <YouTubeBackground videoId={youtubeKey} muted className="absolute inset-0" />
-          ) : (
-            <img
-              src={seriesImage(series.backdrop_path, 'w1280')!}
+          ) : series.backdrop ? (
+            <ResponsiveImage
+              data={series.backdrop}
+              sizes="100vw"
               alt={series.title}
-              className="h-full w-full object-cover"
+              className="h-full w-full"
+              loading="eager"
             />
-          )}
+          ) : null}
           <div className="absolute inset-0 bg-gradient-to-t from-netflix-black via-netflix-black/80 to-netflix-black/30" />
           <div className="absolute inset-0 bg-gradient-to-r from-netflix-black via-netflix-black/50 to-transparent" />
         </div>
@@ -133,12 +135,15 @@ export default function SeriesDetailPage() {
           <div className="flex flex-col gap-8 lg:flex-row">
             {/* Poster */}
             <div className="mx-auto flex-shrink-0 lg:mx-0">
-              {series.poster_path ? (
-                <img
-                  src={seriesImage(series.poster_path, 'w500')!}
-                  alt={series.title}
-                  className="w-64 rounded-lg shadow-2xl lg:w-80"
-                />
+              {series.poster ? (
+                <div className="w-64 lg:w-80 rounded-lg shadow-2xl overflow-hidden shrink-0">
+                  <ResponsiveImage
+                    data={series.poster}
+                    sizes="(max-width: 768px) 342px, 500px"
+                    alt={series.title}
+                    loading="eager"
+                  />
+                </div>
               ) : (
                 <div className="flex h-96 w-64 items-center justify-center rounded-lg bg-netflix-dark lg:w-80">
                   <LuFilm size={64} className="text-gray-600" />

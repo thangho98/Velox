@@ -250,7 +250,8 @@ func (app *serverApp) registerStreamRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/stream/by-id/{id}/session", app.handlers.stream.StopTranscode)
 	mux.HandleFunc("GET /api/media/{id}/trickplay/manifest.vtt", app.handlers.trickplay.ServeVTT)
 	mux.HandleFunc("GET /api/media/{id}/trickplay/{sprite}", app.handlers.trickplay.ServeSprite)
-	mux.HandleFunc("GET /api/images/tmdb/{size}/{path...}", app.handlers.image.Serve)
+	// Width selection moved to query param: /api/images/tmdb/{path...}?width=500
+	mux.HandleFunc("GET /api/images/tmdb/{type}/{path...}", app.handlers.image.Serve)
 }
 
 func (app *serverApp) registerPlaybackRoutes(mux *http.ServeMux) {

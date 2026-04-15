@@ -19,6 +19,7 @@ func (app *serverApp) startBackgroundServices() func() {
 	app.registerScheduledTasks()
 	app.services.scheduler.Start()
 	app.services.pretranscode.Start()
+	go app.services.imagemeta.Worker().Run(context.Background())
 
 	return func() {
 		app.services.pretranscode.Stop()

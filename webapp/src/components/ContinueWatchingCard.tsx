@@ -2,7 +2,7 @@ import { Link } from 'react-router'
 import { useState } from 'react'
 import { useDismissProgress } from '@/hooks/stores/useMedia'
 import type { ContinueWatchingItem } from '@/types/api'
-import { tmdbImage } from '@/lib/image'
+import { ResponsiveImage } from '@/components/ResponsiveImage'
 import { LuX } from 'react-icons/lu'
 
 interface ContinueWatchingCardProps {
@@ -34,12 +34,7 @@ export function ContinueWatchingCard({ item }: ContinueWatchingCardProps) {
       ? `S${item.season_number}E${item.episode_number} · ${item.series_title}`
       : item.title
 
-  // Use backdrop if available, fallback to poster
-  const imageUrl =
-    tmdbImage((item as any).still_path, 'w780') ||
-    tmdbImage(item.backdrop_path, 'w780') ||
-    tmdbImage(item.poster_path, 'w500') ||
-    '/placeholder-backdrop.png'
+  const imgData = item.backdrop || item.poster
 
   return (
     <Link
@@ -48,12 +43,16 @@ export function ContinueWatchingCard({ item }: ContinueWatchingCardProps) {
     >
       {/* Thumbnail */}
       <div className="aspect-video w-full overflow-hidden">
-        <img
-          src={imageUrl}
-          alt={item.title}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-          loading="lazy"
-        />
+        {imgData ? (
+          <ResponsiveImage
+            data={imgData}
+            sizes="780px"
+            alt={item.title}
+            className="h-full w-full"
+          />
+        ) : (
+          <div className="h-full w-full bg-netflix-gray" />
+        )}
       </div>
 
       {/* Progress bar */}

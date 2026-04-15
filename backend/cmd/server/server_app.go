@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/service"
+	"github.com/thawng/velox/internal/service/imagemeta"
 	"github.com/thawng/velox/internal/storage"
 	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/internal/trickplay"
@@ -28,6 +30,7 @@ import (
 	"github.com/thawng/velox/pkg/thetvdb"
 	"github.com/thawng/velox/pkg/tmdb"
 	"github.com/thawng/velox/pkg/tvmaze"
+	"golang.org/x/time/rate"
 )
 
 type serverApp struct {
@@ -72,6 +75,7 @@ type serverRepos struct {
 	pretranscodeStatus *repository.PretranscodeRepo
 	appVersion         *repository.AppVersionRepo
 	scheduledTask      *repository.ScheduledTaskRepository
+	imageMetadata      *repository.ImageMetadataRepo
 }
 
 type serverServices struct {
@@ -103,6 +107,7 @@ type serverServices struct {
 	subtitleSearch *service.SubtitleSearchService
 	scheduler      *service.Scheduler
 	verifier       *scanner.Verifier
+	imagemeta      *imagemeta.Service
 }
 
 type serverHandlers struct {
@@ -234,6 +239,7 @@ func newServerRepos(db *sql.DB) serverRepos {
 		pretranscodeStatus: repository.NewPretranscodeRepo(db),
 		appVersion:         repository.NewAppVersionRepo(db),
 		scheduledTask:      repository.NewScheduledTaskRepository(db),
+		imageMetadata:      repository.NewImageMetadataRepo(db),
 	}
 }
 
@@ -261,6 +267,7 @@ func (app *serverApp) initServices() error {
 	app.services.media = service.NewMediaService(repos.media, repos.mediaFile)
 	app.services.media.SetEpisodeRepo(repos.episode)
 	app.services.media.SetSeasonRepo(repos.season)
+	app.services.media.SetImageMetadataRepo(repos.imageMetadata)
 	app.services.catalog = service.NewCatalogService(repos.media, repos.series, repos.genre, repos.person)
 	app.services.browse = service.NewBrowseService(repos.library, repos.media, repos.mediaFile, repos.user)
 	app.services.cinema = service.NewCinemaService(
@@ -320,6 +327,13 @@ func (app *serverApp) initServices() error {
 	app.services.scheduler = service.NewScheduler(repos.scheduledTask)
 	app.services.verifier = scanner.NewVerifier(repos.mediaFile)
 
+	app.services.imagemeta = imagemeta.NewService(
+		repos.imageMetadata,
+		storage.NewImageStorage(app.cfg.DataDir),
+		http.DefaultClient,
+		rate.NewLimiter(20, 1),
+	)
+
 	return app.initTrickplayGenerator()
 }
 
@@ -343,6 +357,7 @@ func (app *serverApp) initPretranscodeService() error {
 	app.services.pretranscode.SetStatusRepo(app.repos.pretranscodeStatus)
 	app.services.stream.SetPretranscodeService(app.services.pretranscode)
 	app.services.library.SetPretranscodeService(app.services.pretranscode)
+	app.services.library.SetImagemetaService(app.services.imagemeta)
 
 	return nil
 }
@@ -373,6 +388,7 @@ func (app *serverApp) initHandlers() {
 	app.handlers.auth = handler.NewAuthHandler(services.auth)
 	app.handlers.user = handler.NewUserHandler(services.auth)
 	app.handlers.profile = handler.NewProfileHandler(services.profile)
+	app.handlers.profile.SetMediaService(services.media)
 	app.handlers.playback = handler.NewPlaybackHandler(
 		services.media,
 		services.stream,
@@ -390,11 +406,15 @@ func (app *serverApp) initHandlers() {
 	app.handlers.trickplay = handler.NewTrickplayHandler(app.trickplayGen, services.stream)
 	app.handlers.image = handler.NewImageHandler()
 	app.handlers.browse = handler.NewBrowseHandler(services.browse)
+	app.handlers.browse.SetMediaService(services.media)
 	app.handlers.catalog = handler.NewCatalogHandler(services.catalog)
+	app.handlers.catalog.SetMediaService(services.media)
 	app.handlers.series = handler.NewSeriesHandler(services.series)
+	app.handlers.series.SetMediaService(services.media)
 	app.handlers.metadata = handler.NewMetadataHandler(services.media, services.metadata, storage.NewImageStorage(app.cfg.DataDir))
 	app.handlers.cinema = handler.NewCinemaHandler(services.cinema)
 	app.handlers.activity = handler.NewActivityHandler(services.activity)
+	app.handlers.activity.SetMediaService(services.media)
 	app.handlers.admin = handler.NewAdminHandler(services.admin)
 	app.handlers.webhook = handler.NewWebhookHandler(services.webhook)
 	app.handlers.markerAdmin = handler.NewMarkerAdminHandler(services.marker)

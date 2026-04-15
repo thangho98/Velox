@@ -1,6 +1,7 @@
 // Series, Season, Episode types
 
 import type { MediaFile, CreditInput } from './media'
+import type { ImageResource } from './common'
 
 export interface Series {
   id: number
@@ -14,10 +15,10 @@ export interface Series {
   status: string // "Returning Series" | "Ended" | "Canceled"
   network: string
   first_air_date: string
-  poster_path: string
-  backdrop_path: string
-  logo_path: string
-  thumb_path: string
+  poster?: ImageResource | null
+  backdrop?: ImageResource | null
+  logo?: ImageResource | null
+  thumb?: ImageResource | null
   metadata_locked: boolean
   created_at: string
   updated_at: string
@@ -35,10 +36,10 @@ export interface SeriesListItem {
   status: string
   network: string
   first_air_date: string
-  poster_path: string
-  backdrop_path: string
-  logo_path: string
-  thumb_path: string
+  poster?: ImageResource | null
+  backdrop?: ImageResource | null
+  logo?: ImageResource | null
+  thumb?: ImageResource | null
   metadata_locked: boolean
   created_at: string
   updated_at: string
@@ -90,7 +91,7 @@ export interface Season {
   season_number: number
   title: string
   overview: string
-  poster_path: string
+  poster?: ImageResource | null
   air_date?: string
   episode_count: number
   created_at: string
@@ -105,7 +106,7 @@ export interface Episode {
   episode_number: number
   title: string
   overview: string
-  still_path?: string
+  still?: ImageResource | null
   air_date?: string
   duration?: number
   media_files?: MediaFile[]

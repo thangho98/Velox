@@ -9,11 +9,16 @@ import (
 
 // ActivityHandler handles activity log and stats endpoints.
 type ActivityHandler struct {
-	svc *service.ActivityService
+	svc      *service.ActivityService
+	mediaSvc *service.MediaService
 }
 
 func NewActivityHandler(svc *service.ActivityService) *ActivityHandler {
 	return &ActivityHandler{svc: svc}
+}
+
+func (h *ActivityHandler) SetMediaService(m *service.MediaService) {
+	h.mediaSvc = m
 }
 
 // List returns activity log entries with optional filters.
@@ -50,5 +55,9 @@ func (h *ActivityHandler) GetPlaybackStats(w http.ResponseWriter, r *http.Reques
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if h.mediaSvc != nil && len(stats.MostWatched) > 0 {
+		_ = h.mediaSvc.AttachImageResourcesForMostWatched(r.Context(), stats.MostWatched)
+	}
+
 	respondJSON(w, http.StatusOK, stats)
 }

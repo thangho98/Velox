@@ -272,7 +272,7 @@ func (s *MetadataService) ensurePerson(ctx context.Context, tmdbPersonID int, na
 	person := &model.Person{
 		Name:        name,
 		TmdbID:      tmdbID,
-		ProfilePath: profilePath,
+		ProfilePath: model.ProfilePath(profilePath),
 	}
 	if err := s.personRepo.Create(ctx, person); err != nil {
 		return 0, err

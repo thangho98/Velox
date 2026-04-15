@@ -1,6 +1,7 @@
 // Media, Library, Genre, Browse, Search types
 
 import type { SeriesListItem } from './series'
+import type { ImageResource } from './common'
 
 export interface Library {
   id: number
@@ -32,10 +33,10 @@ export interface Media {
   imdb_rating: number
   rt_score: number
   metacritic_score: number
-  poster_path: string
-  backdrop_path: string
-  logo_path: string
-  thumb_path: string
+  poster?: ImageResource | null
+  backdrop?: ImageResource | null
+  logo?: ImageResource | null
+  thumb?: ImageResource | null
   metadata_locked: boolean
   duration?: number // from media_files join
   series_id?: number // for episodes
@@ -76,7 +77,10 @@ export interface MediaListItem {
   id: number
   title: string
   sort_title: string
-  poster_path: string
+  poster?: ImageResource | null
+  backdrop?: ImageResource | null
+  logo?: ImageResource | null
+  thumb?: ImageResource | null
   media_type: 'movie' | 'episode'
   type?: 'movie' | 'series' // frontend-friendly alias
   genres: string[]

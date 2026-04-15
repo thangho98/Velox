@@ -12,10 +12,15 @@ import (
 
 type BrowseHandler struct {
 	browseSvc *service.BrowseService
+	mediaSvc  *service.MediaService
 }
 
 func NewBrowseHandler(browseSvc *service.BrowseService) *BrowseHandler {
 	return &BrowseHandler{browseSvc: browseSvc}
+}
+
+func (h *BrowseHandler) SetMediaService(m *service.MediaService) {
+	h.mediaSvc = m
 }
 
 func (h *BrowseHandler) Browse(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +56,10 @@ func (h *BrowseHandler) Browse(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, err.Error())
 		}
 		return
+	}
+
+	if h.mediaSvc != nil && len(result.Media) > 0 {
+		_ = h.mediaSvc.AttachImageResourcesForList(r.Context(), result.Media)
 	}
 
 	respondJSON(w, http.StatusOK, result)

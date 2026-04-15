@@ -158,6 +158,7 @@ func (s *MetadataService) UpdateMediaImagePath(ctx context.Context, mediaID int6
 	if err := s.mediaRepo.UpdateImagePath(ctx, mediaID, imageType, path); err != nil {
 		return err
 	}
+	s.enqueueImageForCompute(path)
 	return s.mediaRepo.SetMetadataLocked(ctx, mediaID, true)
 }
 
@@ -166,6 +167,7 @@ func (s *MetadataService) UpdateSeriesImagePath(ctx context.Context, seriesID in
 	if err := s.seriesRepo.UpdateImagePath(ctx, seriesID, imageType, path); err != nil {
 		return err
 	}
+	s.enqueueImageForCompute(path)
 	return s.seriesRepo.SetMetadataLocked(ctx, seriesID, true)
 }
 
@@ -264,8 +266,8 @@ func (s *MetadataService) buildMediaNFOData(ctx context.Context, media *model.Me
 		TmdbID:       media.TmdbID,
 		ImdbID:       media.ImdbID,
 		TvdbID:       media.TvdbID,
-		PosterPath:   media.PosterPath,
-		BackdropPath: media.BackdropPath,
+		PosterPath:   string(media.PosterPath),
+		BackdropPath: string(media.BackdropPath),
 	}
 
 	// Genres
@@ -286,7 +288,7 @@ func (s *MetadataService) buildMediaNFOData(ctx context.Context, media *model.Me
 					Name:        c.Person.Name,
 					Character:   c.Credit.Character,
 					Order:       c.Credit.DisplayOrder,
-					ProfilePath: c.Person.ProfilePath,
+					ProfilePath: c.Person.ProfilePath.Raw(),
 				})
 			case "director":
 				data.Directors = append(data.Directors, c.Person.Name)
@@ -310,8 +312,8 @@ func (s *MetadataService) buildSeriesNFOData(ctx context.Context, series *model.
 		TmdbID:       series.TmdbID,
 		ImdbID:       series.ImdbID,
 		TvdbID:       series.TvdbID,
-		PosterPath:   series.PosterPath,
-		BackdropPath: series.BackdropPath,
+		PosterPath:   string(series.PosterPath),
+		BackdropPath: string(series.BackdropPath),
 	}
 
 	genres, err := s.genreRepo.ListBySeriesID(ctx, series.ID)
@@ -330,7 +332,7 @@ func (s *MetadataService) buildSeriesNFOData(ctx context.Context, series *model.
 					Name:        c.Person.Name,
 					Character:   c.Credit.Character,
 					Order:       c.Credit.DisplayOrder,
-					ProfilePath: c.Person.ProfilePath,
+					ProfilePath: c.Person.ProfilePath.Raw(),
 				})
 			case "director":
 				data.Directors = append(data.Directors, c.Person.Name)

@@ -3,13 +3,14 @@ import { useState, useRef, useEffect } from 'react'
 import { LuFilm, LuPlay, LuStar, LuCheck, LuHeart } from 'react-icons/lu'
 import { useToggleFavorite, useProgress } from '@/hooks/stores/useMedia'
 import { useCinemaSettings } from '@/hooks/stores/useSettings'
-import { tmdbImage } from '@/lib/image'
+import { ResponsiveImage } from '@/components/ResponsiveImage'
+import type { ImageResource } from '@/types/api'
 import { api } from '@/lib/fetch'
 
 interface MediaCardProps {
   id: number
   title: string
-  posterPath?: string | null
+  poster?: ImageResource | null
   type?: 'movie' | 'series'
   seriesId?: number // ADD — series.id for routing
   year?: number
@@ -30,7 +31,7 @@ interface MediaCardProps {
 export function MediaCard({
   id,
   title,
-  posterPath,
+  poster,
   type = 'movie',
   seriesId,
   year,
@@ -110,9 +111,10 @@ export function MediaCard({
       ? Math.min(100, (progress.position / progress.duration) * 100)
       : 0
 
-  const posterSrc = tmdbImage(posterPath, aspectRatio === 'poster' ? 'w500' : 'w780')
   const aspectClass = aspectRatio === 'poster' ? 'aspect-[2/3]' : 'aspect-video'
   const sizeClasses = { sm: 'text-xs', md: 'text-sm', lg: 'text-base' }
+  const sizesAttr =
+    aspectRatio === 'poster' ? '(max-width: 768px) 185px, 342px' : '(max-width: 768px) 300px, 500px'
 
   // Type-aware link — directPlay skips detail page and goes straight to watch
   const linkTo = directPlay
@@ -149,14 +151,12 @@ export function MediaCard({
                 }}
               />
             </div>
-          ) : posterSrc ? (
-            <img
-              src={posterSrc}
+          ) : poster ? (
+            <ResponsiveImage
+              data={poster}
+              sizes={sizesAttr}
               alt={title}
-              className="h-full w-full object-cover"
-              loading="lazy"
-              width={500}
-              height={750}
+              className="h-full w-full"
             />
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center bg-netflix-gray p-4">
