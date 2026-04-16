@@ -197,7 +197,7 @@ func TestBuildLLMUserPromptIncludesMediaContext(t *testing.T) {
 		Genres:    []string{"Comedy", "Family"},
 		Overview:  "A gifted boy navigates a chaotic family.",
 		Tagline:   "Life is unfair.",
-	})
+	}, nil, nil)
 	if err != nil {
 		t.Fatalf("buildLLMUserPrompt returned error: %v", err)
 	}
@@ -208,7 +208,62 @@ func TestBuildLLMUserPromptIncludesMediaContext(t *testing.T) {
 	if !strings.Contains(prompt, "Title: Malcolm in the Middle") {
 		t.Fatalf("prompt missing title: %q", prompt)
 	}
-	if !strings.Contains(prompt, "target language: vi") {
+	if !strings.Contains(prompt, "Target language: vi") {
 		t.Fatalf("prompt missing target language: %q", prompt)
+	}
+}
+
+func TestPrompt_FirstBatch_NoPriorSection(t *testing.T) {
+	prompt, err := buildLLMUserPrompt([]string{"a", "b"}, "vi", nil, nil, []string{"following 1"})
+	if err != nil {
+		t.Fatalf("buildLLMUserPrompt: %v", err)
+	}
+	if strings.Contains(prompt, "PRIOR CONTEXT") {
+		t.Fatalf("first batch should not render PRIOR CONTEXT section: %q", prompt)
+	}
+	if !strings.Contains(prompt, "FOLLOWING CONTEXT") {
+		t.Fatalf("expected FOLLOWING CONTEXT section, got: %q", prompt)
+	}
+}
+
+func TestPrompt_LastBatch_NoFollowingSection(t *testing.T) {
+	prompt, err := buildLLMUserPrompt([]string{"a", "b"}, "vi", nil, []string{"prior 1"}, nil)
+	if err != nil {
+		t.Fatalf("buildLLMUserPrompt: %v", err)
+	}
+	if !strings.Contains(prompt, "PRIOR CONTEXT") {
+		t.Fatalf("expected PRIOR CONTEXT section, got: %q", prompt)
+	}
+	if strings.Contains(prompt, "FOLLOWING CONTEXT") {
+		t.Fatalf("last batch should not render FOLLOWING CONTEXT section: %q", prompt)
+	}
+}
+
+func TestPrompt_MiddleBatch_BothSections(t *testing.T) {
+	prompt, err := buildLLMUserPrompt(
+		[]string{"mid1", "mid2"},
+		"vi",
+		nil,
+		[]string{"p1", "p2", "p3"},
+		[]string{"n1", "n2", "n3"},
+	)
+	if err != nil {
+		t.Fatalf("buildLLMUserPrompt: %v", err)
+	}
+	if !strings.Contains(prompt, "PRIOR CONTEXT") || !strings.Contains(prompt, "FOLLOWING CONTEXT") {
+		t.Fatalf("middle batch should render both sections, got: %q", prompt)
+	}
+	// Count cue markers — 3 prior, 3 following, 2 main.
+	priorCount := strings.Count(prompt, "[prior-")
+	if priorCount != 3 {
+		t.Fatalf("expected 3 prior cues rendered, got %d: %q", priorCount, prompt)
+	}
+	nextCount := strings.Count(prompt, "[next-")
+	if nextCount != 3 {
+		t.Fatalf("expected 3 following cues rendered, got %d: %q", nextCount, prompt)
+	}
+	// Main cues use bare "[N]" index markers at line start.
+	if !strings.Contains(prompt, "\n[0] mid1\n") || !strings.Contains(prompt, "\n[1] mid2\n") {
+		t.Fatalf("main cue markers missing: %q", prompt)
 	}
 }

@@ -1,6 +1,6 @@
 # Plan V: AI Translate — Dialog-Aware Batching
 Created: 2026-04-15
-Status: ⬜ Pending
+Status: ✅ Done (2026-04-16)
 
 ## Overview
 Hiện tại `TranslateSRT` chia batch LLM cứng theo chỉ số cue (mỗi 50 cue). Cách này cắt ngang hội thoại, phá mạch context mà LLM cần để suy luận speaker/pronoun/tone. Plan này thay logic batching bằng thuật toán gap-aware (tiered thresholds theo khoảng lặng giữa cue) và bổ sung context overlap cho các ranh giới buộc phải cắt giữa hội thoại dày.

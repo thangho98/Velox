@@ -18,26 +18,28 @@ const (
 	defaultGeminiBaseURL   = "https://generativelanguage.googleapis.com/v1beta"
 	defaultAnthropicAPIURL = "https://api.anthropic.com"
 	defaultAIModelPrompt   = `You are an expert subtitle localizer for films and TV series.
-Return JSON only using this exact shape: {"translations":["..."]}.
-Rules:
-- Keep the same number of items and preserve their order exactly.
-- Treat each input item as one atomic subtitle cue. Never split one cue into multiple output items.
-- Count the input items first, then count your output items again before answering. The counts must match exactly.
+
+PRIMARY INVARIANT (violating this breaks the entire system):
+Output is a JSON object {"translations":[{"index":N,"text":"..."},...]}. For every input cue [N] you produce EXACTLY ONE object with index N. Input count == output count. No merging, no splitting, no extras, no gaps.
+
+Indexing rules:
+- If "TRANSLATE THESE" lists M items [0]..[M-1], return exactly M objects with indexes 0..M-1 — unique, contiguous, no duplicates, no index >= M.
+- PRIOR CONTEXT / FOLLOWING CONTEXT items are read-only. Never translate them. Never emit objects for them.
+
+Per-cue rules:
+- Treat each [N] as one atomic cue. Preserve its internal line breaks inside its own "text" field (use \n). Never pull lines out of a cue into a separate object. Never fold two cues into one object, even if their content looks like one continuous sentence or song verse.
+- Preserve lyric/music markers such as ♪ and repeated chant lines inside the cue that contains them.
+- Keep proper nouns, character names, and franchise-specific terms consistent.
+- If a cue should stay unchanged (e.g. numeric-only, standalone name), return it unchanged.
+
+Translation quality:
 - Translate naturally for cinematic subtitles, preserving tone, subtext, humor, and character intent.
-- Use the optional media context only as soft background to improve tone, terminology, and character voice.
-- Because SRT does not label speakers, you MUST infer speaker gender, relationships, and context by analyzing the conversational flow across the entire batch of provided cues.
-- For languages with complex pronoun systems (like Vietnamese), maintain consistent relative pronouns between speakers across adjacent dialog cues.
-- Never invent plot details, relationships, or facts that are not supported by the cue text or the supplied media context.
-- Keep proper nouns, names, and franchise-specific terms consistent when they should remain unchanged.
-- DO NOT generate any <thinking>, reasoning, or explanation blocks. Output the raw JSON directly and immediately.
-- Preserve line breaks when they improve subtitle readability.
-- Preserve lyric and music markers such as ♪ when they appear in the cue.
-- If a cue contains song lyrics, repeated lines, multiple short lines, or chant-like phrasing, keep all of it inside the same single output item.
-- If two neighboring cues are both lyrics, they are still two separate JSON strings because they were two separate input items.
-- Never merge adjacent cues together, and never split one cue apart, even if punctuation, lyrics, or line breaks look unusual.
-- Do not turn lyric lines into separate list entries, verses, bullet points, or extra JSON items.
-- Do not add explanations, markdown, speaker labels, timestamps, or extra fields.
-- If a cue should stay unchanged, return it unchanged.`
+- Use media context only as soft background to improve tone, terminology, and character voice.
+- Infer speaker gender, relationships, and context by analyzing the conversational flow across the batch. For languages with complex pronoun systems (like Vietnamese), keep relative pronouns consistent between speakers across adjacent cues.
+- Never invent plot details, relationships, or facts not supported by the cue text or media context.
+
+Output format:
+- Output the raw JSON object immediately. No <thinking> blocks, no explanations, no markdown, no speaker labels, no timestamps, no extra fields.`
 )
 
 type AIProvider string
@@ -105,11 +107,15 @@ func (t *openAICompatibleTranslator) Name() string      { return string(t.cfg.Pr
 func (t *openAICompatibleTranslator) MaxBatchSize() int { return 50 }
 
 func (t *openAICompatibleTranslator) Translate(ctx context.Context, texts []string, targetLang string) ([]string, error) {
+	return t.TranslateWithContext(ctx, texts, nil, nil, targetLang)
+}
+
+func (t *openAICompatibleTranslator) TranslateWithContext(ctx context.Context, texts, prior, following []string, targetLang string) ([]string, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
 
-	userPrompt, err := buildLLMUserPrompt(texts, targetLang, t.cfg.Context)
+	userPrompt, err := buildLLMUserPrompt(texts, targetLang, t.cfg.Context, prior, following)
 	if err != nil {
 		return nil, err
 	}
@@ -233,11 +239,15 @@ func (t *geminiTranslator) Name() string      { return string(t.cfg.Provider) }
 func (t *geminiTranslator) MaxBatchSize() int { return 50 }
 
 func (t *geminiTranslator) Translate(ctx context.Context, texts []string, targetLang string) ([]string, error) {
+	return t.TranslateWithContext(ctx, texts, nil, nil, targetLang)
+}
+
+func (t *geminiTranslator) TranslateWithContext(ctx context.Context, texts, prior, following []string, targetLang string) ([]string, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
 
-	userPrompt, err := buildLLMUserPrompt(texts, targetLang, t.cfg.Context)
+	userPrompt, err := buildLLMUserPrompt(texts, targetLang, t.cfg.Context, prior, following)
 	if err != nil {
 		return nil, err
 	}
@@ -354,11 +364,15 @@ func (t *anthropicTranslator) Name() string      { return string(t.cfg.Provider)
 func (t *anthropicTranslator) MaxBatchSize() int { return 50 }
 
 func (t *anthropicTranslator) Translate(ctx context.Context, texts []string, targetLang string) ([]string, error) {
+	return t.TranslateWithContext(ctx, texts, nil, nil, targetLang)
+}
+
+func (t *anthropicTranslator) TranslateWithContext(ctx context.Context, texts, prior, following []string, targetLang string) ([]string, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
 
-	userPrompt, err := buildLLMUserPrompt(texts, targetLang, t.cfg.Context)
+	userPrompt, err := buildLLMUserPrompt(texts, targetLang, t.cfg.Context, prior, following)
 	if err != nil {
 		return nil, err
 	}
@@ -465,19 +479,35 @@ func (t *anthropicTranslator) Translate(ctx context.Context, texts []string, tar
 	return translations, parseErr
 }
 
-func buildLLMUserPrompt(texts []string, targetLang string, mediaCtx *AIContext) (string, error) {
+func buildLLMUserPrompt(texts []string, targetLang string, mediaCtx *AIContext, prior, following []string) (string, error) {
 	var sb strings.Builder
 	if contextBlock := buildMediaContextBlock(mediaCtx); contextBlock != "" {
 		sb.WriteString(contextBlock)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString(fmt.Sprintf("Translate these subtitle cues to target language: %s.\n", targetLang))
-	sb.WriteString("IMPORTANT: You MUST return EXACTLY the same number of items in the same order.\n")
-	sb.WriteString("Each input item has an index (0, 1, 2...). Preserve this index in your response.\n")
-	sb.WriteString("Return JSON with exact shape: {\"translations\":[{\"index\":0,\"text\":\"translated\"},{\"index\":1,\"text\":\"translated\"}]}\n")
+	if len(prior) > 0 {
+		sb.WriteString("--- PRIOR CONTEXT (do NOT translate, for flow only) ---\n")
+		for i, text := range prior {
+			sb.WriteString(fmt.Sprintf("[prior-%d] %s\n", len(prior)-i, text))
+		}
+		sb.WriteString("--- END PRIOR CONTEXT ---\n\n")
+	}
+	n := len(texts)
+	sb.WriteString("--- TRANSLATE THESE ---\n")
+	sb.WriteString(fmt.Sprintf("Target language: %s\n", targetLang))
+	sb.WriteString(fmt.Sprintf("Required output: translations array of length EXACTLY %d with every index 0..%d present, unique, in order. No skips. No duplicates. No index %d or higher.\n", n, n-1, n))
+	sb.WriteString(fmt.Sprintf("Shape: {\"translations\":[{\"index\":0,\"text\":\"...\"},{\"index\":1,\"text\":\"...\"},...,{\"index\":%d,\"text\":\"...\"}]}\n", n-1))
 	sb.WriteString("Input items:\n")
 	for i, text := range texts {
 		sb.WriteString(fmt.Sprintf("[%d] %s\n", i, text))
+	}
+	sb.WriteString("--- END TRANSLATE THESE ---\n")
+	if len(following) > 0 {
+		sb.WriteString("\n--- FOLLOWING CONTEXT (do NOT translate, for flow only) ---\n")
+		for i, text := range following {
+			sb.WriteString(fmt.Sprintf("[next-%d] %s\n", i+1, text))
+		}
+		sb.WriteString("--- END FOLLOWING CONTEXT ---\n")
 	}
 	return sb.String(), nil
 }

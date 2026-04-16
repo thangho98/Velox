@@ -83,11 +83,11 @@ type ContextualTranslator interface {
         - `TestParser_PartialMissing_StillWorks`: indexes (0,2), expected=3 → partial-missing flow cũ (missing=[1]) — giữ behavior legitimate retry.
     - **Acceptance:** 6 test trên pass; existing tests trong `ai_test.go` + `translate_test.go` không regression.
 
-2. [ ] **Định nghĩa `ContextualTranslator` interface**
+2. [x] **Định nghĩa `ContextualTranslator` interface**
     - File: `backend/pkg/translate/translate.go`.
     - Add method `TranslateWithContext(ctx, texts, prior, following []string, targetLang) ([]string, error)`.
 
-3. [ ] **Update `TranslateSRT` — overlap CHỈ ở forced boundaries VÀ chỉ khi timing valid**
+3. [x] **Update `TranslateSRT` — overlap CHỈ ở forced boundaries VÀ chỉ khi timing valid**
     - Consume `ChunkResult{Batches, TimingValid}` từ chunker Phase 1.
     - **Early-out:** nếu `result.TimingValid == false` → KHÔNG apply overlap cho bất kỳ batch nào (prior=following=nil ở tất cả). Lý do: chunker đã fallback fixed-size vì timing hỏng, các flag `LeftForced/RightForced` không còn đáng tin → giữ behavior gần với legacy (no overlap) thay vì áp overlap khắp nơi.
     - Khi `TimingValid == true`, cho mỗi batch `b` tại index `k`:
@@ -104,7 +104,7 @@ type ContextualTranslator interface {
       - `TimingValid=true`, forced boundary → full overlap (3+3).
       - `TimingValid=false` (malformed SRT) → zero overhead toàn bộ, tương đương legacy behavior.
 
-4. [ ] **Update prompt builder**
+4. [x] **Update prompt builder**
     - File: `ai.go`. Đổi `buildLLMUserPrompt` để nhận thêm `prior, following []string`.
     - Section layout:
       ```
@@ -131,23 +131,23 @@ type ContextualTranslator interface {
     - Nếu prior rỗng, bỏ section. Tương tự following.
     - Cập nhật `defaultAIModelPrompt` (system prompt): thêm rule "Do NOT translate items in PRIOR/FOLLOWING CONTEXT sections. Only translate items under 'TRANSLATE THESE'. Return exactly the requested number of items, indexed 0..N-1."
 
-5. [ ] **Implement `TranslateWithContext` cho 3 provider**
+5. [x] **Implement `TranslateWithContext` cho 3 provider**
     - `openAICompatibleTranslator.TranslateWithContext` — call `buildLLMUserPrompt(texts, targetLang, ctx, prior, following)`, rest giống `Translate`.
     - Tương tự cho `geminiTranslator` và `anthropicTranslator`.
     - Refactor: extract common path vào helper để tránh duplicate (ví dụ `t.translateCore(ctx, texts, prior, following, targetLang)` return `([]string, error)`).
 
-6. [ ] **Giữ `Translate` như wrapper**
+6. [x] **Giữ `Translate` như wrapper**
     - `func (t *openAICompatibleTranslator) Translate(...) (...) { return t.TranslateWithContext(ctx, texts, nil, nil, targetLang) }`. Tránh duplicate code.
     - Tương tự 2 provider còn lại.
 
-7. [ ] **Update retry path — preserve forced-boundary info VÀ timingValid**
+7. [x] **Update retry path — preserve forced-boundary info VÀ timingValid**
     - `translateBatchWithRetry` signature (sau Phase 1 đã có `cues`): cần thêm 3 param `leftForced, rightForced bool, timingValid bool` — boundary metadata của batch gốc + flag toàn cục.
     - **Global kill-switch:** nếu `timingValid == false` → retry tuyệt đối không apply overlap (prior=following=nil ở mọi sub-call), bất kể `leftForced/rightForced`. Đây là mirror của early-out ở `TranslateSRT` top-level (Step 3) — giữ invariant "timing không hợp lệ → không overlap" ở mọi layer có thể gọi `TranslateWithContext`.
     - **Downsize retry** (batch contiguous, `timingValid==true`): khi chia batch gốc thành n sub-batches fixed-size, sub-batches INTERIOR (không phải đầu/cuối của batch gốc) KHÔNG có prior/following (vì chúng được quy vào "sub-batch forced at max" — nhưng đây là trong retry, không phải boundary gốc). Chỉ sub-batch đầu tiên kế thừa `leftForced` của batch gốc; sub-batch cuối cùng kế thừa `rightForced`. Interior boundaries của retry = forced trong scope retry nhưng KHÔNG có cue overlap (vì cue trước/sau là cue cùng batch gốc — redundant).
     - **Partial retry** (non-contiguous missing): Phase 1 đã quyết định disable gap-aware → cũng **disable overlap** cho path này. Lý do: cue thiếu rời rạc, "cue kế trước/sau" trong missing slice không có ý nghĩa context. Pass `prior=nil, following=nil, timingValid=false` cho retry của `missingTexts` (dùng `timingValid=false` làm tín hiệu "đừng overlap" thay vì phải nhớ thêm flag riêng).
     - Caller `TranslateSRT` truyền `result.TimingValid` từ chunker Phase 1 xuống mỗi call `translateBatchWithRetry`.
 
-8. [ ] **Unit tests — anti-leak assertable**
+8. [x] **Unit tests — anti-leak assertable**
     - Test prompt rendering (`ai_test.go`):
         - `TestPrompt_FirstBatch_NoPriorSection` — batch đầu (prior=nil) → output KHÔNG chứa `PRIOR CONTEXT`.
         - `TestPrompt_LastBatch_NoFollowingSection` — tương tự.
@@ -160,7 +160,7 @@ type ContextualTranslator interface {
         - `TestOpenAI_ContextualRequest_SectionsPresent` — feed prior+following → intercept HTTP body → assert có `"PRIOR CONTEXT"` + `"FOLLOWING CONTEXT"`.
         - `TestOpenAI_NonContextualRequest_SectionsAbsent` — call `Translate` (không context) → assert body KHÔNG chứa `"PRIOR CONTEXT"`.
 
-9. [ ] **Integration smoke — assertable metric**
+9. [x] **Integration smoke — assertable metric**
     - `TestTranslateSRT_OverlapOnlyForcedBoundaries` với mock `ContextualTranslator` trả text echo + log lại mỗi call `(prior, following)`:
         - Feed `testdata/movie_sparse.srt` (0 forced cuts expected từ Phase 1) → assert mọi call có `prior==nil && following==nil`.
         - Feed `testdata/sitcom_dense.srt` (≥1 forced cut expected) → assert ít nhất 1 call có `prior!=nil || following!=nil`, và số call có overlap == số forced boundaries từ Phase 1 chunker.

@@ -30,12 +30,12 @@ Thay vòng lặp chia batch cứng `for i := 0; i < len(cues); i += batchSize` t
 
 ## Implementation Steps
 
-1. [ ] **Extend `SRTCue` với timing fields**
+1. [x] **Extend `SRTCue` với timing fields**
     - Thêm `StartSec, EndSec float64` vào struct `SRTCue` trong `translate.go`.
     - Update `ParseSRT` để parse timing string (format `HH:MM:SS,mmm`) → float seconds. Giữ `Timing` string field để `BuildSRT` vẫn hoạt động (no-op change output).
     - Nếu parse fail (malformed timing) → set `StartSec=-1, EndSec=-1` (sentinel cho graceful degrade).
 
-2. [ ] **Viết chunker function — emit metadata về boundary type**
+2. [x] **Viết chunker function — emit metadata về boundary type**
     - File: `translate.go` (hoặc tách `chunker.go` nếu dễ đọc hơn). Name đề xuất: `chunkCuesByGap`.
     - Return struct giàu thông tin thay vì chỉ index pair, để Phase 2 consume được:
       ```go
@@ -63,12 +63,12 @@ Thay vòng lặp chia batch cứng `for i := 0; i < len(cues); i += batchSize` t
       - Trong fixed-size batches: set `LeftForced=false, RightForced=false` cho tất cả boundaries (kể cả interior) — vì không biết chúng là forced hay natural. Flag `TimingValid=false` là tín hiệu chính để Phase 2 consume.
     - **Invariant:** khi `TimingValid==false`, Phase 2 PHẢI ignore `LeftForced/RightForced` và không apply overlap. Điều này giữ behavior legacy khi timing hỏng.
 
-3. [ ] **Thay vòng lặp trong `TranslateSRT`**
+3. [x] **Thay vòng lặp trong `TranslateSRT`**
     - Thay block `for i := 0; i < len(cues); i += batchSize` (dòng ~130-140) bằng call `result := chunkCuesByGap(cues, batchSize)`.
     - Giữ nguyên logic concurrency + error aggregation, iterate `result.Batches`.
     - Lưu `result.TimingValid` để pass xuống Phase 2 consumer (hiện tại Phase 1 chưa dùng, nhưng Phase 2 sẽ cần). Có thể lưu trong closure variable hoặc field của batch work struct.
 
-4. [ ] **Retry path — xử lý đúng case non-contiguous**
+4. [x] **Retry path — xử lý đúng case non-contiguous**
     - `translateBatchWithRetry` có 2 retry path, cần xử lý khác nhau:
 
     **(a) Downsize-retry (`nextBatchSize < len(texts)`):** cues vẫn contiguous → OK dùng chunker gap-aware. Pass `[]SRTCue` subset từ caller qua signature mới: `translateBatchWithRetry(ctx, translator, texts []string, cues []SRTCue, targetLang) ([]string, error)`. Caller `TranslateSRT` truyền `cues[b.Start:b.End]`.
@@ -80,7 +80,7 @@ Thay vòng lặp chia batch cứng `for i := 0; i < len(cues); i += batchSize` t
 
     - Helper đề xuất: `splitForRetry(texts []string, cues []SRTCue, size int) [][2]int`. Nếu `cues==nil` hoặc `len(cues)!=len(texts)` → fixed-size. Else → gap-aware qua `chunkCuesByGap`.
 
-5. [ ] **Unit tests — dùng metric assertable, không manual inspect**
+5. [x] **Unit tests — dùng metric assertable, không manual inspect**
     - File: `translate_test.go` (hoặc `chunker_test.go`).
     - Helper test: `countForcedBoundaries(batches []Batch) int` — đếm số boundary có `RightForced==true` (không tính batch cuối).
     - Test cases:
@@ -93,7 +93,7 @@ Thay vòng lặp chia batch cứng `for i := 0; i < len(cues); i += batchSize` t
         - **Tier ordering sanity:** 50 cues + 1 gap 3.5s ở vị trí 25 → 2 batches split tại đó (natural). Move gap về vị trí 10 (size < min_size=20) → chunker KHÔNG cắt, đợi cho tới khi size ≥ 20.
     - Assert: mọi batch có `size ≤ maxBatch`, thứ tự liên tục (`batches[i].End == batches[i+1].Start`), cover toàn bộ input (`batches[0].Start==0`, `batches[-1].End==len(cues)`).
 
-6. [ ] **Integration smoke test — có numeric acceptance**
+6. [x] **Integration smoke test — có numeric acceptance**
     - Commit 2 testdata files: `testdata/sitcom_dense.srt` (Malcolm pilot snippet, ~100 cues đầu) + `testdata/movie_sparse.srt` (Avatar snippet, ~200 cues đầu). Đã verify từ NAS, KHÔNG chứa text nhạy cảm — chỉ dialog public TV/cinema.
     - Test `TestChunker_RealSamples`:
         - Sitcom: assert `forcedBoundaries / totalBoundaries < 0.5` (allow tệ nhưng không phải 100%).
