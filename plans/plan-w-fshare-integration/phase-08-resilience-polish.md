@@ -1,10 +1,10 @@
-# Phase 08: Session Resilience + Polish
+# Phase 08: Provider Resilience + Polish
 Status: ⬜ Pending
 Dependencies: Phase 07
 
 ## Objective
 
-Harden fshare integration cho production: session auto-refresh, rate-limit backoff, admin dashboard health card, captcha fallback, rescan scheduling. Polish edge cases phát hiện qua testing.
+Harden cloud storage integration cho production: per-provider auto-refresh (works for fshare password-auth + future OAuth providers), rate-limit backoff, admin dashboard health card, captcha fallback, rescan scheduling. Polish edge cases phát hiện qua testing.
 
 ## Context
 
@@ -12,59 +12,82 @@ Harden fshare integration cho production: session auto-refresh, rate-limit backo
 
 ## Implementation Steps
 
-### 1. Session Auto-Refresh Service
-- [ ] Tạo `backend/internal/service/cloud_session_service.go`:
+### 1. Provider Auto-Refresh Service
+- [ ] Tạo `backend/internal/service/provider_refresh.go`:
   ```go
-  type CloudSessionService struct {
-      repo          *repository.CloudSessionRepo
-      clientFactory func() *fshare.Client
-      crypto        []byte
-      logger        *slog.Logger
+  type ProviderRefreshService struct {
+      repo      *repository.StorageProviderRepo
+      registry  *cloudstorage.Registry
+      cryptoKey []byte
+      logger    *slog.Logger
   }
 
-  // RefreshExpiring loops over sessions nearing expiry (<5min) and re-logins.
-  // fshare session TTL ~30min — preemptively refresh mỗi 25min tick.
-  func (s *CloudSessionService) RefreshExpiring(ctx context.Context) error {
-      sessions, err := s.repo.ListExpiringSoon(ctx, time.Now().Add(5*time.Minute))
+  // RefreshExpiring loops over providers nearing expiry (<5min) and dispatches
+  // to the right auth flow. Works for password-auth AND OAuth drivers.
+  func (s *ProviderRefreshService) RefreshExpiring(ctx context.Context) error {
+      providers, err := s.repo.ListExpiringSoon(ctx, time.Now().Add(5*time.Minute))
       if err != nil { return err }
 
-      for _, sess := range sessions {
-          if err := s.refresh(ctx, sess); err != nil {
+      for _, p := range providers {
+          if err := s.refresh(ctx, p); err != nil {
               msg := err.Error()
-              sess.LastError = &msg
-              s.repo.Update(ctx, sess)
-              s.logger.Warn("fshare.session_refresh_failed", "id", sess.ID, "err", err)
-              continue // don't fail batch
+              p.LastError = &msg
+              s.repo.Update(ctx, p)
+              s.logger.Warn("provider.refresh_failed", "id", p.ID, "type", p.ProviderType, "err", err)
+              continue
           }
       }
       return nil
   }
 
-  // refresh decrypts credentials, logs in, persists new token + session_id.
-  func (s *CloudSessionService) refresh(ctx context.Context, sess *model.CloudSession) error {
-      credsJSON, _ := crypto.Decrypt(s.crypto, sess.CredentialsEncrypted)
-      var creds model.CredentialsPayload; json.Unmarshal(credsJSON, &creds)
-
-      client := s.clientFactory()
-      loginSess, err := client.Login(ctx, creds.Email, creds.Password)
+  func (s *ProviderRefreshService) refresh(ctx context.Context, p *model.StorageProvider) error {
+      driver, err := s.registry.Get(p.ProviderType)
       if err != nil { return err }
 
-      tokEnc, _ := crypto.Encrypt(s.crypto, []byte(loginSess.Token))
-      sidEnc, _ := crypto.Encrypt(s.crypto, []byte(loginSess.SessionID))
+      creds, err := cloudstorage.DecryptCredentials(s.cryptoKey, p.CredentialsEncrypted)
+      if err != nil { return err }
+
+      // Dispatch by auth flow — polymorphic per driver
+      var newCreds *cloudstorage.Credentials
+      switch d := driver.(type) {
+      case cloudstorage.PasswordAuthDriver:
+          // fshare: re-login with stored password (no refresh_token grant)
+          newCreds, err = d.AuthenticatePassword(ctx, creds.Email, creds.Password)
+      case cloudstorage.OAuthDriver:
+          // GDrive/OneDrive (future): use refresh_token grant
+          newCreds, err = d.RefreshToken(ctx, creds)
+      default:
+          return fmt.Errorf("driver %s: no refresh mechanism", driver.Type())
+      }
+      if err != nil { return err }
+
+      // Persist refreshed credentials + update account info
+      blob, err := cloudstorage.EncryptCredentials(s.cryptoKey, newCreds)
+      if err != nil { return err }
+
       now := time.Now()
-      expiry := now.Add(25 * time.Minute) // conservative buffer before 30min TTL
-      sess.TokenEncrypted = tokEnc
-      sess.SessionIDEncrypted = sidEnc
-      sess.TokenExpiresAt = &expiry
-      sess.LastRefreshAt = &now
-      sess.AccountType = &loginSess.AccountType
-      sess.LastError = nil
-      return s.repo.Update(ctx, sess)
+      p.CredentialsEncrypted = blob
+      p.TokenExpiresAt = &newCreds.ExpiresAt
+      p.LastRefreshAt = &now
+      p.LastError = nil
+
+      // Optional: call Provider.GetAccountInfo to refresh account_type/quota
+      provider, _ := driver.NewProvider(newCreds)
+      if info, aerr := provider.GetAccountInfo(ctx); aerr == nil {
+          p.AccountType = &info.AccountType
+          p.QuotaBytes = &info.QuotaBytes
+          p.UsedBytes = &info.UsedBytes
+          if !info.ExpiresAt.IsZero() {
+              p.AccountExpiresAt = &info.ExpiresAt
+          }
+      }
+
+      return s.repo.Update(ctx, p)
   }
   ```
-- [ ] Password persistence đã decided trong Phase 02 — stored in `credentials_encrypted` BLOB.
-- [ ] Add to `tasks` table: `cloud_session_refresh`, interval **5min** (check expiring_soon = <5min), re-login nếu cần.
-- [ ] Adjusted from original draft: TTL 30min, refresh tick 5min, re-login at 25min mark.
+- [ ] Dispatch polymorphic by driver auth flow — fshare uses password re-login, GDrive (future) uses OAuth refresh_token — service code unchanged when new driver added
+- [ ] Add to `tasks` table: `provider_refresh`, interval **5min**
+- [ ] Provider-agnostic: works với password-auth hôm nay và OAuth drivers sau này
 
 ### 2. Rate Limit Backoff (Already Implemented Phase 01)
 
@@ -76,13 +99,15 @@ Harden fshare integration cho production: session auto-refresh, rate-limit backo
 
 **Note:** fshare KHÔNG có 429 hoặc Retry-After headers (verified research). Rate limiting hiện ra như persistent 400s hoặc `code != 200`. Backoff: exponential 2s base, 5 max attempts (Phase 01).
 
-### 3. Admin Dashboard — Cloud Health Card
-- [ ] Backend endpoint `GET /api/admin/cloud/sessions` — list all sessions với health status
-- [ ] Health states (adjusted to 30min TTL reality):
+### 3. Admin Dashboard — Provider Health Card
+- [ ] Backend endpoint `GET /api/admin/cloud/providers/health` — aggregated health across all providers
+- [ ] Reuses per-provider list from Phase 06 `GET /api/admin/cloud/providers`
+- [ ] Health states (per-provider):
   - ✅ `healthy` — token valid, last_refresh < 20min ago
   - ⚠️ `expiring_soon` — <5min until estimated expiry
   - ❌ `expired` — past estimated expiry (TokenExpiresAt < now)
   - ❌ `error` — last_error not null
+- [ ] Dashboard widget: top-K unhealthy providers với one-click "Refresh all"
 - [ ] Webapp card trên admin dashboard:
   ```tsx
   <CloudSessionsCard>
@@ -108,24 +133,24 @@ Harden fshare integration cho production: session auto-refresh, rate-limit backo
 - [ ] Cookie paste sessions: `credentials_encrypted` NULL → auto-refresh service skip row.
 
 ### 5. Rescan Scheduling
-- [ ] Add scheduled task: `fshare_library_rescan`
+- [ ] Add scheduled task: `cloud_library_rescan`
 - [ ] Default interval: 24h (admin configurable)
-- [ ] Triggers scan for each fshare library: walks tree, detects new files, marks missing files
+- [ ] Triggers scan for each cloud library (any provider): walks tree, detects new files, marks missing files
 - [ ] Websocket event `scan.scheduled_start` + `scan.scheduled_complete`
 - [ ] Admin UI: "Last scan" timestamp trên library card
 
 ### 6. Error Observability
-- [ ] Structured logging cho fshare operations:
+- [ ] Structured logging tagged by provider:
   ```go
-  logger.Info("fshare.login", "email", email, "duration_ms", dur)
-  logger.Warn("fshare.rate_limited", "retry_after_s", 10)
-  logger.Error("fshare.session_refresh_failed", "session_id", id, "err", err)
+  logger.Info("provider.auth", "type", "fshare", "email", email, "duration_ms", dur)
+  logger.Warn("provider.rate_limited", "type", "fshare", "retry_after_s", 10)
+  logger.Error("provider.refresh_failed", "id", id, "type", "fshare", "err", err)
   ```
-- [ ] Admin dashboard: "Recent cloud errors" widget — last 10 errors từ logs
-- [ ] Metrics counters (lightweight — atomic counters, không Prometheus):
-  - `fshare_api_calls_total{endpoint, status}`
-  - `fshare_url_refreshes_total`
-  - `fshare_session_refreshes_total{outcome}`
+- [ ] Admin dashboard: "Recent cloud errors" widget — last 10 errors aggregated across providers
+- [ ] Metrics counters (lightweight atomic, không Prometheus):
+  - `provider_api_calls_total{type, endpoint, status}`
+  - `provider_url_refreshes_total{type}`
+  - `provider_auth_refreshes_total{type, outcome}`
 - [ ] Expose via `GET /api/admin/cloud/stats`
 
 ## Acceptance Criteria
@@ -175,9 +200,10 @@ Harden fshare integration cho production: session auto-refresh, rate-limit backo
 
 ## Out of Scope (Future Plans)
 
-- **Plan W+1**: Google Drive support (reuse SourceResolver abstraction)
-- **Plan W+2**: Thumbnail generation cho cloud files (partial download + ffmpeg)
-- **Plan W+3**: Web browser playback cho fshare (HLS proxy — big effort)
-- **Plan W+4**: Cross-region fshare load balancing (nếu fshare expose multi-CDN)
+- **Plan W+1**: Google Drive driver (reuse cloudstorage.Provider interface — ~5 days implementation)
+- **Plan W+2**: OneDrive driver (OAuth + MSAL)
+- **Plan W+3**: Thumbnail generation cho cloud files (partial download + ffmpeg)
+- **Plan W+4**: Web browser playback cho cloud media (HLS proxy — big effort)
 - Offline download / sync cho specific files user starred
 - Chromecast support cho cloud media (requires app server proxy vs direct CDN trade-off)
+- Cross-provider file migration (e.g., fshare → gdrive copy)

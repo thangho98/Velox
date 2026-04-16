@@ -1,10 +1,10 @@
-# Phase 04: Fshare Scanner + Metadata Matching
+# Phase 04: Cloud Scanner (Provider-based)
 Status: ⬜ Pending
 Dependencies: Phase 03
 
 ## Objective
 
-Viết `FshareWalker` — BFS qua fshare folder tree, insert `media_files` rows với `path = fshare://{code}`. Reuse filename parsing + TMDb matching từ existing scanner. Broadcast scan progress qua websocket cho admin dashboard.
+Viết `CloudWalker` — generic BFS scanner sử dụng `cloudstorage.Provider` interface. Works cho fshare hôm nay, GDrive/OneDrive khi có driver mới. Insert `media_files` rows với `path = {provider_type}://{native_id}` scheme. Reuse filename parsing + TMDb matching. Broadcast scan progress via websocket.
 
 ## Context
 
@@ -14,96 +14,115 @@ Viết `FshareWalker` — BFS qua fshare folder tree, insert `media_files` rows 
 - Websocket broadcast: `backend/internal/service/task_service.go` (reuse pattern từ marker backfill)
 - 10TB library ≈ 2500 files (4GB/file trung bình)
 - TMDb rate limit: 40 req/10s → cần throttle
+- Library has `storage_provider_id` + `source_url`; scanner resolves provider via Registry, parses URL to native folder ID, BFS qua Provider interface
+
+## Path Scheme
+
+Use `{provider_type}://{native_id}` so `media_files.path` encodes both provider + ID:
+
+| Provider | Example Path | Encoding |
+|---|---|---|
+| local | `/mnt/data/foo.mkv` | filesystem path |
+| fshare | `fshare://XZWCPAZV3J71` | scheme + linkcode |
+| gdrive (future) | `gdrive://1a2b3c...` | scheme + fileId |
+| onedrive (future) | `onedrive://01AB...` | scheme + itemId |
+
+Parsing: `strings.SplitN(path, "://", 2)` → `(providerType, nativeID)`.
 
 ## Implementation Steps
 
-### 1. FshareWalker Struct
-- [ ] Tạo `backend/internal/scanner/fshare_walker.go`:
+### 1. CloudWalker Struct (provider-agnostic)
+- [ ] Tạo `backend/internal/scanner/cloud_walker.go`:
   ```go
   package scanner
 
-  type FshareWalker struct {
-      resolver      source.SourceResolver // FshareResolver
-      library       *model.Library
-      mediaRepo     *repository.MediaFileRepo
-      matcher       matcher.TMDbMatcher
-      progressCh    chan<- ScanProgress
-      pageSize      int // default 100
-      tmdbThrottle  *rate.Limiter // 40 req / 10s
+  type CloudWalker struct {
+      provider     cloudstorage.Provider // fshare, gdrive, onedrive — walker doesn't care
+      library      *model.Library
+      mediaRepo    *repository.MediaFileRepo
+      matcher      matcher.TMDbMatcher
+      progressCh   chan<- ScanProgress
+      tmdbThrottle *rate.Limiter // 40 req / 10s
   }
 
   type ScanProgress struct {
-      LibraryID       int64
-      TotalFiles      int
-      ProcessedFiles  int
-      CurrentFolder   string
-      MatchedByTMDb   int
-      Errors          []string
+      LibraryID      int64
+      TotalFiles     int
+      ProcessedFiles int
+      CurrentFolder  string
+      MatchedByTMDb  int
+      Errors         []string
   }
 
-  func NewFshareWalker(opts FshareWalkerOpts) *FshareWalker
+  func NewCloudWalker(opts CloudWalkerOpts) *CloudWalker
   ```
 
-### 2. BFS Folder Traversal
+### 2. BFS Folder Traversal (provider-agnostic)
 - [ ] Method `Walk(ctx context.Context) error`:
   ```go
-  // BFS queue starting từ library.SourceRootID
-  queue := []string{library.SourceRootID}
+  // Parse library.SourceURL via provider → root folder ID
+  rootID, err := w.provider.ParseFolderURL(*w.library.SourceURL)
+  if err != nil { return err }
+
+  queue := []string{rootID}
   seen := make(map[string]bool)
 
   for len(queue) > 0 {
-      folderCode := queue[0]
+      folderID := queue[0]
       queue = queue[1:]
-      if seen[folderCode] { continue }
-      seen[folderCode] = true
+      if seen[folderID] { continue }
+      seen[folderID] = true
 
-      entries, err := w.resolver.ListFolder(ctx, folderCode)
+      items, err := w.provider.ListFolder(ctx, folderID)
       if err != nil {
           // log + continue — 1 folder fail không abort toàn bộ scan
           w.progressCh <- ScanProgress{Errors: []string{err.Error()}}
           continue
       }
 
-      for _, entry := range entries {
-          if entry.IsDir {
-              queue = append(queue, source.FshareFileCode(entry.SourcePath))
+      for _, item := range items {
+          if item.IsFolder {
+              queue = append(queue, item.ID)
           } else {
-              w.processFile(ctx, entry)
+              w.processFile(ctx, item)
           }
       }
   }
   ```
 - [ ] BFS ưu tiên breadth (user thấy top-level folders populate trước)
-- [ ] Cycle detection via `seen` map (fshare có shortcuts không? check HAR)
+- [ ] Cycle detection via `seen` map (fshare không có shortcuts; GDrive có — future drivers cần aware)
 
 ### 3. File Processing + Dedupe
-- [ ] Method `processFile(ctx, entry)`:
+- [ ] Method `processFile(ctx, item)`:
   ```go
-  // 1. Filter non-video MIME (reuse isVideoExt helper)
-  if !isVideoExt(entry.Name) { return }
+  // 1. Filter non-video MIME (check item.Mimetype + fallback to extension)
+  if !isVideoMime(item.Mimetype) && !isVideoExt(item.Name) { return }
 
-  // 2. Dedupe: check media_files WHERE path = entry.SourcePath
-  existing, err := w.mediaRepo.GetByPath(ctx, entry.SourcePath)
+  // 2. Encode path with provider scheme: "fshare://XYZ"
+  storagePath := w.provider.Type() + "://" + item.ID
+
+  // 3. Dedupe: check media_files WHERE path = storagePath
+  existing, err := w.mediaRepo.GetByPath(ctx, storagePath)
   if existing != nil { return } // already scanned
 
-  // 3. Parse filename → title + year + season + episode
-  parsed := filename.Parse(entry.Name)
+  // 4. Parse filename → title + year + season + episode
+  parsed := filename.Parse(item.Name)
 
-  // 4. TMDb match (rate-limited)
+  // 5. TMDb match (rate-limited)
   w.tmdbThrottle.Wait(ctx)
   match, err := w.matcher.Match(ctx, parsed)
 
-  // 5. Insert media_files
+  // 6. Insert media_files
   mf := &model.MediaFile{
-      LibraryID:  w.library.ID,
-      Path:       entry.SourcePath,
-      Size:       entry.Size,
-      Duration:   0, // unknown for cloud
-      Codec:      "",
-      IsHDR:      false, // runtime probe not available
-      DVProfile:  0,
-      TMDbID:     match.TMDbID,
-      MediaType:  match.MediaType,
+      LibraryID: w.library.ID,
+      Path:      storagePath,
+      Size:      item.Size,
+      Duration:  0, // unknown for cloud — ExoPlayer probes runtime
+      Codec:     "",
+      IsHDR:     false, // runtime probe not available
+      DVProfile: 0,
+      TMDbID:    match.TMDbID,
+      MediaType: match.MediaType,
       // ... title, year, season, episode từ parsed + match
   }
   w.mediaRepo.Insert(ctx, mf)
@@ -134,21 +153,31 @@ Viết `FshareWalker` — BFS qua fshare folder tree, insert `media_files` rows 
 - [ ] Modify [backend/internal/scanner/pipeline.go](backend/internal/scanner/pipeline.go):
   ```go
   func (p *Pipeline) ScanLibrary(ctx context.Context, lib *model.Library) error {
-      switch lib.SourceType {
-      case model.SourceTypeLocal:
-          return p.scanLocal(ctx, lib) // existing
-      case model.SourceTypeFshare:
-          walker := NewFshareWalker(FshareWalkerOpts{
-              resolver:   p.resolvers.For(lib.SourceType),
-              library:    lib,
-              mediaRepo:  p.mediaRepo,
-              matcher:    p.matcher,
-              progressCh: p.progressCh,
-          })
-          return walker.Walk(ctx)
-      default:
-          return fmt.Errorf("unsupported source type: %s", lib.SourceType)
+      if lib.StorageProviderID == nil {
+          return p.scanLocal(ctx, lib) // existing filesystem path
       }
+
+      // Cloud library: load provider + credentials from registry
+      sp, err := p.providerRepo.GetByID(ctx, *lib.StorageProviderID)
+      if err != nil { return fmt.Errorf("load provider: %w", err) }
+
+      driver, err := p.registry.Get(sp.ProviderType)
+      if err != nil { return err }
+
+      creds, err := cloudstorage.DecryptCredentials(p.cryptoKey, sp.CredentialsEncrypted)
+      if err != nil { return fmt.Errorf("decrypt creds: %w", err) }
+
+      provider, err := driver.NewProvider(creds)
+      if err != nil { return err }
+
+      walker := NewCloudWalker(CloudWalkerOpts{
+          provider:   provider,
+          library:    lib,
+          mediaRepo:  p.mediaRepo,
+          matcher:    p.matcher,
+          progressCh: p.progressCh,
+      })
+      return walker.Walk(ctx)
   }
   ```
 
@@ -161,16 +190,18 @@ Viết `FshareWalker` — BFS qua fshare folder tree, insert `media_files` rows 
 
 ## Acceptance Criteria
 
-- [ ] `scanner/fshare_walker_test.go` pass với mocked resolver + matcher:
+- [ ] `scanner/cloud_walker_test.go` pass với mocked `cloudstorage.Provider` + matcher:
   - [ ] BFS đúng thứ tự
-  - [ ] Dedupe skip existing paths
+  - [ ] Dedupe skip existing paths (with `{type}://{id}` encoding)
   - [ ] Non-video extensions skipped
-  - [ ] TMDb throttle respected (counter assertion)
+  - [ ] TMDb throttle respected
   - [ ] Progress events broadcast đúng frequency
-- [ ] Integration test: fake fshare resolver với 3-level tree (5 folders, 20 files) → verify all 20 inserted
-- [ ] Pipeline integration: `ScanLibrary` dispatch đúng theo `source_type`
-- [ ] Manual smoke test (dev env): scan fshare VIP account với 1 folder nhỏ (~50 files) → verify media_files rows
+  - [ ] Cycle detection (same folderID visited once)
+- [ ] Integration test: fake provider với 3-level tree (5 folders, 20 files) → verify all 20 inserted
+- [ ] Pipeline integration: `ScanLibrary` dispatch đúng theo `storage_provider_id` (nil = local, else cloud)
+- [ ] Manual smoke test (dev env): scan fshare VIP account với 1 folder nhỏ (~50 files) → verify `media_files` rows có `path = fshare://...`
 - [ ] Zero regression trên local scanner: existing tests pass
+- [ ] Walker KHÔNG hardcode "fshare" — test swap với mock provider for GDrive-like behavior
 
 ## Performance Targets
 

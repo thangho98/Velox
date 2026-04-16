@@ -1,269 +1,467 @@
-# Phase 03: Source Resolver Abstraction
+# Phase 03: CloudStorage Abstraction + Fshare Driver
 Status: ⬜ Pending
 Dependencies: Phase 02
 
 ## Objective
 
-Tạo `SourceResolver` interface trong `backend/internal/source/` để decouple library logic khỏi storage backend. `LocalResolver` wrap existing filesystem logic. `FshareResolver` mới dùng fshare client từ Phase 01.
+Tạo `internal/cloudstorage/` package với Provider + Driver interfaces. Implement Fshare driver wrapping `pkg/fshare`. Registry cho phép thêm Google Drive / OneDrive drivers sau này without touching scanner / stream handler.
 
 ## Context
 
-Hiện tại scanner + stream handler hardcoded assumption "file = local absolute path" ở nhiều chỗ:
-- [backend/internal/scanner/pipeline.go](backend/internal/scanner/pipeline.go) — `filepath.Walk`
-- [backend/internal/handler/stream.go](backend/internal/handler/stream.go) — `http.ServeFile`
-- [backend/pkg/ffprobe/ffprobe.go](backend/pkg/ffprobe/ffprobe.go) — probe local file
+Architecture đã chốt trong [plan.md](plan.md):
+- **Provider** = operates on authenticated cloud session (list, download URL, health)
+- **Driver** = factory + auth flow (build Provider from credentials)
+- **Registry** = startup singleton; dispatch by provider_type string
 
-Target: thêm layer trung gian `SourceResolver` — scanner + stream handler gọi interface, không biết underlying storage.
+Phase 01 `pkg/fshare` là raw API client (portable). Phase 03 là Velox-specific abstraction layer that adapts pkg/fshare to the Provider interface.
+
+## Package Structure
+
+```
+backend/internal/cloudstorage/
+├── provider.go       # Provider + Driver + PasswordAuthDriver + OAuthDriver interfaces
+├── registry.go       # Registry singleton
+├── types.go          # Item, AccountInfo, Credentials, AuthFlow
+├── errors.go         # Shared errors (ErrSessionExpired, ErrRateLimit, ErrInvalidCredentials)
+├── credentials.go    # Serialize/deserialize + AES-GCM integration
+├── provider_test.go  # Interface contract tests
+└── drivers/
+    └── fshare/
+        ├── driver.go        # implements Driver + PasswordAuthDriver
+        ├── provider.go      # implements Provider (wraps pkg/fshare.Client)
+        ├── url.go           # URL parsing: /folder/{code}, /file/{code}
+        ├── driver_test.go
+        └── url_test.go
+```
 
 ## Implementation Steps
 
-### 1. Define Interface
-- [ ] Tạo `backend/internal/source/resolver.go`:
+### 1. Core Interfaces + Types
+
+- [ ] `backend/internal/cloudstorage/provider.go`:
   ```go
-  package source
+  package cloudstorage
+
+  import "context"
+
+  // Provider operates on an authenticated cloud session.
+  // One Provider instance = one cloud account.
+  type Provider interface {
+      Type() string
+
+      // URL parsing — user-pasted URL → native ID.
+      ParseFolderURL(url string) (folderID string, err error)
+      ParseFileURL(url string) (fileID string, err error)
+
+      // Operations.
+      ListFolder(ctx context.Context, folderID string) ([]Item, error)
+      GetDownloadURL(ctx context.Context, fileID string) (string, error)
+      GetAccountInfo(ctx context.Context) (*AccountInfo, error)
+      CheckHealth(ctx context.Context) error
+  }
+
+  // Driver is the factory + auth flow for a provider type.
+  type Driver interface {
+      Type() string
+      DisplayName() string
+      AuthFlow() AuthFlow
+      NewProvider(creds *Credentials) (Provider, error)
+  }
+
+  // PasswordAuthDriver is implemented by drivers using email/password auth.
+  type PasswordAuthDriver interface {
+      Driver
+      AuthenticatePassword(ctx context.Context, email, password string) (*Credentials, error)
+  }
+
+  // OAuthDriver is implemented by drivers using OAuth 2.0 code flow.
+  type OAuthDriver interface {
+      Driver
+      AuthURL(state, redirectURI string) string
+      ExchangeCode(ctx context.Context, code, redirectURI string) (*Credentials, error)
+      RefreshToken(ctx context.Context, creds *Credentials) (*Credentials, error)
+  }
+  ```
+
+### 2. Value Types
+
+- [ ] `backend/internal/cloudstorage/types.go`:
+  ```go
+  type AuthFlow int
+  const (
+      AuthFlowPassword AuthFlow = iota
+      AuthFlowOAuth
+  )
+
+  // Item is the uniform cloud file/folder representation.
+  type Item struct {
+      ID       string
+      Name     string
+      IsFolder bool
+      Size     int64
+      Mimetype string
+      Modified time.Time
+      URL      string // canonical URL (for display / paste-back)
+  }
+
+  // AccountInfo normalizes provider-specific account metadata.
+  type AccountInfo struct {
+      Email       string
+      DisplayName string
+      AccountType string    // "Vip" (fshare), "Paid" (gdrive), etc.
+      QuotaBytes  int64
+      UsedBytes   int64
+      ExpiresAt   time.Time // VIP expiry (zero = no subscription)
+  }
+
+  // Credentials is the encrypted-at-rest auth state. `Meta` holds
+  // provider-specific fields that don't fit standard slots.
+  type Credentials struct {
+      ProviderType string            `json:"provider_type"`
+      Email        string            `json:"email"`
+      Password     string            `json:"password,omitempty"`      // password-auth providers
+      AccessToken  string            `json:"access_token,omitempty"`  // both
+      SessionID    string            `json:"session_id,omitempty"`    // password-auth (cookie)
+      RefreshToken string            `json:"refresh_token,omitempty"` // OAuth only
+      ExpiresAt    time.Time         `json:"expires_at"`
+      Meta         map[string]string `json:"meta,omitempty"`
+  }
+  ```
+
+### 3. Registry
+
+- [ ] `backend/internal/cloudstorage/registry.go`:
+  ```go
+  type Registry struct {
+      mu      sync.RWMutex
+      drivers map[string]Driver
+  }
+
+  func NewRegistry() *Registry {
+      return &Registry{drivers: map[string]Driver{}}
+  }
+
+  func (r *Registry) Register(d Driver) error {
+      r.mu.Lock()
+      defer r.mu.Unlock()
+      if _, exists := r.drivers[d.Type()]; exists {
+          return fmt.Errorf("cloudstorage: driver %q already registered", d.Type())
+      }
+      r.drivers[d.Type()] = d
+      return nil
+  }
+
+  func (r *Registry) Get(providerType string) (Driver, error) {
+      r.mu.RLock()
+      defer r.mu.RUnlock()
+      d, ok := r.drivers[providerType]
+      if !ok {
+          return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, providerType)
+      }
+      return d, nil
+  }
+
+  type DriverMeta struct {
+      Type        string   `json:"type"`
+      DisplayName string   `json:"display_name"`
+      AuthFlow    AuthFlow `json:"auth_flow"`
+  }
+
+  // List returns driver metadata for admin UI dropdown.
+  func (r *Registry) List() []DriverMeta { /* ... */ }
+  ```
+
+### 4. Typed Errors
+
+- [ ] `backend/internal/cloudstorage/errors.go`:
+  ```go
+  var (
+      ErrUnknownProvider    = errors.New("cloudstorage: unknown provider type")
+      ErrSessionExpired     = errors.New("cloudstorage: session expired")
+      ErrInvalidCredentials = errors.New("cloudstorage: invalid credentials")
+      ErrRateLimit          = errors.New("cloudstorage: rate limited")
+      ErrFileNotFound       = errors.New("cloudstorage: file not found")
+      ErrInvalidURL         = errors.New("cloudstorage: url not recognized for this provider")
+      ErrNotSupported       = errors.New("cloudstorage: operation not supported")
+      ErrAccountNotPremium  = errors.New("cloudstorage: account tier does not support downloads")
+  )
+  ```
+
+### 5. Credentials Encryption Helper
+
+- [ ] `backend/internal/cloudstorage/credentials.go`:
+  ```go
+  // EncryptCredentials serializes Credentials to JSON then AES-GCM encrypts.
+  func EncryptCredentials(key []byte, creds *Credentials) ([]byte, error) {
+      b, err := json.Marshal(creds)
+      if err != nil { return nil, err }
+      return crypto.Encrypt(key, b)
+  }
+
+  func DecryptCredentials(key, ciphertext []byte) (*Credentials, error) {
+      plain, err := crypto.Decrypt(key, ciphertext)
+      if err != nil { return nil, err }
+      var creds Credentials
+      if err := json.Unmarshal(plain, &creds); err != nil { return nil, err }
+      return &creds, nil
+  }
+  ```
+
+### 6. Fshare Driver
+
+- [ ] `backend/internal/cloudstorage/drivers/fshare/driver.go`:
+  ```go
+  package fshare
 
   import (
       "context"
-      "io"
       "time"
+
+      "github.com/thawng/velox/internal/cloudstorage"
+      pkgfshare "github.com/thawng/velox/pkg/fshare"
   )
 
-  // StreamRef identifies a playable media item in a specific source.
-  type StreamRef struct {
-      SourcePath string // "fshare://xyz" hoặc "/mnt/data/foo.mkv"
-      LibraryID  int64  // để resolve credentials (cloud only)
+  type Config struct {
+      AppKey    string // optional — falls back to pkgfshare.DefaultAppKey
+      UserAgent string // optional
   }
 
-  // DirectURL is the resolved URL for direct client playback.
-  type DirectURL struct {
-      URL       string
-      ExpiresAt time.Time // zero value = no expiry (local files)
-      Headers   map[string]string // e.g., Authorization for some sources
+  type Driver struct {
+      cfg Config
   }
 
-  // FolderEntry represents one item during scan (file or subfolder).
-  type FolderEntry struct {
-      SourcePath string // full path/URI
-      Name       string
-      Size       int64
-      IsDir      bool
-      ParentID   string // native parent identifier
-      Modified   time.Time
+  func NewDriver(cfg Config) *Driver {
+      return &Driver{cfg: cfg}
   }
 
-  // SourceResolver abstracts storage backends.
-  type SourceResolver interface {
-      Provider() string // "local" | "fshare"
+  // --- Driver interface ---
 
-      // ListFolder returns entries inside the given source-native folder identifier.
-      // For local: path is filesystem path. For fshare: folderCode.
-      ListFolder(ctx context.Context, folderID string) ([]FolderEntry, error)
-
-      // OpenRead opens a file for streaming bytes (used by scanner if probe needed).
-      // For cloud sources, may return io.ErrUnsupported — caller handles gracefully.
-      OpenRead(ctx context.Context, sourcePath string) (io.ReadCloser, error)
-
-      // ResolveStreamURL returns a URL the client can stream directly.
-      // For local: returns internal Velox URL + api_key.
-      // For fshare: returns direct fshare CDN URL.
-      ResolveStreamURL(ctx context.Context, ref StreamRef) (*DirectURL, error)
-
-      // Exists checks if a source path still exists (for rescan prune).
-      Exists(ctx context.Context, sourcePath string) (bool, error)
-  }
-  ```
-
-### 2. LocalResolver Implementation
-- [ ] Tạo `backend/internal/source/local_resolver.go`:
-  ```go
-  type LocalResolver struct {
-      apiKeyStore *auth.APIKeyStore // existing
+  func (d *Driver) Type() string        { return "fshare" }
+  func (d *Driver) DisplayName() string { return "Fshare" }
+  func (d *Driver) AuthFlow() cloudstorage.AuthFlow {
+      return cloudstorage.AuthFlowPassword
   }
 
-  func NewLocalResolver(store *auth.APIKeyStore) *LocalResolver
-
-  func (r *LocalResolver) Provider() string { return "local" }
-
-  func (r *LocalResolver) ListFolder(ctx context.Context, dirPath string) ([]FolderEntry, error) {
-      // wrap os.ReadDir
-  }
-
-  func (r *LocalResolver) OpenRead(ctx context.Context, path string) (io.ReadCloser, error) {
-      return os.Open(path)
-  }
-
-  func (r *LocalResolver) ResolveStreamURL(ctx context.Context, ref StreamRef) (*DirectURL, error) {
-      // Generate api_key (existing logic), return internal /api/stream/{id}?api_key=...
-  }
-
-  func (r *LocalResolver) Exists(ctx context.Context, path string) (bool, error) {
-      _, err := os.Stat(path); return err == nil, nil
-  }
-  ```
-
-### 3. FshareResolver Implementation
-- [ ] Tạo `backend/internal/source/fshare_resolver.go`:
-  ```go
-  type FshareResolver struct {
-      clientFactory func() *fshare.Client // new client per call (session isolation)
-      sessionRepo   *repository.CloudSessionRepo
-      cryptoKey     []byte
-      libraryRepo   *repository.LibraryRepo
-  }
-
-  // hydrateClient: load cloud_session → decrypt → inject into fresh client.
-  func (r *FshareResolver) hydrateClient(ctx context.Context, credentialsID int64) (*fshare.Client, *model.CloudSession, error) {
-      sess, err := r.sessionRepo.GetByID(ctx, credentialsID)
-      if err != nil { return nil, nil, err }
-
-      // Decrypt credentials (for auto-relogin)
-      credsJSON, err := crypto.Decrypt(r.cryptoKey, sess.CredentialsEncrypted)
-      var creds CredentialsPayload; json.Unmarshal(credsJSON, &creds)
-
-      client := r.clientFactory()
+  func (d *Driver) NewProvider(creds *cloudstorage.Credentials) (cloudstorage.Provider, error) {
+      client, err := d.newClient()
+      if err != nil { return nil, err }
+      client.RestoreSession(creds.AccessToken, creds.SessionID)
       client.SetCredentials(creds.Email, creds.Password)
+      return &provider{client: client}, nil
+  }
 
-      // Optional: inject existing token + session_id if not expired
-      if sess.TokenEncrypted != nil && sess.SessionIDEncrypted != nil {
-          token, _ := crypto.Decrypt(r.cryptoKey, sess.TokenEncrypted)
-          sessionID, _ := crypto.Decrypt(r.cryptoKey, sess.SessionIDEncrypted)
-          client.RestoreSession(string(token), string(sessionID))
+  // --- PasswordAuthDriver interface ---
+
+  func (d *Driver) AuthenticatePassword(ctx context.Context, email, password string) (*cloudstorage.Credentials, error) {
+      client, err := d.newClient()
+      if err != nil { return nil, err }
+      sess, err := client.Login(ctx, email, password)
+      if err != nil {
+          return nil, mapFshareError(err)
       }
-      return client, sess, nil
+      return &cloudstorage.Credentials{
+          ProviderType: "fshare",
+          Email:        email,
+          Password:     password, // stored encrypted at rest
+          AccessToken:  sess.Token,
+          SessionID:    sess.SessionID,
+          ExpiresAt:    time.Now().Add(25 * time.Minute),
+      }, nil
   }
 
-  // persistSessionIfChanged: if client's session changed during call → save back encrypted.
-  func (r *FshareResolver) persistSessionIfChanged(ctx context.Context, sess *model.CloudSession, client *fshare.Client, preCallToken string) error {
-      current := client.Session()
-      if current == nil || current.Token == preCallToken {
-          return nil // no change
+  func (d *Driver) newClient() (*pkgfshare.Client, error) {
+      opts := pkgfshare.Options{
+          AppKey:    d.cfg.AppKey,
+          UserAgent: d.cfg.UserAgent,
       }
-      tokEnc, _ := crypto.Encrypt(r.cryptoKey, []byte(current.Token))
-      sidEnc, _ := crypto.Encrypt(r.cryptoKey, []byte(current.SessionID))
-      now := time.Now()
-      expiry := now.Add(25 * time.Minute)
-      sess.TokenEncrypted = tokEnc
-      sess.SessionIDEncrypted = sidEnc
-      sess.TokenExpiresAt = &expiry
-      sess.LastRefreshAt = &now
-      return r.sessionRepo.Update(ctx, sess)
-  }
-
-  func NewFshareResolver(factory func() *fshare.Client, sessRepo *repository.CloudSessionRepo, key []byte, libRepo *repository.LibraryRepo) *FshareResolver
-
-  func (r *FshareResolver) Provider() string { return "fshare" }
-
-  func (r *FshareResolver) ListFolder(ctx context.Context, folderCode string) ([]FolderEntry, error) {
-      items, err := r.client.ListFolder(ctx, folderCode)
-      // Convert FolderItem → FolderEntry with sourcePath = "fshare://" + linkcode
-  }
-
-  func (r *FshareResolver) OpenRead(ctx context.Context, sourcePath string) (io.ReadCloser, error) {
-      return nil, io.ErrUnsupported // KHÔNG support remote probe phase này
-  }
-
-  func (r *FshareResolver) ResolveStreamURL(ctx context.Context, ref StreamRef) (*DirectURL, error) {
-      // 1. Load library → get source_credentials_id
-      // 2. Load cloud_session → decrypt credentials (email+password) + token + session_id
-      // 3. Inject session into fshare.Client (token in struct, cookie via jar)
-      // 4. client.SetCredentials(email, password) — for auto-relogin on code:201
-      // 5. Parse fileCode from sourcePath ("fshare://abc" → "abc")
-      // 6. Call client.GetDirectLink → client auto-retries on ErrSessionExpired
-      // 7. Persist new session back to DB if re-login happened (compare token before/after)
-      // 8. Return DirectURL with ExpiresAt = time.Now() + 5min (conservative — URL có thể single-use)
-  }
-
-  func (r *FshareResolver) Exists(ctx context.Context, sourcePath string) (bool, error) {
-      // Call client.GetFileInfo → check not-found vs error
+      return pkgfshare.NewClient(opts)
   }
   ```
 
-### 4. Resolver Factory / Registry
-- [ ] Tạo `backend/internal/source/factory.go`:
+### 7. Fshare Provider + URL Parsing
+
+- [ ] `backend/internal/cloudstorage/drivers/fshare/url.go`:
   ```go
-  type ResolverFactory struct {
-      resolvers map[string]SourceResolver
-  }
+  package fshare
 
-  func NewResolverFactory() *ResolverFactory
+  import (
+      "fmt"
+      "net/url"
+      "regexp"
+      "strings"
 
-  func (f *ResolverFactory) Register(r SourceResolver) {
-      f.resolvers[r.Provider()] = r
-  }
+      "github.com/thawng/velox/internal/cloudstorage"
+  )
 
-  func (f *ResolverFactory) For(sourceType string) (SourceResolver, error) {
-      r, ok := f.resolvers[sourceType]
-      if !ok {
-          return nil, fmt.Errorf("unknown source type: %s", sourceType)
+  // Supported URL shapes:
+  //   https://www.fshare.vn/folder/<linkcode>
+  //   https://www.fshare.vn/folder/<linkcode>/anything
+  //   https://fshare.vn/folder/<linkcode>
+  //   https://www.fshare.vn/file/<linkcode>
+  //   fshare://<linkcode>  (internal scheme — not exposed to users)
+
+  var (
+      folderPathRe = regexp.MustCompile(`^/folder/([A-Za-z0-9]+)`)
+      filePathRe   = regexp.MustCompile(`^/file/([A-Za-z0-9]+)`)
+  )
+
+  func parseFolderURL(rawURL string) (string, error) {
+      u, err := url.Parse(strings.TrimSpace(rawURL))
+      if err != nil { return "", fmt.Errorf("%w: %v", cloudstorage.ErrInvalidURL, err) }
+      if !strings.Contains(u.Host, "fshare.vn") {
+          return "", fmt.Errorf("%w: host %q", cloudstorage.ErrInvalidURL, u.Host)
       }
-      return r, nil
+      m := folderPathRe.FindStringSubmatch(u.Path)
+      if m == nil {
+          return "", fmt.Errorf("%w: path %q does not match /folder/<code>", cloudstorage.ErrInvalidURL, u.Path)
+      }
+      return m[1], nil
   }
 
-  // ByLibrary picks resolver based on library.SourceType.
-  func (f *ResolverFactory) ByLibrary(lib *model.Library) (SourceResolver, error) {
-      return f.For(lib.SourceType)
-  }
+  func parseFileURL(rawURL string) (string, error) { /* symmetric with folder */ }
   ```
 
-### 5. Path Prefix Helpers
-- [ ] Tạo `backend/internal/source/path.go`:
+- [ ] `backend/internal/cloudstorage/drivers/fshare/provider.go`:
   ```go
-  const FshareScheme = "fshare://"
+  type provider struct {
+      client *pkgfshare.Client
+  }
 
-  // ParseSourcePath returns (provider, nativeID).
-  // "fshare://abc" → ("fshare", "abc")
-  // "/mnt/data/foo.mkv" → ("local", "/mnt/data/foo.mkv")
-  func ParseSourcePath(p string) (provider, id string)
+  func (p *provider) Type() string { return "fshare" }
 
-  func IsFsharePath(p string) bool { return strings.HasPrefix(p, FshareScheme) }
+  func (p *provider) ParseFolderURL(url string) (string, error) { return parseFolderURL(url) }
+  func (p *provider) ParseFileURL(url string) (string, error)   { return parseFileURL(url) }
 
-  func FshareFileCode(p string) string { return strings.TrimPrefix(p, FshareScheme) }
+  func (p *provider) ListFolder(ctx context.Context, folderID string) ([]cloudstorage.Item, error) {
+      items, err := p.client.ListFolder(ctx, folderID)
+      if err != nil { return nil, mapFshareError(err) }
+      return convertItems(items), nil
+  }
 
-  func FsharePath(fileCode string) string { return FshareScheme + fileCode }
+  func (p *provider) GetDownloadURL(ctx context.Context, fileID string) (string, error) {
+      url, err := p.client.GetDirectLink(ctx, fileID)
+      if err != nil { return "", mapFshareError(err) }
+      return url, nil
+  }
+
+  func (p *provider) GetAccountInfo(ctx context.Context) (*cloudstorage.AccountInfo, error) {
+      info, err := p.client.GetUserInfo(ctx)
+      if err != nil { return nil, mapFshareError(err) }
+      expires, _ := strconv.ParseInt(info.ExpireVIP, 10, 64)
+      quota, _ := strconv.ParseInt(info.Webspace, 10, 64)
+      return &cloudstorage.AccountInfo{
+          Email:       info.Email,
+          DisplayName: info.Name,
+          AccountType: info.AccountType,
+          QuotaBytes:  quota,
+          ExpiresAt:   time.Unix(expires, 0),
+      }, nil
+  }
+
+  func (p *provider) CheckHealth(ctx context.Context) error {
+      return mapFshareError(p.client.CheckSession(ctx))
+  }
+
+  // Convert fshare items → cloudstorage.Item (uniform shape).
+  func convertItems(src []pkgfshare.FolderItem) []cloudstorage.Item {
+      out := make([]cloudstorage.Item, 0, len(src))
+      for _, it := range src {
+          canonicalURL := ""
+          if it.IsFolder() {
+              canonicalURL = "https://www.fshare.vn/folder/" + it.Linkcode
+          } else {
+              canonicalURL = "https://www.fshare.vn/file/" + it.Linkcode
+          }
+          out = append(out, cloudstorage.Item{
+              ID:       it.Linkcode,
+              Name:     it.Name,
+              IsFolder: it.IsFolder(),
+              Size:     it.SizeBytes(),
+              Mimetype: it.Mimetype,
+              Modified: it.ModifiedTime(),
+              URL:      canonicalURL,
+          })
+      }
+      return out
+  }
+
+  // mapFshareError translates pkg/fshare errors → cloudstorage errors.
+  func mapFshareError(err error) error {
+      if err == nil { return nil }
+      switch {
+      case errors.Is(err, pkgfshare.ErrSessionExpired):
+          return cloudstorage.ErrSessionExpired
+      case errors.Is(err, pkgfshare.ErrInvalidCredentials):
+          return cloudstorage.ErrInvalidCredentials
+      case errors.Is(err, pkgfshare.ErrRateLimit):
+          return cloudstorage.ErrRateLimit
+      case errors.Is(err, pkgfshare.ErrLinkDead), errors.Is(err, pkgfshare.ErrNotLoggedIn):
+          return cloudstorage.ErrFileNotFound
+      case errors.Is(err, pkgfshare.ErrNotVIP):
+          return cloudstorage.ErrAccountNotPremium
+      default:
+          return err
+      }
+  }
   ```
-- [ ] Unit tests cho các helper
 
-### 6. Wire vào ServerApp
+### 8. Startup Wiring
+
 - [ ] `backend/cmd/server/server_app.go`:
-  - [ ] Nếu `config.Cloud.Enabled`:
-    - [ ] Tạo `fshare.Client`
-    - [ ] Tạo `FshareResolver`
-    - [ ] Register vào factory
-  - [ ] Luôn register `LocalResolver`
-  - [ ] Inject `ResolverFactory` vào services cần dùng (Phase 04 scanner, Phase 05 stream handler)
+  ```go
+  if cfg.Cloud.Enabled {
+      registry := cloudstorage.NewRegistry()
+
+      fshareDriver := fshareDriver.NewDriver(fshareDriver.Config{
+          AppKey:    cfg.Cloud.FshareAppKey,
+          UserAgent: cfg.Cloud.FshareUserAgent,
+      })
+      if err := registry.Register(fshareDriver); err != nil {
+          log.Fatalf("register fshare driver: %v", err)
+      }
+
+      // Future: registry.Register(googledriveDriver.NewDriver(cfg.Cloud.GDrive))
+
+      app.CloudRegistry = registry
+  }
+  ```
 
 ## Acceptance Criteria
 
-- [ ] `backend/internal/source/` compile clean với unit tests
-- [ ] `LocalResolver` test: listFolder trên tmpdir, resolveStreamURL returns valid internal URL + api_key
-- [ ] `FshareResolver` test (with mock fshare.Client): listFolder converts items, resolveStreamURL decrypts token + calls client
-- [ ] `ResolverFactory` test: register + lookup, unknown type error
-- [ ] `ParseSourcePath` + helpers unit tests pass (10+ edge cases)
-- [ ] ServerApp startup KHÔNG regression khi `VELOX_CLOUD_SOURCES_ENABLED=false`
+- [ ] `cd backend && go build ./internal/cloudstorage/...` clean
+- [ ] Unit tests pass (race detector):
+  - [ ] `Registry` — register + lookup + duplicate detection
+  - [ ] `EncryptCredentials` + `DecryptCredentials` round-trip
+  - [ ] Fshare driver `AuthenticatePassword` (mock `pkg/fshare` client via interface)
+  - [ ] Fshare URL parser — folder/file shapes, rejections, edge cases (trailing slash, query params)
+  - [ ] `mapFshareError` — all pkg/fshare error types map correctly
+  - [ ] `convertItems` — folder vs file detection, URL canonicalization
+- [ ] Integration test with real `pkg/fshare.Client` (mocked HTTP server) — Provider interface end-to-end
+- [ ] Smoke test (manual, dev env): AuthenticatePassword → NewProvider → ListFolder → GetDownloadURL — all work against real fshare VIP account
+- [ ] Interface contract documented — adding new driver requires only: implement Provider + Driver, register at startup
+- [ ] No regression: startup OK khi `VELOX_CLOUD_SOURCES_ENABLED=false`
 
 ## Design Notes
 
-- **Interface granularity:** `OpenRead` intentional cho scanner probe (local only); fshare returns `io.ErrUnsupported` — scanner caller handles (skip ffprobe for cloud).
-- **ResolveStreamURL placement:** Resolver biết cách generate URL, handler chỉ orchestrate. Keeps handler thin.
-- **Session refresh location:** `fshare.Client` internal `withSessionRetry` handles code:201 → relogin automatic (Phase 01). FshareResolver orchestrates: decrypt creds from DB → feed vào client → call API → persist refreshed session back. NO retry logic duplicated in resolver.
-- **Credentials access:** Resolver NHẬN `sessionRepo` + `cryptoKey` via constructor — KHÔNG pass qua method args (reduces handler complexity).
-- **Error mapping (fshare → source):** FshareResolver wraps `fshare` package errors:
-  - `fshare.ErrSessionExpired` (after relogin fail) → `source.ErrSessionExpired` (HTTP 401)
-  - `fshare.ErrInvalidCredentials` → `source.ErrInvalidCredentials` (HTTP 401)
-  - `fshare.ErrRateLimit` → `source.ErrRateLimit` (HTTP 429)
-  - `fshare.ErrLinkDead` → `source.ErrFileNotFound` (HTTP 404)
-  - `fshare.ErrNotVIP` → `source.ErrInvalidCredentials` (HTTP 403 with clear message)
+- **Credentials.Password stored encrypted**: fshare has no refresh_token grant; auto-refresh scheduler needs password. GDrive/OneDrive use refresh_token (password field empty).
+- **Session restore pattern**: Driver.NewProvider takes decrypted Credentials, hydrates internal client. No per-call login.
+- **Error translation boundary**: pkg/fshare errors stay inside driver; cloudstorage errors cross the boundary upward. Scanner/handler don't know fshare-specific errors.
+- **URL parsing is driver responsibility**: Each driver owns its URL format. Scanner gives raw URL → driver parses → native ID.
+- **Provider instances are disposable**: Created fresh per request (no pooling). Cookie jar + token in fresh client per request. Thread-safety via driver's NewProvider factory.
+- **Registry is read-only after startup**: Drivers register once in main(); runtime only reads.
 
 ## Gotchas
 
-- `io.ErrUnsupported` cần import từ `errors` (Go 1.21+). Chúng ta đang dùng 1.26 — OK.
-- Factory map lookup race-condition: register xảy ra một lần ở startup → no mutex needed nếu đúng pattern (construct → register → done → read-only).
-- `FshareResolver.ResolveStreamURL` error path: nếu session refresh fail → return typed error để handler biết status code trả về (`403` vs `503`).
-- **Persist refreshed session back:** Khi fshare.Client auto-relogin (Phase 01 `withSessionRetry`), session values change. Resolver PHẢI compare `client.Session().Token` với pre-call token; nếu khác → encrypt + update cloud_sessions row. Otherwise stale token gets re-written next call. Pattern: capture token pre-call, compare post-call, conditional write.
-- **Client instance per request vs shared:** `fshare.Client` có session state. Don't share across library credentials. Factory để FshareResolver construct new client per library (hoặc per-credential-ID cache với LRU eviction).
+- `pkg/fshare.Client` has internal state (cookie jar + session). Creating fresh Client per call isolates sessions. If pooling becomes necessary → cache by credentials.ID.
+- URL parsing edge cases: trailing slash, query params (`?t=123`), fragments (`#section`), percent-encoded names. Tests cover all.
+- `Credentials.Meta` map: use for extras that don't fit (e.g., fshare `account_type` cached). Keep thin — main fields first-class.
+- Converting `pkg/fshare.FolderItem` → `cloudstorage.Item` loses provider-specific fields (PID, path). If scanner needs those → add to Item.Meta later.
+- Fshare VIP expiry (`ExpireVIP`) is string unix ts. Convert to time.Time in `GetAccountInfo`.
 
 ## Out of Scope
 
-- Multi-account fshare trong 1 library (1 library = 1 account)
-- Stream URL caching (phase 5 optionally adds TTL cache)
-- Parallel listFolder optimization (scanner phase 4 handles concurrency)
+- Google Drive driver (architecture supports, implementation phase sau)
+- OneDrive driver (same)
+- OAuth callback HTTP handler (needed when adding OAuth provider)
+- Provider instance pooling / LRU cache
+- Cross-provider file copy / sync

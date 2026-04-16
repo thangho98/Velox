@@ -4,174 +4,211 @@ Dependencies: Phase 01
 
 ## Objective
 
-Extend `libraries` table để support multiple source types. Thêm `cloud_sessions` table để persist encrypted fshare credentials. Viết AES-GCM encryption helper.
+Thêm `storage_providers` table (1 row = 1 cloud account, reusable across multiple libraries). Extend `libraries` với foreign key tới provider + `source_url`. Viết AES-256-GCM encryption helper.
 
 ## Context
 
-- Current [backend/internal/model/library.go](backend/internal/model/library.go) chỉ có local filesystem path
-- Migration runner: [backend/internal/database/migrate/registry.go](backend/internal/database/migrate/registry.go) — đã có 35 migrations
-- Encryption cần cho fshare token (full account access) — PHẢI mã hoá at rest
-- Decision: AES-GCM với key từ env `VELOX_CLOUD_SECRET` (32-byte hex, generate 1 lần)
-- **Store cả email + password encrypted** (KHÔNG chỉ token) — fshare session ~30min TTL, cần re-login autonomous từ scheduler (Phase 08). Password-only persistence là điều kiện tiên quyết.
+- Phase 01 đã có `pkg/fshare` hoạt động live với VIP account thật
+- Phase 02 setup persistence layer cho credentials + library ↔ provider linkage
+- Architecture đã chốt: storage provider = 1 cloud account; 1 provider → N libraries
+- Encryption needed: fshare stores password (no refresh_token grant); GDrive/OneDrive store refresh_token (future)
 
 ## Implementation Steps
 
-### 1. Encryption Helper Package
+### 1. Encryption Helper
 - [ ] Tạo `backend/pkg/crypto/aesgcm.go`:
   ```go
   package crypto
 
-  // Encrypt using AES-256-GCM. Key must be 32 bytes.
-  // Returns: nonce (12B) || ciphertext || tag.
+  // Encrypt returns nonce (12B) || ciphertext || tag.
   func Encrypt(key, plaintext []byte) ([]byte, error)
   func Decrypt(key, ciphertext []byte) ([]byte, error)
 
   // LoadKeyFromEnv reads hex-encoded 32-byte key from VELOX_CLOUD_SECRET.
-  // Returns error nếu env empty (cloud features disabled) hoặc key invalid.
+  // Returns ErrNoKey if env unset, ErrInvalidKey if not 32 bytes hex.
   func LoadKeyFromEnv() ([]byte, error)
   ```
-- [ ] Tests: `aesgcm_test.go` — round-trip, tamper detection, short key rejection
-- [ ] Document cách generate: `openssl rand -hex 32`
+- [ ] Tests: `aesgcm_test.go`:
+  - [ ] Round-trip (plaintext → encrypt → decrypt → same plaintext)
+  - [ ] Tamper detection (modify ciphertext → decrypt fails)
+  - [ ] Short key rejection (< 32 bytes → error)
+  - [ ] Wrong key rejection (different key → decrypt fails)
+  - [ ] Empty plaintext handling
+- [ ] README note: generate key via `openssl rand -hex 32`; rotation requires re-login all providers
 
-### 2. Migration 036 — Extend `libraries`
-- [ ] File `backend/internal/database/migrate/036_libraries_source_type.go`:
+### 2. Migration 036 — `storage_providers` table
+
+- [ ] File `backend/internal/database/migrate/036_storage_providers.go`:
   ```go
   package migrate
 
   var Migration036 = Migration{
       Version: 36,
-      Name:    "libraries_source_type",
+      Name:    "storage_providers",
       Up: `
-          ALTER TABLE libraries ADD COLUMN source_type TEXT NOT NULL DEFAULT 'local';
-          ALTER TABLE libraries ADD COLUMN source_credentials_id INTEGER REFERENCES cloud_sessions(id) ON DELETE SET NULL;
-          ALTER TABLE libraries ADD COLUMN source_root_id TEXT; -- fshare folder linkcode
-          CREATE INDEX idx_libraries_source_type ON libraries(source_type);
+          CREATE TABLE storage_providers (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              provider_type TEXT NOT NULL,
+              display_name TEXT NOT NULL,
+              account_email TEXT NOT NULL,
+              credentials_encrypted BLOB NOT NULL,
+              account_type TEXT,
+              quota_bytes INTEGER,
+              used_bytes INTEGER,
+              account_expires_at DATETIME,
+              token_expires_at DATETIME,
+              last_refresh_at DATETIME,
+              last_check_at DATETIME,
+              last_error TEXT,
+              created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(user_id, provider_type, account_email)
+          );
+          CREATE INDEX idx_storage_providers_user ON storage_providers(user_id);
+          CREATE INDEX idx_storage_providers_type ON storage_providers(provider_type);
       `,
   }
   ```
-- [ ] `source_type` CHECK constraint: `IN ('local', 'fshare')` (SQLite: add qua trigger hoặc rely on application-level enum)
 - [ ] Register trong `registry.go`
 
-### 3. Migration 037 — `cloud_sessions` table
-- [ ] File `backend/internal/database/migrate/037_cloud_sessions.go`:
+### 3. Migration 037 — extend `libraries`
+
+- [ ] File `backend/internal/database/migrate/037_libraries_provider_link.go`:
   ```go
   var Migration037 = Migration{
       Version: 37,
-      Name:    "cloud_sessions",
+      Name:    "libraries_provider_link",
       Up: `
-          CREATE TABLE cloud_sessions (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-              provider TEXT NOT NULL,
-              account_email TEXT NOT NULL,
-              credentials_encrypted BLOB NOT NULL, -- AES-GCM(email + password) — needed for auto re-login
-              token_encrypted BLOB,                -- AES-GCM(active token from last login) — nullable before first login
-              session_id_encrypted BLOB,           -- AES-GCM(cookie session_id) — nullable
-              token_expires_at DATETIME,           -- estimated expiry (last_login + 30min). Soft value, confirm via CheckSession.
-              last_refresh_at DATETIME,            -- time of last successful login/refresh
-              last_error TEXT,
-              account_type TEXT,                   -- "Vip" | "Fee" — from login response
-              created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              UNIQUE(user_id, provider, account_email)
-          );
-          CREATE INDEX idx_cloud_sessions_provider ON cloud_sessions(provider);
-          CREATE INDEX idx_cloud_sessions_user ON cloud_sessions(user_id);
+          ALTER TABLE libraries ADD COLUMN storage_provider_id INTEGER REFERENCES storage_providers(id) ON DELETE SET NULL;
+          ALTER TABLE libraries ADD COLUMN source_url TEXT;
+          CREATE INDEX idx_libraries_provider ON libraries(storage_provider_id);
       `,
   }
   ```
 - [ ] Register trong `registry.go`
-- [ ] Migration 037 PHẢI chạy SAU 036 (foreign key dependency)
 
-### 4. Models + Repository
+**Semantics:**
+- `storage_provider_id IS NULL` → local filesystem library (use existing `path` column)
+- `storage_provider_id IS NOT NULL` → cloud library (use `source_url` + `storage_provider_id`)
+- Zero migration side-effects: existing libraries auto-get NULL values
+
+### 4. Models
+
+- [ ] `backend/internal/model/storage_provider.go`:
+  ```go
+  type StorageProvider struct {
+      ID                    int64      `json:"id"`
+      UserID                int64      `json:"user_id"`
+      ProviderType          string     `json:"provider_type"`  // "fshare"
+      DisplayName           string     `json:"display_name"`
+      AccountEmail          string     `json:"account_email"`
+      CredentialsEncrypted  []byte     `json:"-"`              // never expose to API
+      AccountType           *string    `json:"account_type,omitempty"`
+      QuotaBytes            *int64     `json:"quota_bytes,omitempty"`
+      UsedBytes             *int64     `json:"used_bytes,omitempty"`
+      AccountExpiresAt      *time.Time `json:"account_expires_at,omitempty"`
+      TokenExpiresAt        *time.Time `json:"token_expires_at,omitempty"`
+      LastRefreshAt         *time.Time `json:"last_refresh_at,omitempty"`
+      LastCheckAt           *time.Time `json:"last_check_at,omitempty"`
+      LastError             *string    `json:"last_error,omitempty"`
+      CreatedAt             time.Time  `json:"created_at"`
+  }
+
+  // HealthStatus derives from token_expires_at, last_error, last_check_at.
+  type HealthStatus string
+  const (
+      HealthHealthy      HealthStatus = "healthy"
+      HealthExpiringSoon HealthStatus = "expiring_soon"
+      HealthExpired      HealthStatus = "expired"
+      HealthError        HealthStatus = "error"
+      HealthUnknown      HealthStatus = "unknown"
+  )
+
+  func (p *StorageProvider) ComputeHealth(now time.Time) HealthStatus { /* ... */ }
+  ```
+
 - [ ] Extend `backend/internal/model/library.go`:
   ```go
   type Library struct {
       // ... existing fields
-      SourceType          string     `json:"source_type"` // "local" | "fshare"
-      SourceCredentialsID *int64     `json:"source_credentials_id,omitempty"`
-      SourceRootID        *string    `json:"source_root_id,omitempty"`
+      StorageProviderID *int64  `json:"storage_provider_id,omitempty"`
+      SourceURL         *string `json:"source_url,omitempty"`
   }
 
-  const (
-      SourceTypeLocal  = "local"
-      SourceTypeFshare = "fshare"
-  )
-  ```
-
-- [ ] Tạo `backend/internal/model/cloud_session.go`:
-  ```go
-  type CloudSession struct {
-      ID                    int64      `json:"id"`
-      UserID                int64      `json:"user_id"`
-      Provider              string     `json:"provider"` // "fshare"
-      AccountEmail          string     `json:"account_email"`
-      CredentialsEncrypted  []byte     `json:"-"` // AES-GCM blob {email, password}
-      TokenEncrypted        []byte     `json:"-"` // AES-GCM blob — active session token
-      SessionIDEncrypted    []byte     `json:"-"` // AES-GCM blob — cookie session_id
-      TokenExpiresAt        *time.Time `json:"token_expires_at,omitempty"` // estimated, ~last_login + 30min
-      LastRefreshAt         *time.Time `json:"last_refresh_at,omitempty"`
-      LastError             *string    `json:"last_error,omitempty"`
-      AccountType           *string    `json:"account_type,omitempty"` // "Vip" | "Fee"
-      CreatedAt             time.Time  `json:"created_at"`
-  }
-
-  // CredentialsPayload is what gets encrypted in credentials_encrypted.
-  type CredentialsPayload struct {
-      Email    string `json:"email"`
-      Password string `json:"password"`
+  func (l *Library) IsCloudLibrary() bool {
+      return l.StorageProviderID != nil
   }
   ```
 
-- [ ] Tạo `backend/internal/repository/cloud_session.go`:
-  ```go
-  type CloudSessionRepo struct { db DBTX }
+### 5. Repository
 
-  func (r *CloudSessionRepo) Create(ctx context.Context, s *CloudSession) error
-  func (r *CloudSessionRepo) GetByID(ctx context.Context, id int64) (*CloudSession, error) // wraps sql.ErrNoRows → ErrNotFound
-  func (r *CloudSessionRepo) GetByUserProvider(ctx context.Context, userID int64, provider, email string) (*CloudSession, error)
-  func (r *CloudSessionRepo) Update(ctx context.Context, s *CloudSession) error // checks RowsAffected
-  func (r *CloudSessionRepo) Delete(ctx context.Context, id int64) error
-  func (r *CloudSessionRepo) ListByUser(ctx context.Context, userID int64) ([]*CloudSession, error)
+- [ ] Tạo `backend/internal/repository/storage_provider.go`:
+  ```go
+  type StorageProviderRepo struct { db DBTX }
+
+  func NewStorageProviderRepo(db DBTX) *StorageProviderRepo
+
+  // CRUD
+  func (r *StorageProviderRepo) Create(ctx context.Context, p *StorageProvider) error
+  func (r *StorageProviderRepo) GetByID(ctx context.Context, id int64) (*StorageProvider, error) // wraps sql.ErrNoRows → ErrNotFound
+  func (r *StorageProviderRepo) GetByAccount(ctx context.Context, userID int64, providerType, email string) (*StorageProvider, error)
+  func (r *StorageProviderRepo) Update(ctx context.Context, p *StorageProvider) error // RowsAffected check
+  func (r *StorageProviderRepo) Delete(ctx context.Context, id int64) error
+  func (r *StorageProviderRepo) ListByUser(ctx context.Context, userID int64) ([]*StorageProvider, error)
+  func (r *StorageProviderRepo) ListAll(ctx context.Context) ([]*StorageProvider, error) // for admin dashboard
+
+  // For scheduler: find providers needing refresh
+  func (r *StorageProviderRepo) ListExpiringSoon(ctx context.Context, beforeTime time.Time) ([]*StorageProvider, error)
+
+  // Atomic credential update (called by scheduler + auto-refresh)
+  func (r *StorageProviderRepo) UpdateCredentials(ctx context.Context, id int64, credsEncrypted []byte, tokenExpiresAt time.Time) error
   ```
 
 - [ ] Extend `backend/internal/repository/library.go`:
-  - [ ] Update `Create`, `Get`, `List`, `Update` queries để bao gồm 3 columns mới
-  - [ ] Default `source_type = 'local'` ở application level khi legacy create
+  - [ ] Update `Create`, `Get`, `List`, `Update` queries để bao gồm `storage_provider_id` + `source_url`
+  - [ ] Add `ListByProvider(ctx, providerID)` — list libraries sharing a provider (for delete confirmation)
 
-### 5. Config + Startup Wiring
+### 6. Config + Startup Wiring
+
 - [ ] Extend `backend/internal/config/config.go`:
   ```go
   type CloudConfig struct {
       Enabled      bool   // VELOX_CLOUD_SOURCES_ENABLED
       SecretKey    []byte // decoded from VELOX_CLOUD_SECRET (hex)
-      FshareAppKey string // VELOX_FSHARE_APP_KEY
+      FshareAppKey string // VELOX_FSHARE_APP_KEY (optional — uses pkg/fshare.DefaultAppKey)
   }
   ```
-- [ ] Load trong `Load()`. Nếu `Enabled=true` nhưng `SecretKey` empty/invalid → return error (fail fast)
-- [ ] Nếu `Enabled=false` → skip key validation (backwards compat)
-- [ ] Wire `CloudSessionRepo` vào `ServerApp` trong `cmd/server/server_app.go`
+- [ ] `Load()` behavior:
+  - `Enabled=false` → skip all cloud config validation (backwards compat)
+  - `Enabled=true` → require valid `SecretKey` (fail fast)
+  - `FshareAppKey` empty OK → driver uses `DefaultAppKey`
+- [ ] Wire `StorageProviderRepo` vào `ServerApp` trong `cmd/server/server_app.go`
 
 ## Acceptance Criteria
 
 - [ ] `make migrate` runs clean: `cd backend && go run ./cmd/server migrate up`
-- [ ] Existing libraries rows auto-get `source_type = 'local'` (default value)
-- [ ] `cloud_sessions` table exists với đầy đủ columns + indexes
-- [ ] Unit tests pass cho `crypto.Encrypt/Decrypt` (round-trip, tamper detect)
-- [ ] Unit tests pass cho `CloudSessionRepo` (CRUD happy path + ErrNotFound)
-- [ ] `config.Load()` fail với error rõ ràng khi `VELOX_CLOUD_SOURCES_ENABLED=true` nhưng secret missing/invalid
-- [ ] `go vet` + `golangci-lint run` clean
+- [ ] Existing libraries auto-get `storage_provider_id = NULL` (backwards compat)
+- [ ] `storage_providers` table exists với đầy đủ columns + indexes
+- [ ] Unit tests pass:
+  - [ ] `crypto.Encrypt/Decrypt` round-trip + tamper detection
+  - [ ] `StorageProviderRepo` CRUD happy path
+  - [ ] `StorageProviderRepo.GetByID` returns `repository.ErrNotFound` khi không tồn tại
+  - [ ] `StorageProviderRepo.Update` returns ErrNotFound khi RowsAffected=0
+- [ ] `config.Load()` fail với error rõ ràng khi `VELOX_CLOUD_SOURCES_ENABLED=true` nhưng `VELOX_CLOUD_SECRET` missing/invalid
+- [ ] `go vet` + `golangci-lint` clean
 
 ## Gotchas
 
-- SQLite `ALTER TABLE ADD COLUMN` với foreign key: SQLite cho phép, nhưng không validate existing rows. Default NULL OK cho `source_credentials_id` (legacy local libs).
-- `*_encrypted BLOB`: Go `[]byte` binding OK với `database/sql`.
-- Encryption key rotation: KHÔNG scope phase này. Document in README: "Rotating VELOX_CLOUD_SECRET requires re-login all cloud sessions".
-- DBTX interface: reuse existing pattern (tx hoặc *sql.DB compatible).
-- **Session TTL thực tế ~30 phút (không phải 24h)** — research từ 5 OSS repos xác nhận. `TokenExpiresAt` là estimated (last_login + 30min); authoritative check là body `code == 201` từ API call. Phase 08 scheduler refresh mỗi 25min preemptive.
-- **Storing password at rest** = larger attack surface. Mitigate: AES-256-GCM với unique per-install key (`VELOX_CLOUD_SECRET`), BLOB column, no plaintext logging. Alternative (token refresh grant) không available trong fshare API.
+- SQLite ADD COLUMN với foreign key: OK, không validate existing rows. Default NULL acceptable.
+- `credentials_encrypted BLOB`: Go `[]byte` binding OK với `database/sql`.
+- Encryption key rotation: NOT in scope phase này. Documented as manual process (stop server → change key → re-register all providers).
+- DBTX interface: reuse existing pattern.
+- **Storing password at rest** (fshare): larger attack surface vs OAuth refresh tokens. Mitigate: per-install AES key, BLOB column, zero plaintext logs, warn admin UI.
+- **Session TTL là local bookkeeping** — authoritative check is API body `code == 201`. `token_expires_at` = estimated (last_refresh + 25min).
 
 ## Out of Scope
 
-- Key rotation tool (manual process for now)
-- Multiple providers sharing same cloud_sessions row (each provider = own row)
-- Audit log cho session modifications (phase sau nếu cần)
+- Key rotation tool (manual for MVP)
+- Multi-user provider sharing (1 provider = 1 user; UNIQUE constraint enforces)
+- Provider ACL (per-library access control)
+- Credentials audit log

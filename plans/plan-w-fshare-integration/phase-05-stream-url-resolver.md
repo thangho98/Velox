@@ -1,10 +1,10 @@
-# Phase 05: Stream URL Resolver (Backend)
+# Phase 05: Stream URL Resolver (Provider-based)
 Status: ⬜ Pending
 Dependencies: Phase 03
 
 ## Objective
 
-Extend existing `POST /api/stream/{id}/url` endpoint để return fshare direct URL thay vì internal api_key URL khi `media.library.source_type = 'fshare'`. Android ExoPlayer stream trực tiếp từ fshare CDN.
+Extend `POST /api/stream/{id}/url` endpoint — khi media belongs to cloud library, resolve via `cloudstorage.Provider.GetDownloadURL()` and return direct CDN URL. Works cho fshare hôm nay + any driver registered trong Registry.
 
 ## Context
 
@@ -12,11 +12,11 @@ Extend existing `POST /api/stream/{id}/url` endpoint để return fshare direct 
 - Playback flow hiện tại (local):
   1. Android `POST /api/stream/{id}/url` → `{url, api_key, expires_in: 7200}`
   2. Android ExoPlayer GET URL → Velox backend `http.ServeFile`
-- Target flow (fshare):
-  1. Android `POST /api/stream/{id}/url` → `{url: "https://download.fsxxx.fshare.vn/...", expires_in: 300, direct_cdn: true}`
-  2. Android ExoPlayer GET URL → fshare CDN direct (Velox backend không involved)
+- Target flow (cloud):
+  1. Android `POST /api/stream/{id}/url` → `{url: "https://cdn.provider.com/...", expires_in: 300, direct_cdn: true, provider_type: "fshare"}`
+  2. Android ExoPlayer GET URL → provider CDN direct (Velox backend không involved)
 
-**⚠️ URL TTL reality (verified từ OSS research):** fshare direct URL short-lived — minutes, có thể single-use. KHÔNG cache server-side. `expires_in` conservative = 300 seconds (5 min) cho Android biết pattern. Android refresh strategy reactive (Phase 07).
+**⚠️ URL TTL reality (verified từ OSS research):** fshare direct URL short-lived — minutes, có thể single-use. KHÔNG cache server-side. `expires_in` conservative = 300 seconds (5 min). Android refresh strategy reactive (Phase 07). GDrive direct URLs (future) have different TTL characteristics — Provider interface leaves TTL to driver.
 
 ## Response Contract
 
@@ -24,20 +24,20 @@ Extend existing `POST /api/stream/{id}/url` endpoint để return fshare direct 
   ```go
   type StreamURLResponse struct {
       URL          string    `json:"url"`
-      SourceType   string    `json:"source_type"` // "local" | "fshare"
-      APIKey       string    `json:"api_key,omitempty"` // only for local
+      ProviderType string    `json:"provider_type,omitempty"` // "fshare"|"google_drive"|... empty = local
+      APIKey       string    `json:"api_key,omitempty"`       // only for local
       ExpiresAt    time.Time `json:"expires_at"`
-      ExpiresIn    int       `json:"expires_in"` // seconds
-      DirectCDN    bool      `json:"direct_cdn"` // true = no proxy (fshare)
+      ExpiresIn    int       `json:"expires_in"`              // seconds
+      DirectCDN    bool      `json:"direct_cdn"`              // true = no proxy (cloud)
   }
   ```
-- [ ] Android app xem `source_type` để biết cần refresh URL logic khác
+- [ ] Android app xem `provider_type` + `direct_cdn` để enable URL refresh interceptor khi cần
 
 ## Implementation Steps
 
 ### 1. Refactor `stream.go` Handler
 - [ ] File: [backend/internal/handler/stream.go](backend/internal/handler/stream.go)
-- [ ] Current: mixed logic generate api_key inline → tách ra thành service call
+- [ ] Current: mixed logic generate api_key inline → dispatch by library type
 - [ ] New structure:
   ```go
   func (h *StreamHandler) GetStreamURL(w http.ResponseWriter, r *http.Request) {
@@ -48,35 +48,59 @@ Extend existing `POST /api/stream/{id}/url` endpoint để return fshare direct 
       library, err := h.libraryRepo.GetByID(ctx, media.LibraryID)
       if err != nil { http.Error(...); return }
 
-      resolver, err := h.resolverFactory.For(library.SourceType)
-      if err != nil { http.Error(...); return }
+      // Local library → existing api_key flow
+      if library.StorageProviderID == nil {
+          h.serveLocalURL(w, r, media) // existing logic extracted
+          return
+      }
 
-      direct, err := resolver.ResolveStreamURL(ctx, source.StreamRef{
-          SourcePath: media.Path,
-          LibraryID:  library.ID,
-      })
+      // Cloud library → resolve via Provider
+      h.serveCloudURL(w, r, media, library)
+  }
+
+  func (h *StreamHandler) serveCloudURL(w http.ResponseWriter, r *http.Request, media *model.MediaFile, library *model.Library) {
+      sp, err := h.providerRepo.GetByID(ctx, *library.StorageProviderID)
+      if err != nil { http.Error(w, "provider not found", 404); return }
+
+      driver, err := h.registry.Get(sp.ProviderType)
+      if err != nil { http.Error(w, err.Error(), 500); return }
+
+      creds, err := cloudstorage.DecryptCredentials(h.cryptoKey, sp.CredentialsEncrypted)
+      if err != nil { http.Error(w, "decrypt creds", 500); return }
+
+      provider, err := driver.NewProvider(creds)
+      if err != nil { http.Error(w, err.Error(), 500); return }
+
+      // Parse provider-scheme path: "fshare://XYZ" → ("fshare", "XYZ")
+      _, fileID, ok := parseCloudPath(media.Path)
+      if !ok { http.Error(w, "invalid cloud path", 500); return }
+
+      downloadURL, err := provider.GetDownloadURL(ctx, fileID)
       if err != nil {
-          // Typed error → status code
           switch {
-          case errors.Is(err, source.ErrSessionExpired):
+          case errors.Is(err, cloudstorage.ErrSessionExpired):
               http.Error(w, "cloud session expired, re-authenticate", 401)
-          case errors.Is(err, source.ErrRateLimit):
+          case errors.Is(err, cloudstorage.ErrRateLimit):
               http.Error(w, "cloud provider rate limited", 429)
+          case errors.Is(err, cloudstorage.ErrFileNotFound):
+              http.Error(w, "file removed from cloud", 404)
           default:
               http.Error(w, err.Error(), 500)
           }
           return
       }
 
+      // NOTE: After GetDownloadURL, the provider's client may have silently
+      // re-logged in (withSessionRetry on code:201). Compare creds pre/post
+      // and persist new token back to storage_providers row if changed.
+      // See Phase 08 provider_refresh service for auto-save helper.
+
       response := StreamURLResponse{
-          URL:        direct.URL,
-          SourceType: library.SourceType,
-          ExpiresAt:  direct.ExpiresAt,
-          ExpiresIn:  int(time.Until(direct.ExpiresAt).Seconds()),
-          DirectCDN:  library.SourceType != "local",
-      }
-      if library.SourceType == "local" {
-          response.APIKey = extractAPIKeyFromURL(direct.URL)
+          URL:          downloadURL,
+          ProviderType: sp.ProviderType,
+          ExpiresAt:    time.Now().Add(5 * time.Minute), // conservative
+          ExpiresIn:    300,
+          DirectCDN:    true,
       }
       writeJSON(w, response)
   }
