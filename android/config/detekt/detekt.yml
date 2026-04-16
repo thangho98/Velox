@@ -1,0 +1,56 @@
+# Detekt Configuration - Baseline Mode
+# Start relaxed, tighten incrementally after refactors stabilize.
+
+build:
+  maxIssues: 1100  # Relaxed for existing debt; tighten after refactors stabilize
+
+complexity:
+  LongMethod:
+    threshold: 80  # Relaxed; SettingsVM functions are long during refactor
+  LongParameterList:
+    functionThreshold: 10  # Relaxed; PlayerControlsOverlay has many params
+    constructorThreshold: 10
+  TooManyFunctions:
+    thresholdInFiles: 30
+    thresholdInClasses: 30
+  ComplexMethod:
+    threshold: 20
+  LargeClass:
+    threshold: 800  # Will tighten after SettingsViewModel split
+
+style:
+  MagicNumber:
+    active: false  # Too noisy for UI code (padding, colors)
+  WildcardImport:
+    active: true
+    excludeImports:
+      - 'kotlinx.coroutines.*'
+      - 'androidx.compose.foundation.layout.*'
+      - 'androidx.compose.material3.*'
+      - 'androidx.compose.runtime.*'
+      - 'androidx.compose.ui.*'
+      - 'androidx.compose.material.icons.filled.*'
+      - 'androidx.compose.material.icons.outlined.*'
+      - 'com.velox.app.data.model.*'
+  MaxLineLength:
+    maxLineLength: 140
+  ReturnCount:
+    max: 5
+  UnusedImports:
+    active: true
+  UnusedPrivateMember:
+    active: true
+
+naming:
+  FunctionNaming:
+    # Compose functions use PascalCase
+    functionPattern: '[a-zA-Z][a-zA-Z0-9]*'
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][A-Za-z0-9]*|[a-z][a-zA-Z0-9]*'
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false  # Will re-enable after repo Result<T> migration
+
+potential-bugs:
+  active: true
