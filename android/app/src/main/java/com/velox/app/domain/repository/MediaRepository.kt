@@ -50,8 +50,9 @@ interface MediaRepository {
     suspend fun getFavorites(limit: Int = 20, offset: Int = 0): Result<List<MediaItem>>
     suspend fun toggleFavorite(mediaId: Int): Result<Boolean>
     suspend fun updateProgress(mediaId: Int, position: Float, completed: Boolean): Result<Unit>
-    suspend fun getPlaybackInfo(mediaId: Int, request: com.velox.app.data.model.PlaybackInfoRequest? = null): Result<PlaybackInfo>
+    suspend fun getPlaybackInfo(mediaId: Int, params: PlaybackInfoParams? = null): Result<PlaybackInfo>
     suspend fun getStreamUrl(mediaId: Int): Result<String>
+    suspend fun getStreamApiKey(mediaId: Int): Result<String>
     suspend fun getProgress(mediaId: Int): Result<WatchProgress?>
     suspend fun dismissProgress(mediaId: Int): Result<Unit>
     suspend fun getMediaFiles(mediaId: Int): Result<List<MediaFile>>

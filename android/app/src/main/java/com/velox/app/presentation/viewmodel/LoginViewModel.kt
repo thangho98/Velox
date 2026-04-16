@@ -6,13 +6,11 @@ import com.velox.app.data.api.ServerPrefsManager
 import com.velox.app.data.api.VeloxApiProvider
 import com.velox.app.domain.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -57,8 +55,8 @@ class LoginViewModel @Inject constructor(
         return serverPrefsManager.setServerUrl(url)
     }
 
-    suspend fun verifyServerUrl(url: String): Boolean = withContext(Dispatchers.IO) {
-        try {
+    suspend fun verifyServerUrl(url: String): Boolean {
+        return try {
             var urlWithProtocol = url.trim()
             if (!urlWithProtocol.startsWith("http://") && !urlWithProtocol.startsWith("https://")) {
                 urlWithProtocol = "http://$urlWithProtocol"

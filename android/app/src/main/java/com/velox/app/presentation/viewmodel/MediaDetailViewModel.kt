@@ -90,7 +90,7 @@ class MediaDetailViewModel @Inject constructor(
             }
 
             // Load subtitle tracks from playback info
-            mediaRepository.getPlaybackInfo(mediaId, com.velox.app.data.model.PlaybackInfoRequest()).onSuccess { info ->
+            mediaRepository.getPlaybackInfo(mediaId, com.velox.app.domain.model.PlaybackInfoParams()).onSuccess { info ->
                 _uiState.update { it.copy(
                     subtitleTracks = info.subtitleTracks.filter { track -> !track.isImage },
                 ) }

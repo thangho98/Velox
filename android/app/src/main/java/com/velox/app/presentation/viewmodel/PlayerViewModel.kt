@@ -1,19 +1,12 @@
 package com.velox.app.presentation.viewmodel
 
-import android.content.Context
-import android.util.Log
+import timber.log.Timber
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import com.velox.app.data.api.AuthManager
 import com.velox.app.domain.model.Episode as DomainEpisode
 import com.velox.app.domain.model.MediaDetail as DomainMediaDetail
 import com.velox.app.domain.model.MediaWithFilesInfo as DomainMediaWithFilesInfo
@@ -24,12 +17,19 @@ import com.velox.app.domain.model.SubtitleTrack as DomainSubtitleTrack
 import com.velox.app.domain.model.SkipSegment as DomainSkipSegment
 import com.velox.app.domain.model.QualityOption as DomainQualityOption
 import com.velox.app.domain.repository.MediaRepository
+import com.velox.app.playback.PlaybackManager
+import com.velox.app.playback.PlaybackMetadata
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -194,26 +194,85 @@ data class SubtitleSearchResultUi(
     val aiTranslated: Boolean = false,
 )
 
-@HiltViewModel
+interface PlayerActions {
+    val player: androidx.media3.common.Player?
+    val mediaId: Int
+    val isTranslatingSubtitle: StateFlow<Boolean>
+
+    fun loadPlaybackInfo()
+    fun togglePlayPause()
+    fun seekTo(positionMs: Long)
+    fun seekForward(seconds: Int = 5)
+    fun seekBackward(seconds: Int = 5)
+    fun skipSegment(segment: SkipSegmentUi)
+    fun selectAudioTrack(trackIndex: Int)
+    fun selectSubtitleTrack(trackIndex: Int)
+    fun selectSecondarySubtitleTrack(trackIndex: Int)
+    fun toggleControls()
+    fun toggleDetailPanel(panel: DetailPanelUi)
+    fun closeDetailPanel()
+    fun selectSeasonPanelSeason(seasonId: Int)
+    fun setPlaybackSpeed(speed: Float)
+    fun toggleLock()
+    fun setVolume(volume: Float)
+    fun setMaxQuality(height: Int)
+    fun setAspectRatio(ratio: AspectRatioUi)
+    fun setRepeatMode(mode: RepeatModeUi)
+    fun cycleRepeatMode()
+    fun setSubtitleDelay(delay: Float)
+    fun adjustSubtitleDelay(delta: Float)
+    fun setSubtitleSize(size: SubtitleSizeUi)
+    fun setSubtitleColor(color: String)
+    fun setSubtitleBackground(bg: SubtitleBackgroundUi)
+    fun togglePlaybackStats()
+    fun showSeekFeedback(side: String, amount: Int)
+    fun hideSeekFeedback()
+    fun loadCinemaItems(cinemaEnabled: Boolean = false)
+    fun skipCinemaItem()
+    fun skipAllCinema()
+    fun enableSecondarySubtitle(enabled: Boolean)
+    fun showUpNext(nextEpisodeId: Int, nextEpisodeTitle: String)
+    fun dismissUpNext()
+    fun getUpNextId(): Int?
+    fun updatePosition()
+    fun saveProgress(completed: Boolean = false)
+    fun showSubtitleSearch()
+    fun hideSubtitleSearch()
+    fun searchSubtitles(lang: String)
+    fun downloadSubtitle(provider: String, externalId: String, language: String)
+    fun translateSubtitle(subtitleId: Int, targetLanguage: String)
+    fun showWatchedWarning()
+    fun hideWatchedWarning()
+    fun resetProgressAndNavigate(targetMediaId: Int, navigate: (Int) -> Unit)
+}
+
+@dagger.hilt.android.lifecycle.HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val playerPrefsManager: com.velox.app.data.local.PlayerPrefsManager,
-    private val authManager: AuthManager,
-    @ApplicationContext private val context: Context,
+    private val playbackManager: PlaybackManager,
     savedStateHandle: SavedStateHandle,
-) : ViewModel() {
+) : ViewModel(), PlayerActions {
 
-    val mediaId: Int = checkNotNull(savedStateHandle["mediaId"])
+    override val mediaId: Int = checkNotNull(savedStateHandle["mediaId"])
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     private var _player: ExoPlayer? = null
-    val player: ExoPlayer?
+    override val player: ExoPlayer?
         get() = _player
 
     private var currentPlaybackSource: String? = null
     private var fallbackOrder: List<String> = emptyList()
+    private var streamApiKey: String? = null
+
+    private val _nextMediaRequested = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val nextMediaRequested: SharedFlow<Int> = _nextMediaRequested.asSharedFlow()
+
+    // Track the exact handler instance registered with PlaybackManager so onCleared
+    // can clear by identity (see PlaybackManager.clearNextMediaHandlerIfMatches).
+    private var registeredNextHandler: (() -> Unit)? = null
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -257,31 +316,59 @@ class PlayerViewModel @Inject constructor(
     }
 
     init {
+        playbackManager.ensureServiceStarted()
         initializePlayer()
+        observeNextEpisodeForSession()
         loadPlaybackInfo()
     }
 
-    private fun initializePlayer() {
-        _player = ExoPlayer.Builder(context)
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(),
-                true,
-            )
-            .build()
-            .apply {
-                addListener(playerListener)
-                // Disable native text rendering by default — use DualSubtitleOverlay instead
-                trackSelectionParameters = trackSelectionParameters
-                    .buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                    .build()
-            }
+    private fun observeNextEpisodeForSession() {
+        viewModelScope.launch {
+            _uiState
+                .map { it.nextEpisodeId }
+                .distinctUntilChanged()
+                .collect { nextId ->
+                    // Clear our previously registered handler by identity so we don't
+                    // accidentally wipe a handler that a newer screen has set.
+                    registeredNextHandler?.let { playbackManager.clearNextMediaHandlerIfMatches(it) }
+                    registeredNextHandler = if (nextId != null) {
+                        val handler: () -> Unit = { _nextMediaRequested.tryEmit(nextId); Unit }
+                        playbackManager.setNextMediaHandler(handler)
+                        handler
+                    } else {
+                        null
+                    }
+                }
+        }
     }
 
-    fun loadPlaybackInfo() {
+    private fun initializePlayer() {
+        _player = playbackManager.attachUiPlayer(playerListener)
+        syncUiStateFromPlayer()
+    }
+
+    private fun syncUiStateFromPlayer() {
+        val player = _player ?: return
+        val activeMediaId = playbackManager.currentMediaIdOrNull
+        if (activeMediaId != null && activeMediaId != mediaId) {
+            return
+        }
+
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: _uiState.value.duration
+        val videoSize = player.videoSize
+        _uiState.update {
+            it.copy(
+                isPlaying = player.isPlaying,
+                isBuffering = player.playbackState == Player.STATE_BUFFERING,
+                currentPosition = player.currentPosition.coerceAtLeast(0L),
+                duration = duration,
+                videoWidth = videoSize.width.takeIf { width -> width > 0 } ?: it.videoWidth,
+                videoHeight = videoSize.height.takeIf { height -> height > 0 } ?: it.videoHeight,
+            )
+        }
+    }
+
+    override fun loadPlaybackInfo() {
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -305,37 +392,25 @@ class PlayerViewModel @Inject constructor(
             }
 
             val currentMaxQuality = _uiState.value.maxQuality
-            val request = com.velox.app.data.model.PlaybackInfoRequest(
+            val request = com.velox.app.domain.model.PlaybackInfoParams(
                 videoCodecs = supportedVideoCodecs,
                 audioCodecs = listOf("aac", "opus", "mp3", "flac", "ac3", "eac3"),
                 containers = listOf("mp4", "mkv", "webm", "ts"),
                 maxHeight = if (currentMaxQuality > 0) currentMaxQuality else null
             )
 
-            launch {
-                mediaRepository.getMedia(mediaId).onSuccess { media ->
-                    _uiState.update { it.copy(mediaDetail = media) }
-                }
+            val apiKeyDeferred = if (streamApiKey == null) {
+                async { mediaRepository.getStreamApiKey(mediaId) }
+            } else {
+                null
             }
 
-            launch {
-                // Use /media/{id}/files endpoint (like webapp) to get series_id/season_id
-                val result = mediaRepository.getMediaWithFilesInfo(mediaId)
-                result.onSuccess { info ->
-                    android.util.Log.d("PlayerVM", "mediaWithFiles OK: type=${info.mediaType} seriesId=${info.seriesId} seasonId=${info.seasonId}")
-                    _uiState.update { it.copy(mediaTitle = info.title, mediaContext = info) }
-                    if (info.mediaType == "episode" && info.seriesId != null && info.seasonId != null) {
-                        loadNextEpisode(info.seriesId, info.seasonId)
-                        loadSeasonPanel(info.seriesId, info.seasonId)
-                    }
-                }.onFailure { e ->
-                    android.util.Log.e("PlayerVM", "mediaWithFiles FAILED: ${e.message}", e)
-                    // Fallback: use getMedia for title
-                    mediaRepository.getMedia(mediaId).onSuccess { media ->
-                        _uiState.update { it.copy(mediaTitle = media.title) }
-                    }
-                }
-            }
+            // Run metadata fetches in parallel with getPlaybackInfo below. We await them
+            // inside the getPlaybackInfo onSuccess branch so that MediaMetadata (title,
+            // artwork) is populated BEFORE preparePlayer — otherwise the notification
+            // renders with blank title for the first few hundred ms.
+            val mediaDetailDeferred = async { mediaRepository.getMedia(mediaId) }
+            val mediaFilesDeferred = async { mediaRepository.getMediaWithFilesInfo(mediaId) }
 
             mediaRepository.getPlaybackInfo(mediaId, request)
                 .onSuccess { info ->
@@ -352,7 +427,7 @@ class PlayerViewModel @Inject constructor(
                                 SubtitleTrackUi(-1, -1, "Off", "", null),
                             ) + info.subtitleTracks
                                 .mapIndexed { index, track -> index to track }
-                                .filter { (_, track) -> 
+                                .filter { (_, track) ->
                                     val fmt = track.format?.lowercase() ?: ""
                                     fmt == "srt" || fmt == "vtt" || fmt == "ass" || fmt.contains("subdl")
                                 }
@@ -371,6 +446,31 @@ class PlayerViewModel @Inject constructor(
                             },
                         )
                     }
+
+                    apiKeyDeferred?.await()
+                        ?.onSuccess { key -> streamApiKey = key }
+                        ?.onFailure { error -> Timber.w(error, "Failed to fetch stream api key") }
+
+                    // Await metadata so the MediaItem's MediaMetadata (notification +
+                    // lock screen) is populated before preparePlayer.
+                    mediaDetailDeferred.await().onSuccess { media ->
+                        _uiState.update { it.copy(mediaDetail = media) }
+                    }
+                    mediaFilesDeferred.await()
+                        .onSuccess { filesInfo ->
+                            Timber.d("mediaWithFiles OK: type=${filesInfo.mediaType} seriesId=${filesInfo.seriesId} seasonId=${filesInfo.seasonId}")
+                            _uiState.update { it.copy(mediaTitle = filesInfo.title, mediaContext = filesInfo) }
+                            if (filesInfo.mediaType == "episode" && filesInfo.seriesId != null && filesInfo.seasonId != null) {
+                                loadNextEpisode(filesInfo.seriesId, filesInfo.seasonId)
+                                loadSeasonPanel(filesInfo.seriesId, filesInfo.seasonId)
+                            }
+                        }
+                        .onFailure { e ->
+                            Timber.e(e, "mediaWithFiles FAILED: ${e.message}")
+                            _uiState.value.mediaDetail?.let { media ->
+                                _uiState.update { it.copy(mediaTitle = media.title) }
+                            }
+                        }
 
                     // Pick initial source from backend hint, then fallback always: direct → pretranscode → hls
                     val prefer = info.prefer ?: "direct"
@@ -400,7 +500,7 @@ class PlayerViewModel @Inject constructor(
                     viewModelScope.launch {
                         val primaryLang = playerPrefsManager.primarySubLang.first()
                         val secondaryLang = playerPrefsManager.secondarySubLang.first()
-                        
+
                         val tracks = _uiState.value.subtitleTracks
                         if (primaryLang != null) {
                             val match = tracks.find { it.index != -1 && it.language == primaryLang }
@@ -408,7 +508,7 @@ class PlayerViewModel @Inject constructor(
                                 selectSubtitleTrack(match.index)
                             }
                         }
-                        
+
                         if (secondaryLang != null) {
                             val match = tracks.find { it.index != -1 && it.language == secondaryLang }
                             if (match != null) {
@@ -474,15 +574,15 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             mediaRepository.getEpisodes(seriesId, seasonId).onSuccess { episodes ->
                 val currentIdx = episodes.indexOfFirst { it.mediaId == mediaId }
-                android.util.Log.d("PlayerVM", "episodes: count=${episodes.size} currentIdx=$currentIdx mediaId=$mediaId")
+                Timber.d("episodes: count=${episodes.size} currentIdx=$currentIdx mediaId=$mediaId")
                 if (currentIdx != -1 && currentIdx < episodes.size - 1) {
                     val next = episodes[currentIdx + 1]
                     val nextNext = if (currentIdx + 2 < episodes.size) episodes[currentIdx + 2] else null
-                    android.util.Log.d("PlayerVM", "nextEpisode: id=${next.mediaId} title=${next.title}")
-                    
+                    Timber.d("nextEpisode: id=${next.mediaId} title=${next.title}")
+
                     _uiState.update {
                         it.copy(
-                            nextEpisodeId = next.mediaId, 
+                            nextEpisodeId = next.mediaId,
                             nextEpisodeTitle = next.title,
                             nextNextEpisodeId = nextNext?.mediaId
                         )
@@ -496,7 +596,7 @@ class PlayerViewModel @Inject constructor(
                     }
                 }
             }.onFailure { e ->
-                android.util.Log.e("PlayerVM", "getEpisodes failed: ${e.message}")
+                Timber.e("getEpisodes failed: ${e.message}")
             }
         }
     }
@@ -526,10 +626,12 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun handlePlaybackError(error: androidx.media3.common.PlaybackException) {
-        Log.e(
-            "PlayerVM",
-            "Playback failed on source=$currentPlaybackSource code=${error.errorCodeName} message=${error.message}",
+        Timber.e(
             error,
+            "Playback failed on source=%s code=%s message=%s",
+            currentPlaybackSource,
+            error.errorCodeName,
+            error.message,
         )
         val info = _uiState.value.playbackInfo
         if (info == null) {
@@ -548,21 +650,6 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private fun buildAuthenticatedMediaSource(url: String) =
-        DefaultMediaSourceFactory(
-            DefaultDataSource.Factory(
-                context,
-                DefaultHttpDataSource.Factory().apply {
-                    authManager.getAccessTokenSync()?.let { token ->
-                        setDefaultRequestProperties(
-                            mapOf("Authorization" to "Bearer $token")
-                        )
-                    }
-                    setAllowCrossProtocolRedirects(true)
-                },
-            ),
-        ).createMediaSource(MediaItem.fromUri(url))
-
     private fun preparePlayer(url: String, info: DomainPlaybackInfo, maintainPosition: Boolean = false) {
         _player?.let { player ->
             // Re-capture current position if we are falling back
@@ -572,21 +659,36 @@ class PlayerViewModel @Inject constructor(
                 info.position?.let { (it * 1000).toLong() } ?: 0L
             }
 
-            Log.d("PlayerVM", "Preparing source=$currentPlaybackSource url=$url resumeMs=$resumePosition")
-            player.setMediaSource(buildAuthenticatedMediaSource(url))
-
-            if (resumePosition > 0) {
-                player.seekTo(resumePosition)
-            }
-
-            player.prepare()
-            player.playWhenReady = true
+            Timber.d("Preparing source=%s url=%s resumeMs=%s", currentPlaybackSource, url, resumePosition)
+            playbackManager.prepare(
+                mediaId = mediaId,
+                url = url,
+                resumePosition = resumePosition,
+                apiKey = streamApiKey,
+                metadata = buildPlaybackMetadata(),
+            )
 
             _uiState.update { it.copy(videoUrl = url) }
         }
     }
 
-    fun togglePlayPause() {
+    private fun buildPlaybackMetadata(): PlaybackMetadata {
+        val state = _uiState.value
+        val title = state.mediaTitle ?: state.mediaDetail?.title
+        val ctx = state.mediaContext
+        val subtitle = if (ctx?.mediaType == "episode" && ctx.seasonNumber != null && ctx.episodeNumber != null) {
+            "S${ctx.seasonNumber} · E${ctx.episodeNumber}"
+        } else {
+            state.mediaDetail?.releaseDate?.take(4)
+        }
+        // The repository already resolved posterPath/backdropPath to full URLs
+        // via ImageUrlResolver, and /api/images/* is in the auth skip list, so
+        // no extra api_key appending is needed for Media3's BitmapLoader.
+        val artwork = state.mediaDetail?.backdrop ?: state.mediaDetail?.poster
+        return PlaybackMetadata(title = title, subtitle = subtitle, artwork = artwork)
+    }
+
+    override fun togglePlayPause() {
         _player?.let { player ->
             if (player.isPlaying) {
                 player.pause()
@@ -605,32 +707,32 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun seekTo(positionMs: Long) {
+    override fun seekTo(positionMs: Long) {
         _player?.seekTo(positionMs)
         _uiState.update { it.copy(currentPosition = positionMs) }
     }
 
-    fun seekForward(seconds: Int = 5) {
+    override fun seekForward(seconds: Int) {
         _player?.let { player ->
             val newPosition = (player.currentPosition + seconds * 1000).coerceAtMost(player.duration)
             player.seekTo(newPosition)
         }
     }
 
-    fun seekBackward(seconds: Int = 5) {
+    override fun seekBackward(seconds: Int) {
         _player?.let { player ->
             val newPosition = (player.currentPosition - seconds * 1000).coerceAtLeast(0)
             player.seekTo(newPosition)
         }
     }
 
-    fun skipSegment(segment: SkipSegmentUi) {
+    override fun skipSegment(segment: SkipSegmentUi) {
         _player?.seekTo(segment.end)
     }
 
-    fun selectAudioTrack(trackIndex: Int) {
+    override fun selectAudioTrack(trackIndex: Int) {
         _uiState.update { it.copy(selectedAudioTrackIndex = trackIndex) }
-        
+
         _player?.let { player ->
             val track = _uiState.value.playbackInfo?.audioTracks?.getOrNull(trackIndex)
             if (track != null) {
@@ -642,15 +744,15 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun selectSubtitleTrack(trackIndex: Int) {
+    override fun selectSubtitleTrack(trackIndex: Int) {
         // trackIndex -1 means disabled
         _uiState.update { it.copy(selectedSubtitleIndex = trackIndex) }
-        
+
         viewModelScope.launch {
             val trackLang = if (trackIndex == -1) null else _uiState.value.playbackInfo?.subtitleTracks?.getOrNull(trackIndex)?.language
             playerPrefsManager.setPrimarySubLang(trackLang)
         }
-        
+
         _player?.let { player ->
             if (trackIndex == -1) {
                 player.trackSelectionParameters = player.trackSelectionParameters
@@ -695,19 +797,19 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun selectSecondarySubtitleTrack(trackIndex: Int) {
+    override fun selectSecondarySubtitleTrack(trackIndex: Int) {
         _uiState.update { it.copy(selectedSecondarySubtitleIndex = trackIndex) }
-        
+
         viewModelScope.launch {
             val trackLang = if (trackIndex == -1) null else _uiState.value.playbackInfo?.subtitleTracks?.getOrNull(trackIndex)?.language
             playerPrefsManager.setSecondarySubLang(trackLang)
         }
-        
+
         if (trackIndex == -1) {
             _uiState.update { it.copy(secondarySubtitleCues = emptyList(), secondarySubtitleEnabled = false) }
             return
         }
-        
+
         val track = _uiState.value.playbackInfo?.subtitleTracks?.getOrNull(trackIndex)
         val primaryFileId = _uiState.value.playbackInfo?.primaryFileId
         if (track != null && primaryFileId != null && !track.isImage) {
@@ -773,12 +875,12 @@ class PlayerViewModel @Inject constructor(
         return totalMs
     }
 
-    fun toggleControls() {
+    override fun toggleControls() {
         if (_uiState.value.isLocked) return
         _uiState.update { it.copy(showControls = !it.showControls) }
     }
 
-    fun toggleDetailPanel(panel: DetailPanelUi) {
+    override fun toggleDetailPanel(panel: DetailPanelUi) {
         if (panel == DetailPanelUi.Season && _uiState.value.seasons.isEmpty()) {
             return
         }
@@ -801,11 +903,11 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun closeDetailPanel() {
+    override fun closeDetailPanel() {
         _uiState.update { it.copy(activeDetailPanel = DetailPanelUi.None) }
     }
 
-    fun selectSeasonPanelSeason(seasonId: Int) {
+    override fun selectSeasonPanelSeason(seasonId: Int) {
         val seriesId = _uiState.value.mediaContext?.seriesId ?: return
         if (_uiState.value.seasonPanelSeasonId == seasonId && _uiState.value.seasonPanelEpisodes.isNotEmpty()) {
             return
@@ -813,12 +915,12 @@ class PlayerViewModel @Inject constructor(
         loadSeasonEpisodes(seriesId, seasonId)
     }
 
-    fun setPlaybackSpeed(speed: Float) {
+    override fun setPlaybackSpeed(speed: Float) {
         _player?.setPlaybackSpeed(speed)
         _uiState.update { it.copy(playbackSpeed = speed) }
     }
 
-    fun toggleLock() {
+    override fun toggleLock() {
         _uiState.update { state ->
             state.copy(
                 isLocked = !state.isLocked,
@@ -827,13 +929,13 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun setVolume(volume: Float) {
+    override fun setVolume(volume: Float) {
         _player?.volume = volume
         _uiState.update { it.copy(volume = volume) }
     }
 
     // Quality — re-fetch playback info with new max_height (like webapp)
-    fun setMaxQuality(height: Int) {
+    override fun setMaxQuality(height: Int) {
         val previous = _uiState.value.maxQuality
         _uiState.update { it.copy(maxQuality = height) }
         if (height != previous) {
@@ -842,12 +944,12 @@ class PlayerViewModel @Inject constructor(
     }
 
     // Aspect ratio
-    fun setAspectRatio(ratio: AspectRatioUi) {
+    override fun setAspectRatio(ratio: AspectRatioUi) {
         _uiState.update { it.copy(aspectRatio = ratio) }
     }
 
     // Repeat mode
-    fun setRepeatMode(mode: RepeatModeUi) {
+    override fun setRepeatMode(mode: RepeatModeUi) {
         _uiState.update { it.copy(repeatMode = mode) }
         _player?.repeatMode = when (mode) {
             RepeatModeUi.None -> Player.REPEAT_MODE_OFF
@@ -856,7 +958,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun cycleRepeatMode() {
+    override fun cycleRepeatMode() {
         val current = _uiState.value.repeatMode
         val next = when (current) {
             RepeatModeUi.None -> RepeatModeUi.One
@@ -867,36 +969,36 @@ class PlayerViewModel @Inject constructor(
     }
 
     // Subtitle delay
-    fun setSubtitleDelay(delay: Float) {
+    override fun setSubtitleDelay(delay: Float) {
         _uiState.update { it.copy(subtitleDelay = delay) }
     }
 
-    fun adjustSubtitleDelay(delta: Float) {
+    override fun adjustSubtitleDelay(delta: Float) {
         _uiState.update { it.copy(subtitleDelay = (it.subtitleDelay + delta).coerceIn(-10f, 10f)) }
     }
 
     // Subtitle appearance
-    fun setSubtitleSize(size: SubtitleSizeUi) {
+    override fun setSubtitleSize(size: SubtitleSizeUi) {
         _uiState.update { it.copy(subtitleSize = size) }
     }
 
-    fun setSubtitleColor(color: String) {
+    override fun setSubtitleColor(color: String) {
         _uiState.update { it.copy(subtitleColor = color) }
     }
 
-    fun setSubtitleBackground(bg: SubtitleBackgroundUi) {
+    override fun setSubtitleBackground(bg: SubtitleBackgroundUi) {
         _uiState.update { it.copy(subtitleBackground = bg) }
     }
 
     // Playback stats
-    fun togglePlaybackStats() {
+    override fun togglePlaybackStats() {
         _uiState.update { it.copy(showPlaybackStats = !it.showPlaybackStats) }
     }
 
     // Seek feedback
     private var seekFeedbackJob: kotlinx.coroutines.Job? = null
 
-    fun showSeekFeedback(side: String, amount: Int) {
+    override fun showSeekFeedback(side: String, amount: Int) {
         _uiState.update { it.copy(showSeekFeedback = true, seekFeedbackSide = side, seekFeedbackAmount = amount) }
         seekFeedbackJob?.cancel()
         seekFeedbackJob = viewModelScope.launch {
@@ -905,12 +1007,12 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun hideSeekFeedback() {
+    override fun hideSeekFeedback() {
         _uiState.update { it.copy(showSeekFeedback = false) }
     }
 
     // Cinema overlay - cinema items loaded from playback info or settings
-    fun loadCinemaItems(cinemaEnabled: Boolean = false) {
+    override fun loadCinemaItems(cinemaEnabled: Boolean) {
         // Cinema items would be loaded from API or settings
         // For now, leave empty - will be implemented when backend supports it
         if (!cinemaEnabled) {
@@ -918,7 +1020,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun skipCinemaItem() {
+    override fun skipCinemaItem() {
         val state = _uiState.value
         val nextIndex = state.cinemaIndex + 1
         if (nextIndex >= state.cinemaItems.size) {
@@ -928,30 +1030,30 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun skipAllCinema() {
+    override fun skipAllCinema() {
         _uiState.update { it.copy(showCinemaOverlay = false, cinemaIndex = 0) }
     }
 
     // Secondary subtitle
-    fun enableSecondarySubtitle(enabled: Boolean) {
+    override fun enableSecondarySubtitle(enabled: Boolean) {
         _uiState.update { it.copy(secondarySubtitleEnabled = enabled) }
     }
 
     // Up Next / Next Episode
-    fun showUpNext(nextEpisodeId: Int, nextEpisodeTitle: String) {
+    override fun showUpNext(nextEpisodeId: Int, nextEpisodeTitle: String) {
         _uiState.update { it.copy(showUpNext = true, upNextId = nextEpisodeId, upNextTitle = nextEpisodeTitle, upNextCountdown = 15) }
     }
 
-    fun dismissUpNext() {
+    override fun dismissUpNext() {
         _uiState.update { it.copy(showUpNext = false, upNextCountdown = 0) }
     }
 
-    fun getUpNextId(): Int? = _uiState.value.upNextId
+    override fun getUpNextId(): Int? = _uiState.value.upNextId
 
     private var upNextTriggered = false
     private var lastProgressSaveTime = 0L
 
-    fun updatePosition() {
+    override fun updatePosition() {
         _player?.let { player ->
             val pos = player.currentPosition
             val dur = player.duration.takeIf { it > 0 } ?: return@let
@@ -979,7 +1081,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun saveProgress(completed: Boolean = false) {
+    override fun saveProgress(completed: Boolean) {
         viewModelScope.launch {
             val position = (_player?.currentPosition ?: 0L) / 1000f
             val duration = (_player?.duration ?: 0L) / 1000f
@@ -989,15 +1091,15 @@ class PlayerViewModel @Inject constructor(
     }
 
     // Subtitle search
-    fun showSubtitleSearch() {
+    override fun showSubtitleSearch() {
         _uiState.update { it.copy(showSubtitleSearch = true) }
     }
 
-    fun hideSubtitleSearch() {
+    override fun hideSubtitleSearch() {
         _uiState.update { it.copy(showSubtitleSearch = false) }
     }
 
-    fun searchSubtitles(lang: String) {
+    override fun searchSubtitles(lang: String) {
         _uiState.update { it.copy(isSearchingSubtitles = true, subtitleSearchLang = lang, subtitleSearchResults = emptyList()) }
         viewModelScope.launch {
             mediaRepository.searchSubtitles(mediaId, lang)
@@ -1023,7 +1125,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun downloadSubtitle(provider: String, externalId: String, language: String) {
+    override fun downloadSubtitle(provider: String, externalId: String, language: String) {
         _uiState.update { it.copy(isDownloadingSubtitle = true) }
         viewModelScope.launch {
             mediaRepository.downloadSubtitle(mediaId, provider, externalId, language)
@@ -1040,9 +1142,9 @@ class PlayerViewModel @Inject constructor(
 
     // Subtitle translate
     private val _isTranslatingSubtitle = MutableStateFlow(false)
-    val isTranslatingSubtitle: StateFlow<Boolean> = _isTranslatingSubtitle.asStateFlow()
+    override val isTranslatingSubtitle: StateFlow<Boolean> = _isTranslatingSubtitle.asStateFlow()
 
-    fun translateSubtitle(subtitleId: Int, targetLanguage: String) {
+    override fun translateSubtitle(subtitleId: Int, targetLanguage: String) {
         _isTranslatingSubtitle.value = true
         viewModelScope.launch {
             mediaRepository.translateSubtitle(subtitleId, targetLanguage)
@@ -1058,15 +1160,15 @@ class PlayerViewModel @Inject constructor(
     }
 
     // Watched Warning
-    fun showWatchedWarning() {
+    override fun showWatchedWarning() {
         _uiState.update { it.copy(showWatchedWarning = true) }
     }
 
-    fun hideWatchedWarning() {
+    override fun hideWatchedWarning() {
         _uiState.update { it.copy(showWatchedWarning = false) }
     }
 
-    fun resetProgressAndNavigate(targetMediaId: Int, navigate: (Int) -> Unit) {
+    override fun resetProgressAndNavigate(targetMediaId: Int, navigate: (Int) -> Unit) {
         viewModelScope.launch {
             mediaRepository.updateProgress(targetMediaId, 0f, false)
             navigate(targetMediaId)
@@ -1074,10 +1176,12 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        super.onCleared()
-        saveProgress()
-        _player?.removeListener(playerListener)
-        _player?.release()
+        registeredNextHandler?.let { playbackManager.clearNextMediaHandlerIfMatches(it) }
+        registeredNextHandler = null
+        playbackManager.persistCurrentProgress()
+        playbackManager.releasePlayer()
+        playbackManager.detachUiPlayer(playerListener)
         _player = null
+        super.onCleared()
     }
 }

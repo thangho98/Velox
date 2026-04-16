@@ -109,7 +109,7 @@ class SeriesDetailViewModel @Inject constructor(
                     launch {
                         mediaRepository.getProgress(ep.mediaId).onSuccess { progress ->
                             if (progress != null) {
-                                _uiState.update { state -> 
+                                _uiState.update { state ->
                                     state.copy(episodeProgress = state.episodeProgress + (ep.mediaId to progress))
                                 }
                             }

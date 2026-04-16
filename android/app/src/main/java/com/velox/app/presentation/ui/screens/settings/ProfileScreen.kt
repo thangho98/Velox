@@ -1,7 +1,6 @@
 package com.velox.app.presentation.ui.screens.settings
 
 import androidx.compose.foundation.background
-import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,18 +19,20 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.velox.app.presentation.viewmodel.SettingsViewModel
-import com.velox.app.presentation.viewmodel.SettingsUiState
-import com.velox.app.ui.theme.VeloxTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.velox.app.presentation.ui.components.LucideIcons
+import com.velox.app.presentation.viewmodel.UserProfileUiState
+import com.velox.app.presentation.viewmodel.UserProfileViewModel
 import com.velox.app.ui.theme.*
+import com.velox.app.ui.theme.VeloxTheme
 
 @Composable
 fun ProfileScreen(
     onBackClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    viewModel: SettingsViewModel = hiltViewModel(),
+    viewModel: UserProfileViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     ProfileScreenContent(
         uiState = uiState,
         onBackClick = onBackClick,
@@ -42,7 +43,7 @@ fun ProfileScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreenContent(
-    uiState: SettingsUiState,
+    uiState: UserProfileUiState,
     onBackClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
@@ -281,7 +282,7 @@ private fun ProfileMenuItem(
 fun ProfileScreenPreview() {
     VeloxTheme {
         ProfileScreenContent(
-            uiState = SettingsUiState(
+            uiState = UserProfileUiState(
                 displayName = "John Doe",
                 username = "johndoe",
                 isAdmin = true

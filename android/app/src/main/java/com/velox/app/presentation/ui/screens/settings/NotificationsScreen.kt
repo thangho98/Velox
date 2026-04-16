@@ -1,9 +1,6 @@
 package com.velox.app.presentation.ui.screens.settings
 
-import androidx.compose.ui.res.stringResource
-import com.velox.app.R
 import androidx.compose.foundation.background
-import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,29 +13,33 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.velox.app.R
 import com.velox.app.data.model.NotificationDto
+import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.viewmodel.NotificationsUiState
 import com.velox.app.presentation.viewmodel.NotificationsViewModel
-import com.velox.app.ui.theme.VeloxTheme
 import com.velox.app.ui.theme.NetflixBlack
 import com.velox.app.ui.theme.NetflixDark
 import com.velox.app.ui.theme.NetflixGray
 import com.velox.app.ui.theme.NetflixLightGray
-import com.velox.app.ui.theme.TextMuted
 import com.velox.app.ui.theme.NetflixRed
 import com.velox.app.ui.theme.NetflixWhite
+import com.velox.app.ui.theme.TextMuted
+import com.velox.app.ui.theme.VeloxTheme
 
 @Composable
 fun NotificationsScreen(
     onBackClick: () -> Unit,
     viewModel: NotificationsViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     NotificationsContent(
         uiState = uiState,
@@ -279,4 +280,5 @@ private val SampleNotification = NotificationDto(
     type = "new_content",
     read = false,
     createdAt = "2024-01-15T10:30:00Z"
+
 )
