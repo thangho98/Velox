@@ -142,7 +142,7 @@ interface VeloxApi {
     ): Response<DataWrapper<List<MediaListItemDto>>>
 
     @POST("profile/favorites/{mediaId}")
-    suspend fun toggleFavorite(@Path("mediaId") mediaId: Int): Response<ToggleFavoriteResponse>
+    suspend fun toggleFavorite(@Path("mediaId") mediaId: Int): Response<DataWrapper<ToggleFavoriteResponse>>
 
     @GET("profile/recently-watched")
     suspend fun getRecentlyWatched(

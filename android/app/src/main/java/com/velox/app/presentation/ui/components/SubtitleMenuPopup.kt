@@ -86,7 +86,7 @@ fun SubtitleMenuPopup(
                 }
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
-                
+
                 // Secondary Title
                 Text(
                     text = "SECONDARY SUBTITLE",
@@ -154,9 +154,9 @@ private fun SubtitleMenuItem(
             tint = if (isSelected) NetflixWhite else Color.White.copy(alpha = 0.4f),
             modifier = Modifier.size(18.dp)
         )
-        
+
         Spacer(modifier = Modifier.width(12.dp))
-        
+
         Column(modifier = Modifier.weight(1f)) {
             val displayLabel = track.label.takeIf { it.isNotBlank() } ?: track.language.takeIf { it.isNotBlank() } ?: "Track ${track.index}"
             Text(
@@ -175,7 +175,7 @@ private fun SubtitleMenuItem(
                 )
             }
         }
-        
+
         // Simple text checkmark like web `✓`
         Text(
             text = if (isSelected) "✓" else "",

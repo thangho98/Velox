@@ -49,3 +49,10 @@
 # Hilt
 -keep class dagger.hilt.** { *; }
 -keep class javax.inject.** { *; }
+
+# Timber — strip verbose/debug logs in release
+-assumenosideeffects class timber.log.Timber* {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** i(...);
+}

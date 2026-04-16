@@ -12,7 +12,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,7 +67,7 @@ fun NotificationBell(
     onClick: () -> Unit,
     viewModel: NotificationBellViewModel = hiltViewModel()
 ) {
-    val unreadCount by viewModel.unreadCount.collectAsState()
+    val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
 
     // Dùng wrapper Box bên ngoài IconButton để tránh bị clip bởi shape của IconButton
     Box(contentAlignment = Alignment.Center) {
@@ -84,7 +84,7 @@ fun NotificationBell(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    // (48 - 24) / 2 = 12dp. 
+                    // (48 - 24) / 2 = 12dp.
                     // Để đưa badge về đỉnh icon thì cần x=-12, y=12.
                     // Kéo cao lên xíu và dịch phải xíu so với icon -> x = -8.dp, y = 8.dp
                     .offset(x = (-8).dp, y = 8.dp)

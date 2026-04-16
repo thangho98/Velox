@@ -8,10 +8,13 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.velox.app.domain.model.ImageResource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.Response
 import javax.inject.Inject
@@ -32,6 +35,9 @@ class AuthManager @Inject constructor(
         private val DISPLAY_NAME_KEY = stringPreferencesKey("display_name")
         private val IS_ADMIN_KEY = stringPreferencesKey("is_admin")
         private val PROFILE_PATH_KEY = stringPreferencesKey("profile_path")
+        private val PROFILE_JSON_KEY = stringPreferencesKey("profile_json")
+
+        private val json = Json { ignoreUnknownKeys = true }
     }
 
     val isLoggedIn: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -66,6 +72,17 @@ class AuthManager @Inject constructor(
         prefs[PROFILE_PATH_KEY]
     }
 
+    val profileImageResource: Flow<ImageResource?> = context.dataStore.data.map { prefs ->
+        prefs[PROFILE_JSON_KEY]?.let { jsonStr ->
+            try {
+                val dto = json.decodeFromString<ProfileImageJson>(jsonStr)
+                dto.toImageResource()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     fun getAccessTokenSync(): String? = runBlocking {
         accessToken.first()
     }
@@ -93,6 +110,7 @@ class AuthManager @Inject constructor(
         displayName: String,
         isAdmin: Boolean,
         profilePath: String?,
+        profileImage: ImageResource? = null,
     ) {
         context.dataStore.edit { prefs ->
             prefs[USER_ID_KEY] = userId
@@ -103,6 +121,13 @@ class AuthManager @Inject constructor(
                 prefs[PROFILE_PATH_KEY] = profilePath
             } else {
                 prefs.remove(PROFILE_PATH_KEY)
+            }
+            if (profileImage != null) {
+                prefs[PROFILE_JSON_KEY] = json.encodeToString(
+                    ProfileImageJson.fromImageResource(profileImage)
+                )
+            } else {
+                prefs.remove(PROFILE_JSON_KEY)
             }
         }
     }

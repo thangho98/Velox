@@ -64,8 +64,8 @@ class TokenAuthenticator @Inject constructor(
                                 .build()
                         }
                     }
-                    
-                    // If refresh failed (e.g. 401 or invalid token), clear auth 
+
+                    // If refresh failed (e.g. 401 or invalid token), clear auth
                     runBlocking { authManager.clearAuth() }
                     null
                 } catch (e: Exception) {

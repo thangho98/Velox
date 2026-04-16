@@ -1,7 +1,5 @@
 package com.velox.app.presentation.ui.screens.detail
 
-import java.util.Locale
-import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -27,8 +25,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,7 +34,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.velox.app.presentation.ui.components.ResponsiveImage
+import com.velox.app.R
 import com.velox.app.data.model.CinemaDto
 import com.velox.app.data.model.TrailerDto
 import com.velox.app.domain.model.CastMember
@@ -46,10 +47,10 @@ import com.velox.app.domain.model.MediaDetail
 import com.velox.app.domain.model.MediaFile
 import com.velox.app.domain.model.MediaItem
 import com.velox.app.domain.model.WatchProgress
-import com.velox.app.R
 import com.velox.app.presentation.ui.components.ActionMenu
 import com.velox.app.presentation.ui.components.ActionMenuButton
 import com.velox.app.presentation.ui.components.ActionMenuItem
+import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.ui.components.YouTubePlayer
 import com.velox.app.presentation.viewmodel.MediaDetailUiState
 import com.velox.app.presentation.viewmodel.MediaDetailViewModel
@@ -60,6 +61,7 @@ import com.velox.app.ui.theme.NetflixLightGray
 import com.velox.app.ui.theme.NetflixRed
 import com.velox.app.ui.theme.NetflixWhite
 import com.velox.app.ui.theme.VeloxTheme
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,7 +72,7 @@ fun MediaDetailScreen(
     onPlayClick: () -> Unit,
     viewModel: MediaDetailViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -147,13 +149,23 @@ private fun MediaDetailContent(
         // Fixed Background Backdrop (like SeriesDetailScreen)
         val media = uiState.media
         if (media != null && (media.backdropPath != null || media.posterPath != null)) {
-            AsyncImage(
-                model = media.backdropPath ?: media.posterPath,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.TopCenter,
-            )
+            val imageResource = media.backdrop ?: media.poster
+            if (imageResource != null) {
+                ResponsiveImage(
+                    data = imageResource,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                AsyncImage(
+                    model = media.backdropPath ?: media.posterPath,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
+                )
+            }
             // Vertical Gradient Overlay
             Box(
                 modifier = Modifier
@@ -253,7 +265,7 @@ private fun MediaDetailContent(
                             .padding(bottom = 24.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (mediaDetail.posterPath != null) {
+                        if (mediaDetail.poster != null || mediaDetail.posterPath != null) {
                             Surface(
                                 modifier = Modifier
                                     .padding(top = 20.dp)
@@ -263,12 +275,21 @@ private fun MediaDetailContent(
                                 color = NetflixDark,
                                 shadowElevation = 12.dp,
                             ) {
-                                AsyncImage(
-                                    model = mediaDetail.posterPath,
-                                    contentDescription = mediaDetail.title,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
-                                )
+                                if (mediaDetail.poster != null) {
+                                    ResponsiveImage(
+                                        data = mediaDetail.poster,
+                                        contentDescription = mediaDetail.title,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                } else {
+                                    AsyncImage(
+                                        model = mediaDetail.posterPath,
+                                        contentDescription = mediaDetail.title,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                }
                             }
                         } else {
                             Surface(
@@ -787,13 +808,22 @@ fun SimilarCard(
             color = NetflixGray,
             shape = RoundedCornerShape(8.dp),
         ) {
-            if (item.posterPath != null) {
-                AsyncImage(
-                    model = item.posterPath,
-                    contentDescription = item.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
+            if (item.poster != null || item.posterPath != null) {
+                if (item.poster != null) {
+                    ResponsiveImage(
+                        data = item.poster,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    AsyncImage(
+                        model = item.posterPath,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
             } else {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
@@ -860,8 +890,8 @@ private val SampleMediaDetail = MediaDetail(
         crew = emptyList(),
     ),
     similar = listOf(
-        MediaItem(2, "Batman Begins", null, null, 2005, 8.2f, "movie", null),
-        MediaItem(3, "The Dark Knight Rises", null, null, 2012, 8.4f, "movie", null),
+        MediaItem(2, "Batman Begins", null, null, null, null, 2005, 8.2f, "movie", null),
+        MediaItem(3, "The Dark Knight Rises", null, null, null, null, 2012, 8.4f, "movie", null),
     ),
 )
 
@@ -875,4 +905,5 @@ private val SampleMediaDetailUiState = MediaDetailUiState(
             TrailerDto(1, "Official Trailer", "https://www.youtube.com/watch?v=EXeTwQW6GQg", "youtube", "EXeTwQW6GQg"),
         ),
     ),
+
 )

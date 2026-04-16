@@ -6,6 +6,7 @@ data class User(
     val displayName: String,
     val isAdmin: Boolean,
     val profilePath: String? = null,
+    val profile: ImageResource? = null,
 )
 
 data class MediaItem(
@@ -13,6 +14,8 @@ data class MediaItem(
     val title: String,
     val posterPath: String?,
     val backdropPath: String?,
+    val poster: ImageResource? = null,
+    val backdrop: ImageResource? = null,
     val year: Int?,
     val rating: Float?,
     val mediaType: String,
@@ -28,6 +31,10 @@ data class MediaDetail(
     val overview: String?,
     val posterPath: String?,
     val backdropPath: String?,
+    val poster: ImageResource? = null,
+    val backdrop: ImageResource? = null,
+    val logo: ImageResource? = null,
+    val thumb: ImageResource? = null,
     val rating: Float?,
     val duration: Float?,
     val releaseDate: String?,
@@ -70,6 +77,8 @@ data class SeriesItem(
     val title: String,
     val posterPath: String?,
     val backdropPath: String?,
+    val poster: ImageResource? = null,
+    val backdrop: ImageResource? = null,
     val year: Int?,
     val rating: Float?,
     val overview: String?,
@@ -83,6 +92,10 @@ data class SeriesDetail(
     val overview: String?,
     val posterPath: String?,
     val backdropPath: String?,
+    val poster: ImageResource? = null,
+    val backdrop: ImageResource? = null,
+    val logo: ImageResource? = null,
+    val thumb: ImageResource? = null,
     val status: String?,
     val network: String?,
     val firstAirDate: String?,
@@ -112,6 +125,7 @@ data class Episode(
     val title: String,
     val overview: String?,
     val stillPath: String?,
+    val still: ImageResource? = null,
     val airDate: String?,
     val duration: Float?,
 )
@@ -124,6 +138,8 @@ data class ContinueWatchingItem(
     val title: String,
     val posterPath: String?,
     val backdropPath: String?,
+    val poster: ImageResource? = null,
+    val backdrop: ImageResource? = null,
     val mediaType: String,
     val duration: Float?,
     val seriesTitle: String?,
@@ -138,6 +154,9 @@ data class NextUpItem(
     val episodeTitle: String?,
     val stillPath: String?,
     val backdropPath: String?,
+    val still: ImageResource? = null,
+    val backdrop: ImageResource? = null,
+    val poster: ImageResource? = null,
     val duration: Float?,
     val seasonNumber: Int,
     val episodeNumber: Int,
@@ -234,7 +253,9 @@ data class BrowseItem(
     val mediaId: Int? = null,
     val mediaType: String? = null,
     val posterPath: String? = null,
+    val poster: ImageResource? = null,
     val backdropPath: String? = null,
+    val backdrop: ImageResource? = null,
 )
 
 data class MediaWithFilesInfo(
@@ -268,4 +289,19 @@ data class MediaFile(
     val container: String?,
     val bitrate: Int?,
     val isPrimary: Boolean,
+)
+
+/**
+ * Domain-level request params for playback info.
+ * Replaces direct usage of data.model.PlaybackInfoRequest in the domain layer.
+ */
+data class PlaybackInfoParams(
+    val videoCodecs: List<String>? = null,
+    val audioCodecs: List<String>? = null,
+    val containers: List<String>? = null,
+    val maxHeight: Int? = null,
+    val mediaFileId: Int? = null,
+    val selectedAudioTrack: Int? = null,
+    val selectedSubtitle: String? = null,
+    val selectedSubtitleId: Int? = null,
 )

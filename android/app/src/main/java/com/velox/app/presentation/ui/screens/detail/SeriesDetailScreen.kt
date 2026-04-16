@@ -1,9 +1,6 @@
 package com.velox.app.presentation.ui.screens.detail
 
-import androidx.compose.ui.res.stringResource
-import com.velox.app.R
 import androidx.compose.foundation.background
-import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,17 +11,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,14 +30,19 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.velox.app.presentation.ui.components.ResponsiveImage
+import com.velox.app.R
 import com.velox.app.domain.model.Episode
 import com.velox.app.domain.model.Season
 import com.velox.app.domain.model.SeriesDetail
@@ -48,17 +50,17 @@ import com.velox.app.domain.model.WatchProgress
 import com.velox.app.presentation.ui.components.ActionMenu
 import com.velox.app.presentation.ui.components.ActionMenuButton
 import com.velox.app.presentation.ui.components.ActionMenuItem
+import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.ui.components.YouTubePlayer
-import androidx.compose.ui.tooling.preview.Preview
 import com.velox.app.presentation.viewmodel.SeriesDetailUiState
 import com.velox.app.presentation.viewmodel.SeriesDetailViewModel
-import com.velox.app.ui.theme.VeloxTheme
 import com.velox.app.ui.theme.NetflixBlack
 import com.velox.app.ui.theme.NetflixDark
 import com.velox.app.ui.theme.NetflixGray
 import com.velox.app.ui.theme.NetflixLightGray
 import com.velox.app.ui.theme.NetflixRed
 import com.velox.app.ui.theme.NetflixWhite
+import com.velox.app.ui.theme.VeloxTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,7 +70,7 @@ fun SeriesDetailScreen(
     onEpisodeClick: (Int) -> Unit,
     viewModel: SeriesDetailViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     SeriesDetailContent(
         uiState = uiState,
@@ -140,14 +142,24 @@ fun SeriesDetailContent(
     Box(modifier = Modifier.fillMaxSize().background(NetflixBlack)) {
         // Fixed Background Backdrop
         val series = uiState.series
-        if (series != null && series.backdropPath != null) {
-            AsyncImage(
-                model = series.backdropPath,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.TopCenter
-            )
+        if (series != null && (series.backdropPath != null || series.backdrop != null)) {
+            val imageResource = series.backdrop ?: series.poster
+            if (imageResource != null) {
+                ResponsiveImage(
+                    data = imageResource,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                AsyncImage(
+                    model = series.backdropPath,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter
+                )
+            }
             // Vertical Gradient Overlay (Darkens the bottom)
             Box(
                 modifier = Modifier
@@ -249,7 +261,7 @@ fun SeriesDetailContent(
                             .padding(bottom = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (series.posterPath != null) {
+                        if (series.poster != null || series.posterPath != null) {
                             Surface(
                                 modifier = Modifier
                                     .align(Alignment.Center)
@@ -260,12 +272,21 @@ fun SeriesDetailContent(
                                 color = NetflixDark,
                                 shadowElevation = 12.dp,
                             ) {
-                                AsyncImage(
-                                    model = series.posterPath,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
-                                )
+                                if (series.poster != null) {
+                                    ResponsiveImage(
+                                        data = series.poster,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                } else {
+                                    AsyncImage(
+                                        model = series.posterPath,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                }
                             }
                         }
                     }
@@ -418,7 +439,7 @@ fun SeriesDetailContent(
                                         fontSize = 14.sp
                                     )
                                 }
-                                
+
                                 Text(
                                     text = "Continue ${series.title} - ${firstEp.title}",
                                     color = NetflixLightGray,
@@ -566,13 +587,22 @@ fun EpisodeCard(
                 color = NetflixGray,
                 shape = RoundedCornerShape(4.dp),
             ) {
-                if (episode.stillPath != null) {
-                    AsyncImage(
-                        model = episode.stillPath,
-                        contentDescription = episode.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
+                if (episode.still != null || episode.stillPath != null) {
+                    if (episode.still != null) {
+                        ResponsiveImage(
+                            data = episode.still,
+                            contentDescription = episode.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        AsyncImage(
+                            model = episode.stillPath,
+                            contentDescription = episode.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
                 } else {
                     Box(contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {

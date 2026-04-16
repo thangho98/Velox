@@ -1,10 +1,6 @@
 package com.velox.app.presentation.ui.screens.favorites
 
-import androidx.compose.ui.res.stringResource
-import com.velox.app.R
 import androidx.compose.foundation.background
-import com.velox.app.presentation.ui.components.LucideIcons
-import com.velox.app.presentation.ui.components.NotificationBell
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -19,22 +15,29 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.velox.app.presentation.ui.components.ResponsiveImage
+import com.velox.app.R
 import com.velox.app.domain.model.MediaItem
+import com.velox.app.presentation.ui.components.LucideIcons
+import com.velox.app.presentation.ui.components.NotificationBell
 import com.velox.app.presentation.viewmodel.FavoritesUiState
 import com.velox.app.presentation.viewmodel.FavoritesViewModel
-import com.velox.app.ui.theme.VeloxTheme
 import com.velox.app.ui.theme.NetflixBlack
 import com.velox.app.ui.theme.NetflixGray
 import com.velox.app.ui.theme.NetflixLightGray
 import com.velox.app.ui.theme.NetflixRed
+import com.velox.app.ui.theme.FavoritePink
 import com.velox.app.ui.theme.NetflixWhite
+import com.velox.app.ui.theme.VeloxTheme
 
 @Composable
 fun FavoritesScreen(
@@ -45,7 +48,7 @@ fun FavoritesScreen(
     onSettingsClick: () -> Unit,
     viewModel: FavoritesViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     FavoritesScreenContent(
         uiState = uiState,
@@ -179,13 +182,22 @@ private fun FavoriteCard(
                 color = NetflixGray,
                 shape = RoundedCornerShape(8.dp),
             ) {
-                if (item.posterPath != null) {
-                    AsyncImage(
-                        model = item.posterPath,
-                        contentDescription = item.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
+                if (item.poster != null || item.posterPath != null) {
+                    if (item.poster != null) {
+                        ResponsiveImage(
+                            data = item.poster,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        AsyncImage(
+                            model = item.posterPath,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
                 } else {
                     Box(
                         contentAlignment = Alignment.Center,
@@ -198,17 +210,27 @@ private fun FavoriteCard(
                     }
                 }
             }
+            // Media Type Badge
+            com.velox.app.presentation.ui.components.MediaBadge(
+                mediaType = item.mediaType,
+                modifier = Modifier.align(Alignment.TopStart)
+            )
             // Favorite indicator
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .size(28.dp),
-                color = NetflixRed,
-                shape = RoundedCornerShape(14.dp),
+                    .padding(8.dp)
+                    .size(32.dp),
+                color = FavoritePink,
+                shape = RoundedCornerShape(16.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("♥", color = NetflixWhite, fontSize = 14.sp)
+                    Icon(
+                        imageVector = LucideIcons.Heart,
+                        contentDescription = "Favorite",
+                        tint = NetflixWhite,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }

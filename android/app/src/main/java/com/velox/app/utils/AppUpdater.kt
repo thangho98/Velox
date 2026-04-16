@@ -53,7 +53,7 @@ object AppUpdater {
             IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
             ContextCompat.RECEIVER_EXPORTED
         )
-        
+
         Toast.makeText(context, "Update downloading in background...", Toast.LENGTH_SHORT).show()
     }
 }

@@ -1,9 +1,14 @@
 package com.velox.app
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
@@ -25,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import android.content.Intent
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +60,7 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         VeloxNavHost(authManager = authManager)
                         MandatoryUpdateOverlay()
+                        NotificationPermissionRequester()
                     }
                 }
             }
@@ -62,13 +69,40 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+private fun NotificationPermissionRequester() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* granted or not — playback still works, just no notification */ }
+
+    LaunchedEffect(Unit) {
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) return@LaunchedEffect
+
+        // Ask at most once per install. If the user denies, they can re-enable
+        // from system Settings — don't nag on every cold start.
+        val prefs = context.getSharedPreferences(PERMISSION_PREFS, android.content.Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_NOTIF_ASKED, false)) return@LaunchedEffect
+        prefs.edit().putBoolean(KEY_NOTIF_ASKED, true).apply()
+        launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+}
+
+private const val PERMISSION_PREFS = "velox_permissions"
+private const val KEY_NOTIF_ASKED = "notif_permission_asked"
+
+@Composable
 fun MandatoryUpdateOverlay() {
     val context = LocalContext.current
     var showOverlay by remember { mutableStateOf(false) }
     var downloadUrl by remember { mutableStateOf<String?>(null) }
     var releaseNotes by remember { mutableStateOf("") }
     var versionName by remember { mutableStateOf("") }
-    
+
     val currentVersionCode = com.velox.app.BuildConfig.VERSION_CODE
 
     LaunchedEffect(Unit) {
@@ -79,13 +113,13 @@ fun MandatoryUpdateOverlay() {
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("Accept", "application/json")
-                
+
                 if (connection.responseCode == 200) {
                     val response = connection.inputStream.bufferedReader().readText()
                     val json = JSONObject(response)
                     val vCode = json.getInt("version_code")
                     val isMandatory = json.optBoolean("is_mandatory", false)
-                    
+
                     if (isMandatory && vCode > currentVersionCode) {
                         val dUrl = json.getString("download_url")
                         val vName = json.getString("version_name")

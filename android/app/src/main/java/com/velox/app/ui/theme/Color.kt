@@ -11,6 +11,9 @@ val NetflixRed = Color(0xFFE50914)
 val NetflixRedHover = Color(0xFFF40612)
 val NetflixWhite = Color(0xFFFFFFFF)
 val NetflixBlue = Color(0xFF0071EB)
+val FavoritePink = Color(0xFFEC4899)
+val MovieBlue = Color(0xFF3B82F6)
+val SeriesPurple = Color(0xFFA855F7)
 
 // Surface colors
 val SurfaceDark = Color(0xFF1A1A1A)

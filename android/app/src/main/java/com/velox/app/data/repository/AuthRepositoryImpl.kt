@@ -5,6 +5,7 @@ import com.velox.app.data.api.VeloxApiProvider
 import com.velox.app.data.model.ChangePasswordRequest
 import com.velox.app.data.model.LoginRequest
 import com.velox.app.data.model.RefreshRequest
+import com.velox.app.data.model.toDomain
 import com.velox.app.data.util.ImageUrlResolver
 import com.velox.app.domain.model.User
 import com.velox.app.domain.repository.AuthRepository
@@ -37,12 +38,14 @@ class AuthRepositoryImpl @Inject constructor(
                     refreshToken = body.refreshToken,
                     expiresIn = body.expiresIn,
                 )
+                val profileImage = body.user.profile?.toDomain()
                 authManager.saveUser(
                     userId = body.user.id,
                     username = body.user.username,
                     displayName = body.user.displayName,
                     isAdmin = body.user.isAdmin,
                     profilePath = getFullUrl(body.user.profilePath),
+                    profileImage = profileImage,
                 )
                 Result.success(
                     User(
@@ -51,6 +54,7 @@ class AuthRepositoryImpl @Inject constructor(
                         displayName = body.user.displayName,
                         isAdmin = body.user.isAdmin,
                         profilePath = getFullUrl(body.user.profilePath),
+                        profile = profileImage,
                     ),
                 )
             } else {
@@ -78,12 +82,14 @@ class AuthRepositoryImpl @Inject constructor(
             val response = api.getMe()
             if (response.isSuccessful) {
                 val dto = response.body()!!.data
+                val profileImage = dto.profile?.toDomain()
                 val user = User(
                     id = dto.id,
                     username = dto.username,
                     displayName = dto.displayName,
                     isAdmin = dto.isAdmin,
                     profilePath = getFullUrl(dto.profilePath),
+                    profile = profileImage,
                 )
                 // Sync with local storage
                 authManager.saveUser(
@@ -92,6 +98,7 @@ class AuthRepositoryImpl @Inject constructor(
                     displayName = user.displayName,
                     isAdmin = user.isAdmin,
                     profilePath = user.profilePath,
+                    profileImage = profileImage,
                 )
                 Result.success(user)
             } else {
@@ -135,7 +142,15 @@ class AuthRepositoryImpl @Inject constructor(
             authManager.displayName,
             authManager.isAdmin,
             authManager.profilePath,
-        ) { userId, username, displayName, isAdmin, profilePath ->
+            authManager.profileImageResource,
+        ) { values ->
+            val userId = values[0] as? Int
+            val username = values[1] as? String
+            val displayName = values[2] as? String
+            val isAdmin = values[3] as? Boolean ?: false
+            val profilePath = values[4] as? String
+            @Suppress("UNCHECKED_CAST")
+            val profileImage = values[5] as? com.velox.app.domain.model.ImageResource
             if (userId != null && username != null) {
                 User(
                     id = userId,
@@ -143,6 +158,7 @@ class AuthRepositoryImpl @Inject constructor(
                     displayName = displayName ?: username,
                     isAdmin = isAdmin,
                     profilePath = profilePath,
+                    profile = profileImage,
                 )
             } else {
                 null

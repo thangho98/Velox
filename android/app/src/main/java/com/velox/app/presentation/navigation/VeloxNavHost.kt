@@ -28,7 +28,6 @@ import com.velox.app.presentation.ui.screens.settings.SettingsScreen
 import com.velox.app.presentation.ui.screens.settings.ProfileScreen
 import com.velox.app.presentation.ui.screens.settings.NotificationsScreen
 import com.velox.app.presentation.ui.screens.splash.SplashScreen
-import kotlinx.coroutines.flow.first
 
 private val mainTabs = listOf(
     Screen.Home.route,
@@ -38,6 +37,7 @@ private val mainTabs = listOf(
     Screen.Favorites.route,
 )
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun VeloxNavHost(
     navController: NavHostController = rememberNavController(),

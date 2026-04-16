@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,8 +33,8 @@ fun SplashScreen(
     onNavigateToHome: () -> Unit,
     onNavigateToLogin: () -> Unit
 ) {
-    val state by viewModel.state.collectAsState()
-    
+    val state by viewModel.state.collectAsStateWithLifecycle()
+
     val scale = remember { Animatable(0f) }
     val alpha = remember { Animatable(0f) }
     val isAnimationFinished = remember { mutableStateOf(false) }

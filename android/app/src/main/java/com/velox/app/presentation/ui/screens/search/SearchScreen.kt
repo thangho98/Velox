@@ -1,10 +1,6 @@
 package com.velox.app.presentation.ui.screens.search
 
-import androidx.compose.ui.res.stringResource
-import com.velox.app.R
 import androidx.compose.foundation.background
-import com.velox.app.presentation.ui.components.LucideIcons
-import com.velox.app.presentation.ui.components.NotificationBell
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -24,15 +20,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.velox.app.presentation.ui.components.ResponsiveImage
+import com.velox.app.R
 import com.velox.app.domain.model.MediaItem
 import com.velox.app.domain.model.SeriesItem
+import com.velox.app.presentation.ui.components.LucideIcons
+import com.velox.app.presentation.ui.components.NotificationBell
 import com.velox.app.presentation.viewmodel.SearchUiState
 import com.velox.app.presentation.viewmodel.SearchViewModel
 import com.velox.app.ui.theme.NetflixBlack
@@ -50,7 +52,7 @@ fun SearchScreen(
     onBackClick: () -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     SearchContent(
         uiState = uiState,
@@ -363,24 +365,41 @@ fun SearchMovieCard(
             color = NetflixGray,
             shape = RoundedCornerShape(8.dp),
         ) {
-            if (item.posterPath != null) {
-                AsyncImage(
-                    model = item.posterPath,
-                    contentDescription = item.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = item.title.take(2).uppercase(),
-                        color = NetflixLightGray,
-                        fontSize = 24.sp,
-                    )
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (item.poster != null || item.posterPath != null) {
+                    if (item.poster != null) {
+                        ResponsiveImage(
+                            data = item.poster,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        AsyncImage(
+                            model = item.posterPath,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = item.title.take(2).uppercase(),
+                            color = NetflixLightGray,
+                            fontSize = 24.sp,
+                        )
+                    }
                 }
+
+                // Media Type Badge
+                com.velox.app.presentation.ui.components.MediaBadge(
+                    mediaType = "movie",
+                    modifier = Modifier.align(Alignment.TopStart)
+                )
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -418,24 +437,41 @@ fun SearchSeriesCard(
             color = NetflixGray,
             shape = RoundedCornerShape(8.dp),
         ) {
-            if (item.posterPath != null) {
-                AsyncImage(
-                    model = item.posterPath,
-                    contentDescription = item.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = item.title.take(2).uppercase(),
-                        color = NetflixLightGray,
-                        fontSize = 24.sp,
-                    )
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (item.poster != null || item.posterPath != null) {
+                    if (item.poster != null) {
+                        ResponsiveImage(
+                            data = item.poster,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        AsyncImage(
+                            model = item.posterPath,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = item.title.take(2).uppercase(),
+                            color = NetflixLightGray,
+                            fontSize = 24.sp,
+                        )
+                    }
                 }
+
+                // Media Type Badge
+                com.velox.app.presentation.ui.components.MediaBadge(
+                    mediaType = "series",
+                    modifier = Modifier.align(Alignment.TopStart)
+                )
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -499,4 +535,5 @@ private val SampleSearchSeriesItem = SeriesItem(
     overview = null,
     seasonCount = 5,
     episodeCount = 62,
+
 )

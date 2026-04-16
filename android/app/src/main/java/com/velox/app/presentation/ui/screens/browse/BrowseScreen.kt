@@ -1,10 +1,6 @@
 package com.velox.app.presentation.ui.screens.browse
 
-import androidx.compose.ui.res.stringResource
-import com.velox.app.R
 import androidx.compose.foundation.background
-import com.velox.app.presentation.ui.components.LucideIcons
-import com.velox.app.presentation.ui.components.NotificationBell
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -30,17 +26,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import androidx.compose.ui.tooling.preview.Preview
-import com.velox.app.presentation.viewmodel.BrowseUiState
-import com.velox.app.ui.theme.VeloxTheme
+import com.velox.app.presentation.ui.components.ResponsiveImage
+import com.velox.app.R
 import com.velox.app.domain.model.BrowseItem
 import com.velox.app.domain.model.Library
+import com.velox.app.presentation.ui.components.LucideIcons
+import com.velox.app.presentation.ui.components.NotificationBell
+import com.velox.app.presentation.viewmodel.BrowseUiState
 import com.velox.app.presentation.viewmodel.BrowseViewModel
 import com.velox.app.ui.theme.NetflixBlack
 import com.velox.app.ui.theme.NetflixDark
@@ -48,6 +49,7 @@ import com.velox.app.ui.theme.NetflixGray
 import com.velox.app.ui.theme.NetflixLightGray
 import com.velox.app.ui.theme.NetflixRed
 import com.velox.app.ui.theme.NetflixWhite
+import com.velox.app.ui.theme.VeloxTheme
 
 @Composable
 fun BrowseScreen(
@@ -58,7 +60,7 @@ fun BrowseScreen(
     onSettingsClick: () -> Unit,
     viewModel: BrowseViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     BrowseScreenContent(
         uiState = uiState,
@@ -296,16 +298,29 @@ fun BrowseListItem(
                     )
                 }
             } else {
-                AsyncImage(
-                    model = item.posterPath,
-                    contentDescription = item.name,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(NetflixGray),
-                    contentScale = ContentScale.Crop,
-                )
-                if (item.posterPath == null) {
+                if (item.poster != null || item.posterPath != null) {
+                    if (item.poster != null) {
+                        ResponsiveImage(
+                            data = item.poster,
+                            contentDescription = item.name,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(NetflixGray),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        AsyncImage(
+                            model = item.posterPath,
+                            contentDescription = item.name,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(NetflixGray),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
+                } else {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -378,24 +393,42 @@ fun BrowseGridItem(
                     )
                 }
             } else {
-                AsyncImage(
-                    model = item.posterPath,
-                    contentDescription = item.name,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-                if (item.posterPath == null) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            if (item.mediaType == "series") LucideIcons.Tv else LucideIcons.Movie,
-                            contentDescription = null,
-                            tint = NetflixLightGray,
-                            modifier = Modifier.size(48.dp),
-                        )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (item.poster != null || item.posterPath != null) {
+                        if (item.poster != null) {
+                            ResponsiveImage(
+                                data = item.poster,
+                                contentDescription = item.name,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            AsyncImage(
+                                model = item.posterPath,
+                                contentDescription = item.name,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                if (item.mediaType == "series") LucideIcons.Tv else LucideIcons.Movie,
+                                contentDescription = null,
+                                tint = NetflixLightGray,
+                                modifier = Modifier.size(48.dp),
+                            )
+                        }
                     }
+
+                    // Media Type Badge
+                    com.velox.app.presentation.ui.components.MediaBadge(
+                        mediaType = item.mediaType ?: "movie",
+                        modifier = Modifier.align(Alignment.TopStart)
+                    )
                 }
             }
         }

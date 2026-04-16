@@ -198,7 +198,7 @@ fun CinemaOverlay(
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = NetflixWhite.copy(alpha = 0.7f),
                         ),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
                             brush = Brush.linearGradient(
                                 colors = listOf(
                                     NetflixWhite.copy(alpha = 0.3f),

@@ -41,6 +41,7 @@ data class UserDto(
     @SerialName("display_name") val displayName: String,
     @SerialName("is_admin") val isAdmin: Boolean,
     @SerialName("profile_path") val profilePath: String? = null,
+    val profile: com.velox.app.data.model.ImageResourceDto? = null,
 )
 
 @Serializable

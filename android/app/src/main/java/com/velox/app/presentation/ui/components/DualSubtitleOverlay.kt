@@ -87,26 +87,26 @@ fun DualSubtitleOverlay(
     // Dynamic font sizing based on breakpoints (similar to Web Tailwind: md=768, lg=1024)
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp
-    
+
     val baseFontSizeDp = when {
         screenWidth >= 1024 -> 32.dp // Desktop / Large Tablet Landscape
         screenWidth >= 768 -> 26.dp  // Tablet Portrait
         screenWidth >= 600 -> 22.dp  // Small Tablet / Phablet
         else -> 18.dp                // Phone
     }
-    
+
     val density = androidx.compose.ui.platform.LocalDensity.current
-    // Note: To avoid users' system font scaling (Accessibility) from making subs absurdly large, 
+    // Note: To avoid users' system font scaling (Accessibility) from making subs absurdly large,
     // we use `dp` mapped to `sp` dynamically, or we can just divide by fontScale.
     val fontScale = density.fontScale
     val baseFontSizeSp = with(density) { (baseFontSizeDp / fontScale).toSp() }
-    
+
     val primaryFontSize = when (appearance.size) {
         "small" -> baseFontSizeSp * 0.8f
         "large" -> baseFontSizeSp * 1.3f
         else -> baseFontSizeSp // "medium"
     }
-    
+
     val secondaryFontSize = primaryFontSize * 0.65f
 
     val stripTags: (String) -> String = { text ->
@@ -264,7 +264,7 @@ fun calculateLetterboxHeight(
     if (containerHeight <= 0 || videoHeight <= 0 || videoWidth <= 0 || containerWidth <= 0) return 0
     val videoAspect = videoWidth.toFloat() / videoHeight.toFloat()
     val containerAspect = containerWidth.toFloat() / containerHeight.toFloat()
-    
+
     // If video is wider than container, it will be letterboxed (black bars top/bottom)
     if (videoAspect > containerAspect) {
         val displayHeight = containerWidth / videoAspect

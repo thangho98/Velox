@@ -1,8 +1,6 @@
 package com.velox.app.presentation.ui.screens.home
 
 import androidx.compose.foundation.background
-import com.velox.app.presentation.ui.components.LucideIcons
-import com.velox.app.presentation.ui.components.NotificationBell
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,18 +19,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
-import com.velox.app.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.velox.app.presentation.ui.components.ResponsiveImage
 import coil.compose.AsyncImage
+import com.velox.app.R
 import com.velox.app.domain.model.ContinueWatchingItem
 import com.velox.app.domain.model.Library
 import com.velox.app.domain.model.MediaItem
 import com.velox.app.domain.model.NextUpItem
 import com.velox.app.domain.model.User
+import com.velox.app.presentation.ui.components.LucideIcons
+import com.velox.app.presentation.ui.components.NotificationBell
 import com.velox.app.presentation.viewmodel.HomeUiState
 import com.velox.app.presentation.viewmodel.HomeViewModel
 import com.velox.app.ui.theme.NetflixBlack
@@ -55,7 +57,7 @@ fun HomeScreen(
     onNavigateToSeries: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     HomeContent(
         uiState = uiState,
@@ -265,6 +267,7 @@ fun HomeContent(
                                 SeriesCard(
                                     title = item.title,
                                     posterPath = item.posterPath,
+                                    poster = item.poster,
                                     onClick = { onSeriesClick(item.id) },
                                 )
                             }
@@ -359,13 +362,22 @@ fun MediaCard(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (item.posterPath != null) {
-                AsyncImage(
-                    model = item.posterPath,
-                    contentDescription = item.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
+            if (item.poster != null || item.posterPath != null) {
+                if (item.poster != null) {
+                    ResponsiveImage(
+                        data = item.poster,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    AsyncImage(
+                        model = item.posterPath,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
             } else {
                 Box(
                     contentAlignment = Alignment.Center,
@@ -428,6 +440,7 @@ fun MediaCard(
 fun SeriesCard(
     title: String,
     posterPath: String?,
+    poster: com.velox.app.domain.model.ImageResource? = null,
     onClick: () -> Unit,
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp
@@ -443,13 +456,22 @@ fun SeriesCard(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (posterPath != null) {
-                AsyncImage(
-                    model = posterPath,
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
+            if (poster != null || posterPath != null) {
+                if (poster != null) {
+                    ResponsiveImage(
+                        data = poster,
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    AsyncImage(
+                        model = posterPath,
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
             } else {
                 Box(
                     contentAlignment = Alignment.Center,
@@ -508,13 +530,24 @@ fun ContinueWatchingCard(
             // Prefer backdrop for horizontal 16:9 ratio
             val imagePath = item.backdropPath ?: item.posterPath
             Box(modifier = Modifier.fillMaxSize()) {
-                if (imagePath != null) {
-                    AsyncImage(
-                        model = imagePath,
-                        contentDescription = item.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
+                val imageResource = item.backdrop ?: item.poster
+
+                if (imageResource != null || imagePath != null) {
+                    if (imageResource != null) {
+                        ResponsiveImage(
+                            data = imageResource,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        AsyncImage(
+                            model = imagePath,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
                 } else {
                     Box(
                         contentAlignment = Alignment.Center,
@@ -562,7 +595,7 @@ fun ContinueWatchingCard(
                             )
                         }
                     }
-                    
+
                     val progress = if (item.duration != null && item.duration > 0) item.position / item.duration else 0f
                     if (progress > 0f) {
                         LinearProgressIndicator(
@@ -579,7 +612,7 @@ fun ContinueWatchingCard(
                 }
             }
         }
-        
+
         // Dismiss button
         IconButton(
             onClick = onDismiss,
@@ -667,13 +700,24 @@ fun NextUpCard(
         Box(modifier = Modifier.fillMaxSize()) {
             // Prefer stillPath (episode thumb) or backdropPath for horizontal ratio
             val imagePath = item.stillPath ?: item.backdropPath ?: item.seriesPoster
-            if (imagePath != null) {
-                AsyncImage(
-                    model = imagePath,
-                    contentDescription = item.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
+            val imageResource = item.still ?: item.backdrop ?: item.poster
+
+            if (imageResource != null || imagePath != null) {
+                if (imageResource != null) {
+                    ResponsiveImage(
+                        data = imageResource,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    AsyncImage(
+                        model = imagePath,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
             } else {
                 Box(
                     contentAlignment = Alignment.Center,
@@ -746,6 +790,7 @@ fun SeriesCardPreview() {
         SeriesCard(
             title = "The Last of Us",
             posterPath = null,
+            poster = null,
             onClick = {},
         )
     }
@@ -848,4 +893,5 @@ private val SampleHomeUiState = HomeUiState(
     recentlyAddedMovies = listOf(SampleMediaItem),
     recentlyAddedSeries = emptyList(),
     libraries = listOf(SampleLibrary),
+
 )

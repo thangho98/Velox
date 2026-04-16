@@ -128,7 +128,7 @@ fun SeekFeedbackOverlayContainer(
         Box(modifier = Modifier.fillMaxSize()) {
             val isLeft = side == "left"
             val align = if (isLeft) Alignment.CenterStart else Alignment.CenterEnd
-            
+
 
             SeekFeedbackOverlay(
                 side = side,

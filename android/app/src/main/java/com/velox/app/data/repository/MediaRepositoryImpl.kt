@@ -6,6 +6,7 @@ import com.velox.app.data.model.SubtitleDownloadRequest
 import com.velox.app.data.model.TranslateSubtitleRequest
 import com.velox.app.data.model.UpdateProgressRequest
 import com.velox.app.data.util.ImageUrlResolver
+import com.velox.app.data.model.toDomain
 import com.velox.app.domain.model.*
 import com.velox.app.domain.repository.MediaRepository
 import com.velox.app.domain.repository.SubtitleSearchResult
@@ -59,6 +60,8 @@ class MediaRepositoryImpl @Inject constructor(
                         title = dto.title,
                         posterPath = getFullUrl(dto.posterPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        poster = dto.poster?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
                         year = dto.year,
                         rating = dto.rating,
                         mediaType = dto.mediaType ?: dto.type ?: "movie",
@@ -89,6 +92,10 @@ class MediaRepositoryImpl @Inject constructor(
                         overview = dto.overview,
                         posterPath = getFullUrl(dto.posterPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        poster = dto.poster?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
+                        logo = dto.logo?.toDomain(),
+                        thumb = dto.thumb?.toDomain(),
                         rating = dto.rating,
                         duration = dto.duration,
                         releaseDate = dto.releaseDate,
@@ -124,6 +131,8 @@ class MediaRepositoryImpl @Inject constructor(
                                 title = similar.title,
                                 posterPath = getFullUrl(similar.posterPath),
                                 backdropPath = getBackdropUrl(similar.backdropPath),
+                                poster = similar.poster?.toDomain(),
+                                backdrop = similar.backdrop?.toDomain(),
                                 year = similar.year,
                                 rating = similar.rating,
                                 mediaType = similar.mediaType ?: similar.type ?: "movie",
@@ -166,6 +175,8 @@ class MediaRepositoryImpl @Inject constructor(
                         title = dto.title,
                         posterPath = getFullUrl(dto.posterPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        poster = dto.poster?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
                         year = dto.firstAirDate?.take(4)?.toIntOrNull() ?: dto.year,
                         rating = dto.rating,
                         overview = dto.overview,
@@ -196,6 +207,10 @@ class MediaRepositoryImpl @Inject constructor(
                         overview = dto.overview,
                         posterPath = getFullUrl(dto.posterPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        poster = dto.poster?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
+                        logo = dto.logo?.toDomain(),
+                        thumb = dto.thumb?.toDomain(),
                         status = dto.status,
                         network = dto.network,
                         firstAirDate = dto.firstAirDate,
@@ -283,6 +298,7 @@ class MediaRepositoryImpl @Inject constructor(
                         title = dto.title,
                         overview = dto.overview,
                         stillPath = getFullUrl(dto.stillPath),
+                        still = dto.still?.toDomain(),
                         airDate = dto.airDate,
                         duration = dto.duration,
                     )
@@ -324,7 +340,9 @@ class MediaRepositoryImpl @Inject constructor(
                             mediaId = media.id,
                             mediaType = media.type ?: media.mediaType,
                             posterPath = getFullUrl(media.posterPath),
+                            poster = media.poster?.toDomain(),
                             backdropPath = getBackdropUrl(media.backdropPath),
+                            backdrop = media.backdrop?.toDomain(),
                         ),
                     )
                 }
@@ -387,6 +405,8 @@ class MediaRepositoryImpl @Inject constructor(
                         title = dto.title,
                         posterPath = getFullUrl(dto.posterPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        poster = dto.poster?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
                         year = dto.year,
                         rating = dto.rating,
                         mediaType = "movie",
@@ -400,6 +420,8 @@ class MediaRepositoryImpl @Inject constructor(
                         title = dto.title,
                         posterPath = getFullUrl(dto.posterPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        poster = dto.poster?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
                         year = dto.year,
                         rating = dto.rating,
                         overview = dto.overview,
@@ -430,6 +452,8 @@ class MediaRepositoryImpl @Inject constructor(
                         title = dto.title,
                         posterPath = getFullUrl(dto.posterPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        poster = dto.poster?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
                         mediaType = dto.mediaType,
                         duration = dto.duration,
                         seriesTitle = dto.seriesTitle,
@@ -458,6 +482,9 @@ class MediaRepositoryImpl @Inject constructor(
                         episodeTitle = dto.episodeTitle,
                         stillPath = getFullUrl(dto.stillPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        still = dto.still?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
+                        poster = dto.poster?.toDomain(),
                         duration = dto.duration,
                         seasonNumber = dto.seasonNumber,
                         episodeNumber = dto.episodeNumber,
@@ -484,6 +511,8 @@ class MediaRepositoryImpl @Inject constructor(
                         title = dto.title,
                         posterPath = getFullUrl(dto.posterPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        poster = dto.poster?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
                         year = dto.year,
                         rating = dto.rating,
                         mediaType = dto.mediaType ?: dto.type ?: "movie",
@@ -509,6 +538,8 @@ class MediaRepositoryImpl @Inject constructor(
                         title = dto.title,
                         posterPath = getFullUrl(dto.posterPath),
                         backdropPath = getBackdropUrl(dto.backdropPath),
+                        poster = dto.poster?.toDomain(),
+                        backdrop = dto.backdrop?.toDomain(),
                         year = dto.year,
                         rating = dto.rating,
                         mediaType = dto.mediaType ?: dto.type ?: "movie",
@@ -528,7 +559,7 @@ class MediaRepositoryImpl @Inject constructor(
         return try {
             val response = api.toggleFavorite(mediaId)
             if (response.isSuccessful) {
-                Result.success(response.body()?.isFavorite ?: false)
+                Result.success(response.body()?.data?.isFavorite ?: false)
             } else {
                 Result.failure(Exception("Failed to toggle favorite"))
             }
@@ -550,8 +581,20 @@ class MediaRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun getPlaybackInfo(mediaId: Int, request: com.velox.app.data.model.PlaybackInfoRequest?): Result<PlaybackInfo> {
+    override suspend fun getPlaybackInfo(mediaId: Int, params: com.velox.app.domain.model.PlaybackInfoParams?): Result<PlaybackInfo> {
         return try {
+            val request = params?.let {
+                com.velox.app.data.model.PlaybackInfoRequest(
+                    videoCodecs = it.videoCodecs,
+                    audioCodecs = it.audioCodecs,
+                    containers = it.containers,
+                    maxHeight = it.maxHeight,
+                    mediaFileId = it.mediaFileId,
+                    selectedAudioTrack = it.selectedAudioTrack,
+                    selectedSubtitle = it.selectedSubtitle,
+                    selectedSubtitleId = it.selectedSubtitleId,
+                )
+            }
             val response = api.getPlaybackInfo(mediaId, request)
             if (response.isSuccessful) {
                 val dto = response.body()?.data!!
@@ -647,6 +690,21 @@ class MediaRepositoryImpl @Inject constructor(
                 Result.success(getFullUrl(url) ?: "")
             } else {
                 Result.failure(Exception("Failed to get stream URL"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getStreamApiKey(mediaId: Int): Result<String> {
+        return try {
+            val response = api.getStreamUrl(mediaId)
+            if (response.isSuccessful) {
+                val streamResponse = response.body()?.data
+                    ?: return Result.failure(Exception("Empty stream URL response"))
+                Result.success(streamResponse.apiKey)
+            } else {
+                Result.failure(Exception("Failed to get stream api key (${response.code()})"))
             }
         } catch (e: Exception) {
             Result.failure(e)

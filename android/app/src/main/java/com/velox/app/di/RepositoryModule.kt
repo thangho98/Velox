@@ -25,4 +25,10 @@ abstract class RepositoryModule {
     abstract fun bindMediaRepository(
         mediaRepositoryImpl: MediaRepositoryImpl,
     ): MediaRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSettingsRepository(
+        settingsRepositoryImpl: com.velox.app.data.repository.SettingsRepositoryImpl,
+    ): com.velox.app.domain.repository.SettingsRepository
 }

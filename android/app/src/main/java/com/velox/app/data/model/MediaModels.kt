@@ -3,13 +3,19 @@ package com.velox.app.data.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+import kotlinx.serialization.json.JsonNames
+import kotlinx.serialization.ExperimentalSerializationApi
+
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class MediaListItemDto(
-    val id: Int,
-    val title: String,
+    @JsonNames("media_id") val id: Int,
+    @JsonNames("media_title") val title: String = "Unknown",
     @SerialName("sort_title") val sortTitle: String? = null,
-    @SerialName("poster_path") val posterPath: String? = null,
+    @SerialName("poster_path") @JsonNames("media_poster") val posterPath: String? = null,
     @SerialName("backdrop_path") val backdropPath: String? = null,
+    val poster: ImageResourceDto? = null,
+    val backdrop: ImageResourceDto? = null,
     @SerialName("media_type") val mediaType: String? = null,
     val type: String? = null,
     val year: Int? = null,
@@ -41,6 +47,10 @@ data class MediaDto(
     @SerialName("backdrop_path") val backdropPath: String? = null,
     @SerialName("logo_path") val logoPath: String? = null,
     @SerialName("thumb_path") val thumbPath: String? = null,
+    val poster: ImageResourceDto? = null,
+    val backdrop: ImageResourceDto? = null,
+    val logo: ImageResourceDto? = null,
+    val thumb: ImageResourceDto? = null,
     @SerialName("metadata_locked") val metadataLocked: Boolean = false,
     val duration: Float? = null,
     @SerialName("series_id") val seriesId: Int? = null,

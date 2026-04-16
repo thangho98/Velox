@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt.android)
+    alias(libs.plugins.detekt)
+    alias(libs.plugins.ktlint)
 }
 
 android {
@@ -54,7 +56,7 @@ android {
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
+                "proguard-rules.pro"
             )
         }
     }
@@ -67,7 +69,7 @@ android {
     kotlinOptions {
         jvmTarget = "17"
         freeCompilerArgs += listOf(
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
         )
     }
 
@@ -120,6 +122,7 @@ dependencies {
 
     // Image loading
     implementation(libs.coil.compose)
+    implementation(libs.blurhash)
 
     // Media3 ExoPlayer
     implementation(libs.media3.exoplayer)
@@ -129,6 +132,9 @@ dependencies {
 
     // DataStore
     implementation(libs.datastore.preferences)
+
+    // Logging
+    implementation(libs.timber)
 
     // WebView for YouTube
     implementation(libs.webkit)
@@ -143,4 +149,22 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.androidx.runner)
+}
+
+// ── Detekt ──────────────────────────────────────────────────────────────
+detekt {
+    config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
+    baseline = file("${rootProject.projectDir}/config/detekt/baseline.xml")
+    buildUponDefaultConfig = true
+    parallel = true
+}
+
+// ── ktlint ──────────────────────────────────────────────────────────────
+ktlint {
+    android.set(true)
+    outputToConsole.set(true)
+    ignoreFailures.set(false)
+    filter {
+        exclude("**/generated/**")
+    }
 }

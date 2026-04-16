@@ -1,7 +1,6 @@
 package com.velox.app.presentation.ui.components
 
 import android.app.Activity
-import com.velox.app.presentation.ui.components.LucideIcons
 import android.app.PictureInPictureParams
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -10,86 +9,91 @@ import android.util.Rational
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.ui.res.stringResource
-import com.velox.app.R
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import coil.compose.AsyncImage
-import com.velox.app.presentation.viewmodel.AspectRatioUi
-import com.velox.app.presentation.viewmodel.DetailPanelUi
-import com.velox.app.presentation.viewmodel.QualityOptionUi
-import com.velox.app.presentation.viewmodel.RepeatModeUi
-import com.velox.app.presentation.viewmodel.PlayerUiState
-import com.velox.app.presentation.viewmodel.SubtitleTrackUi
-import com.velox.app.presentation.viewmodel.PlayerViewModel
-import com.velox.app.presentation.viewmodel.SubtitleSizeUi
-import com.velox.app.presentation.viewmodel.SubtitleBackgroundUi
-import com.velox.app.presentation.viewmodel.SkipSegmentUi
+import com.velox.app.R
 import com.velox.app.presentation.cast.CastManager
 import com.velox.app.presentation.cast.CastUiState
 import com.velox.app.presentation.cast.rememberCastManager
+import com.velox.app.presentation.ui.components.LucideIcons
+import com.velox.app.presentation.ui.components.SubtitleSearchModal
+import com.velox.app.presentation.viewmodel.AspectRatioUi
+import com.velox.app.presentation.viewmodel.DetailPanelUi
+import com.velox.app.presentation.viewmodel.PlayerUiState
+import com.velox.app.presentation.viewmodel.PlayerViewModel
+import com.velox.app.presentation.viewmodel.QualityOptionUi
+import com.velox.app.presentation.viewmodel.RepeatModeUi
+import com.velox.app.presentation.viewmodel.SkipSegmentUi
+import com.velox.app.presentation.viewmodel.SubtitleBackgroundUi
+import com.velox.app.presentation.viewmodel.SubtitleSizeUi
+import com.velox.app.presentation.viewmodel.SubtitleTrackUi
 import com.velox.app.ui.theme.NetflixBlack
 import com.velox.app.ui.theme.NetflixRed
 import com.velox.app.ui.theme.NetflixWhite
 import com.velox.app.ui.theme.VeloxTheme
-import com.velox.app.presentation.ui.components.SubtitleSearchModal
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.velox.app.presentation.ui.components.player.PlayerControlsOverlay
+import com.velox.app.presentation.ui.components.player.PlaybackStatsOverlay
+import com.velox.app.presentation.ui.components.player.UpNextCard
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayer(
     onBackClick: () -> Unit,
     onNavigateToMedia: (Int) -> Unit = {},
-    viewModel: PlayerViewModel,
+    uiState: PlayerUiState,
+    actions: com.velox.app.presentation.viewmodel.PlayerActions,
     modifier: Modifier = Modifier,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+
     val context = LocalContext.current
     val activity = context as? Activity
 
     // Cast Manager
     val castManager = rememberCastManager()
-    val castState by castManager.uiState.collectAsState()
+    val castState by castManager.uiState.collectAsStateWithLifecycle()
 
     var isAnyMenuOpen by remember { mutableStateOf(false) }
-    
+
     var isUserTouching by remember { mutableStateOf(false) }
     var lastInteractionTime by remember { mutableLongStateOf(0L) }
 
@@ -97,33 +101,24 @@ fun VideoPlayer(
     LaunchedEffect(uiState.showControls, uiState.isPlaying, uiState.isLocked, isAnyMenuOpen, isUserTouching, lastInteractionTime, uiState.isBuffering, uiState.isLoading) {
         if (uiState.showControls && uiState.isPlaying && !uiState.isLocked && !isAnyMenuOpen && !isUserTouching && !uiState.isBuffering && !uiState.isLoading) {
             delay(3000)
-            viewModel.toggleControls()
+            actions.toggleControls()
         }
     }
 
     // Update position periodically during playback
     LaunchedEffect(uiState.isPlaying) {
         while (uiState.isPlaying) {
-            viewModel.updatePosition()
+            actions.updatePosition()
             delay(500)
         }
     }
 
     BackHandler {
-        viewModel.saveProgress()
+        actions.saveProgress()
         onBackClick()
     }
 
-    // Keep screen on while playing or locked
-    LaunchedEffect(uiState.isPlaying, uiState.isLocked) {
-        activity?.let {
-            if (uiState.isPlaying || uiState.isLocked) {
-                it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            } else {
-                it.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
-        }
-    }
+    // Keep screen on while playing — handled via PlayerView.keepScreenOn in AndroidView update block
 
     // Double-tap seek handling (YouTube-style)
     var lastTapTime by remember { mutableLongStateOf(0L) }
@@ -163,6 +158,11 @@ fun VideoPlayer(
         isFullscreen = !isFullscreen
     }
 
+    val supportsPiP = remember(activity) {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            activity?.packageManager?.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE) == true
+    }
+
     // Seek amount in seconds (matching mobile)
     val SEEK_AMOUNT = 5
 
@@ -198,7 +198,7 @@ fun VideoPlayer(
                             if ((isLeftZone && currentSide == "left") || (isRightZone && currentSide == "right")) {
                                 val direction = if (isRightZone) SEEK_AMOUNT else -SEEK_AMOUNT
                                 seekAccumulator += direction
-                                viewModel.showSeekFeedback(
+                                actions.showSeekFeedback(
                                     side = currentSide,
                                     amount = kotlin.math.abs(seekAccumulator),
                                 )
@@ -207,21 +207,21 @@ fun VideoPlayer(
                                 resetSeekJob = coroutineScope.launch {
                                     delay(800)
                                     if (seekAccumulator < 0) {
-                                        viewModel.seekBackward(kotlin.math.abs(seekAccumulator))
+                                        actions.seekBackward(kotlin.math.abs(seekAccumulator))
                                     } else {
-                                        viewModel.seekForward(kotlin.math.abs(seekAccumulator))
+                                        actions.seekForward(kotlin.math.abs(seekAccumulator))
                                     }
                                     seekAccumulator = 0
-                                    viewModel.hideSeekFeedback()
+                                    actions.hideSeekFeedback()
                                 }
                                 return@detectTapGestures
                             }
                         }
 
                         if (uiState.showControls) {
-                            viewModel.toggleControls()
+                            actions.toggleControls()
                         } else {
-                            viewModel.toggleControls()
+                            actions.toggleControls()
 
                             if (uiState.isPlaying) {
                                 // Calculate viewport bounds
@@ -229,13 +229,13 @@ fun VideoPlayer(
                                 val screenHeight = size.height.toFloat()
                                 val videoWidth = uiState.videoWidth.takeIf { it > 0 }?.toFloat() ?: 16f
                                 val videoHeight = uiState.videoHeight.takeIf { it > 0 }?.toFloat() ?: 9f
-                                
+
                                 val videoAspectRatio = videoWidth / videoHeight
                                 val screenAspectRatio = screenWidth / screenHeight
-                                
+
                                 var viewportWidth = screenWidth
                                 var viewportHeight = screenHeight
-                                
+
                                 if (uiState.aspectRatio == AspectRatioUi.Contain) {
                                     if (videoAspectRatio > screenAspectRatio) {
                                         viewportHeight = screenWidth / videoAspectRatio
@@ -243,15 +243,15 @@ fun VideoPlayer(
                                         viewportWidth = screenHeight * videoAspectRatio
                                     }
                                 }
-                                
+
                                 val letterboxPx = (screenHeight - viewportHeight) / 2f
                                 val pillarboxPx = (screenWidth - viewportWidth) / 2f
-                                
+
                                 val isInsideViewport = offset.x >= pillarboxPx && offset.x <= screenWidth - pillarboxPx &&
                                                        offset.y >= letterboxPx && offset.y <= screenHeight - letterboxPx
 
                                 if (isInsideViewport) {
-                                    viewModel.togglePlayPause()
+                                    actions.togglePlayPause()
                                 }
                             }
                         }
@@ -280,7 +280,7 @@ fun VideoPlayer(
                                 seekAccumulator += direction
                             }
 
-                            viewModel.showSeekFeedback(
+                            actions.showSeekFeedback(
                                 side = if (isRightZone) "right" else "left",
                                 amount = kotlin.math.abs(seekAccumulator),
                             )
@@ -290,19 +290,19 @@ fun VideoPlayer(
                             resetSeekJob = coroutineScope.launch {
                                 delay(800)
                                 if (seekAccumulator < 0) {
-                                    viewModel.seekBackward(kotlin.math.abs(seekAccumulator))
+                                    actions.seekBackward(kotlin.math.abs(seekAccumulator))
                                 } else {
-                                    viewModel.seekForward(kotlin.math.abs(seekAccumulator))
+                                    actions.seekForward(kotlin.math.abs(seekAccumulator))
                                 }
                                 seekAccumulator = 0
-                                viewModel.hideSeekFeedback()
+                                actions.hideSeekFeedback()
                             }
                         } else {
                             // Double tap in the center zone -> treat as single tap (toggle controls/pause)
                             if (!uiState.showControls) {
-                                viewModel.toggleControls()
+                                actions.toggleControls()
                                 if (uiState.isPlaying) {
-                                    viewModel.togglePlayPause()
+                                    actions.togglePlayPause()
                                 }
                             }
                         }
@@ -335,7 +335,7 @@ fun VideoPlayer(
                                 panGestureVolume = newVolume
                                 showVolumeFeedback = true
                                 showBrightnessFeedback = false
-                                viewModel.setVolume(newVolume)
+                                actions.setVolume(newVolume)
                             }
                         }
                     },
@@ -362,12 +362,13 @@ fun VideoPlayer(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
                     useController = false
-                    player = viewModel.player
+                    player = actions.player
                     resizeMode = currentResizeMode
                 }
             },
             update = { playerView ->
                 playerView.resizeMode = currentResizeMode
+                playerView.keepScreenOn = uiState.isPlaying || uiState.isLocked
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -383,8 +384,8 @@ fun VideoPlayer(
                         skippable = item.skippable,
                     )
                 },
-                onComplete = { viewModel.skipAllCinema() },
-                onItemEnded = { viewModel.skipCinemaItem() },
+                onComplete = { actions.skipAllCinema() },
+                onItemEnded = { actions.skipCinemaItem() },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -407,18 +408,18 @@ fun VideoPlayer(
         // Subtitle Search Modal
         if (uiState.showSubtitleSearch) {
             SubtitleSearchModal(
-                mediaId = viewModel.mediaId,
-                onDismiss = { viewModel.hideSubtitleSearch() },
-                onDownloaded = { viewModel.hideSubtitleSearch() },
-                searchSubtitles = { id, lang -> viewModel.searchSubtitles(lang) },
+                mediaId = actions.mediaId,
+                onDismiss = { actions.hideSubtitleSearch() },
+                onDownloaded = { actions.hideSubtitleSearch() },
+                searchSubtitles = { id, lang -> actions.searchSubtitles(lang) },
                 downloadSubtitle = { id, externalId, lang ->
-                    viewModel.downloadSubtitle("opensubtitles", externalId, lang)
+                    actions.downloadSubtitle("opensubtitles", externalId, lang)
                 },
                 isSearching = uiState.isSearchingSubtitles,
                 isDownloading = uiState.isDownloadingSubtitle,
                 searchResults = uiState.subtitleSearchResults,
                 selectedLang = uiState.subtitleSearchLang,
-                onLangSelected = { lang -> viewModel.searchSubtitles(lang) },
+                onLangSelected = { lang -> actions.searchSubtitles(lang) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -474,7 +475,7 @@ fun VideoPlayer(
                         .padding(bottom = maxOf(180.dp, letterboxDp + 16.dp), end = 32.dp)
                 ) {
                     TextButton(
-                        onClick = { viewModel.skipSegment(segment) },
+                        onClick = { actions.skipSegment(segment) },
                         colors = ButtonDefaults.textButtonColors(contentColor = NetflixWhite),
                         shape = RoundedCornerShape(4.dp),
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp)).border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
@@ -495,24 +496,24 @@ fun VideoPlayer(
                 uiState = uiState,
                 letterboxDp = letterboxDp,
                 onBackClick = {
-                    viewModel.saveProgress()
+                    actions.saveProgress()
                     onBackClick()
                 },
-                onPlayPauseClick = viewModel::togglePlayPause,
+                onPlayPauseClick = actions::togglePlayPause,
                 onSeekForward = {
-                    viewModel.seekForward(5)
-                    viewModel.showSeekFeedback("right", 5)
+                    actions.seekForward(5)
+                    actions.showSeekFeedback("right", 5)
                 },
                 onSeekBackward = {
-                    viewModel.seekBackward(5)
-                    viewModel.showSeekFeedback("left", 5)
+                    actions.seekBackward(5)
+                    actions.showSeekFeedback("left", 5)
                 },
-                onSeek = viewModel::seekTo,
-                onSkipSegment = viewModel::skipSegment,
-                onToggleControls = viewModel::toggleControls,
-                onSetPlaybackSpeed = viewModel::setPlaybackSpeed,
-                onToggleLock = viewModel::toggleLock,
-                onSetVolume = viewModel::setVolume,
+                onSeek = actions::seekTo,
+                onSkipSegment = actions::skipSegment,
+                onToggleControls = actions::toggleControls,
+                onSetPlaybackSpeed = actions::setPlaybackSpeed,
+                onToggleLock = actions::toggleLock,
+                onSetVolume = actions::setVolume,
                 onEnterPiP = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         activity?.let {
@@ -525,29 +526,30 @@ fun VideoPlayer(
                         }
                     }
                 },
-                onSetAspectRatio = viewModel::setAspectRatio,
-                onSetQuality = viewModel::setMaxQuality,
-                onSetSubtitleDelay = viewModel::setSubtitleDelay,
-                onAdjustSubtitleDelay = viewModel::adjustSubtitleDelay,
-                onSetSubtitleSize = viewModel::setSubtitleSize,
-                onSetSubtitleColor = viewModel::setSubtitleColor,
-                onSetSubtitleBackground = viewModel::setSubtitleBackground,
-                onSetRepeatMode = viewModel::setRepeatMode,
-                onTogglePlaybackStats = viewModel::togglePlaybackStats,
+                onSetAspectRatio = actions::setAspectRatio,
+                onSetQuality = actions::setMaxQuality,
+                onSetSubtitleDelay = actions::setSubtitleDelay,
+                onAdjustSubtitleDelay = actions::adjustSubtitleDelay,
+                onSetSubtitleSize = actions::setSubtitleSize,
+                onSetSubtitleColor = actions::setSubtitleColor,
+                onSetSubtitleBackground = actions::setSubtitleBackground,
+                onSetRepeatMode = actions::setRepeatMode,
+                onTogglePlaybackStats = actions::togglePlaybackStats,
                 onPlayNextEpisode = {
                     if (uiState.nextEpisodeWatched) {
-                        viewModel.showWatchedWarning()
+                        actions.showWatchedWarning()
                     } else {
                         uiState.nextEpisodeId?.let { nextId ->
-                            viewModel.saveProgress()
+                            actions.saveProgress()
                             onNavigateToMedia(nextId)
                         }
                     }
                 },
-                onDismissUpNext = viewModel::dismissUpNext,
+                onDismissUpNext = actions::dismissUpNext,
+                supportsPiP = supportsPiP,
                 isFullscreen = isFullscreen,
                 onToggleFullscreen = ::toggleFullscreen,
-                viewModel = viewModel,
+                actions = actions,
                 castState = castState,
                 onCastClick = {
                     castManager.getCastSession()?.let { session ->
@@ -568,13 +570,13 @@ fun VideoPlayer(
                     }
                 },
                 onMenuOpenChange = { isAnyMenuOpen = it },
-                onToggleDetailPanel = viewModel::toggleDetailPanel,
-                onSelectSeasonPanelSeason = viewModel::selectSeasonPanelSeason,
+                onToggleDetailPanel = actions::toggleDetailPanel,
+                onSelectSeasonPanelSeason = actions::selectSeasonPanelSeason,
                 onSelectEpisode = { episodeMediaId, isCurrentEpisode ->
                     if (isCurrentEpisode) {
-                        viewModel.closeDetailPanel()
+                        actions.closeDetailPanel()
                     } else {
-                        viewModel.saveProgress()
+                        actions.saveProgress()
                         onNavigateToMedia(episodeMediaId)
                     }
                 },
@@ -601,12 +603,12 @@ fun VideoPlayer(
                         .clickable(
                             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                             indication = null,
-                            onClick = { viewModel.togglePlayPause() }
+                            onClick = { actions.togglePlayPause() }
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        LucideIcons.PlayArrow, 
+                        LucideIcons.PlayArrow,
                         contentDescription = "Play",
                         tint = Color.White,
                         modifier = Modifier.size(48.dp)
@@ -619,7 +621,7 @@ fun VideoPlayer(
         PlaybackStatsOverlay(
             visible = uiState.showPlaybackStats,
             playbackInfo = uiState.playbackInfo,
-            onClose = viewModel::togglePlaybackStats,
+            onClose = actions::togglePlaybackStats,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -631,15 +633,15 @@ fun VideoPlayer(
                 countdown = uiState.upNextCountdown,
                 onPlayNext = {
                     if (uiState.nextEpisodeWatched) {
-                        viewModel.showWatchedWarning()
+                        actions.showWatchedWarning()
                     } else {
                         uiState.upNextId?.let { nextId ->
-                            viewModel.saveProgress()
+                            actions.saveProgress()
                             onNavigateToMedia(nextId)
                         }
                     }
                 },
-                onDismiss = viewModel::dismissUpNext,
+                onDismiss = actions::dismissUpNext,
                 bottomPadding = maxOf(214.dp, letterboxDp + 50.dp),
                 modifier = Modifier.fillMaxSize(),
             )
@@ -648,14 +650,14 @@ fun VideoPlayer(
         // Watched Warning Dialog
         if (uiState.showWatchedWarning) {
             AlertDialog(
-                onDismissRequest = viewModel::hideWatchedWarning,
+                onDismissRequest = actions::hideWatchedWarning,
                 title = { Text(stringResource(R.string.player_watched_title), color = Color.White) },
                 text = { Text(stringResource(R.string.player_watched_desc), color = Color.Gray) },
                 confirmButton = {
                     TextButton(onClick = {
-                        viewModel.hideWatchedWarning()
+                        actions.hideWatchedWarning()
                         uiState.nextEpisodeId?.let { nextId ->
-                            viewModel.resetProgressAndNavigate(nextId, onNavigateToMedia)
+                            actions.resetProgressAndNavigate(nextId, onNavigateToMedia)
                         }
                     }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -668,8 +670,8 @@ fun VideoPlayer(
                 dismissButton = {
                     uiState.nextNextEpisodeId?.let { nextNextId ->
                         TextButton(onClick = {
-                            viewModel.hideWatchedWarning()
-                            viewModel.saveProgress()
+                            actions.hideWatchedWarning()
+                            actions.saveProgress()
                             onNavigateToMedia(nextNextId)
                         }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -700,7 +702,7 @@ fun VideoPlayer(
         if (!uiState.showControls && (uiState.isLoading || uiState.isBuffering || uiState.error != null)) {
             IconButton(
                 onClick = {
-                    viewModel.saveProgress()
+                    actions.saveProgress()
                     onBackClick()
                 },
                 modifier = Modifier
@@ -735,7 +737,7 @@ fun VideoPlayer(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
-                        onClick = { viewModel.loadPlaybackInfo() },
+                        onClick = { actions.loadPlaybackInfo() },
                         colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                     ) {
                         Text(stringResource(R.string.action_retry))
@@ -743,1597 +745,5 @@ fun VideoPlayer(
                 }
             }
         }
-    }
-}
-
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-@Composable
-private fun PlayerControlsOverlay(
-    uiState: PlayerUiState,
-    letterboxDp: androidx.compose.ui.unit.Dp,
-    onBackClick: () -> Unit,
-    onPlayPauseClick: () -> Unit,
-    onSeekForward: () -> Unit,
-    onSeekBackward: () -> Unit,
-    onSeek: (Long) -> Unit,
-    onSkipSegment: (SkipSegmentUi) -> Unit,
-    onToggleControls: () -> Unit,
-    onSetPlaybackSpeed: (Float) -> Unit,
-    onToggleLock: () -> Unit,
-    onSetVolume: (Float) -> Unit,
-    onEnterPiP: () -> Unit,
-    onSetAspectRatio: (AspectRatioUi) -> Unit,
-    onSetQuality: (Int) -> Unit,
-    onSetSubtitleDelay: (Float) -> Unit,
-    onAdjustSubtitleDelay: (Float) -> Unit,
-    onSetSubtitleSize: (SubtitleSizeUi) -> Unit,
-    onSetSubtitleColor: (String) -> Unit,
-    onSetSubtitleBackground: (SubtitleBackgroundUi) -> Unit,
-    onSetRepeatMode: (RepeatModeUi) -> Unit,
-    onTogglePlaybackStats: () -> Unit,
-    onPlayNextEpisode: () -> Unit,
-    onDismissUpNext: () -> Unit,
-    isFullscreen: Boolean,
-    onToggleFullscreen: () -> Unit,
-    viewModel: PlayerViewModel,
-    castState: CastUiState,
-    onCastClick: () -> Unit,
-    onMenuOpenChange: (Boolean) -> Unit = {},
-    onToggleDetailPanel: (DetailPanelUi) -> Unit,
-    onSelectSeasonPanelSeason: (Int) -> Unit,
-    onSelectEpisode: (Int, Boolean) -> Unit,
-) {
-    var showSubtitleMenu by remember { mutableStateOf(false) }
-    var showSubtitleTranslate by remember { mutableStateOf(false) }
-    var showAudioMenu by remember { mutableStateOf(false) }
-    var showSpeedMenu by remember { mutableStateOf(false) }
-    var showSettingsMenu by remember { mutableStateOf(false) }
-    val isTranslatingSubtitle by viewModel.isTranslatingSubtitle.collectAsState()
-
-    LaunchedEffect(showSubtitleMenu, showSubtitleTranslate, showAudioMenu, showSpeedMenu, showSettingsMenu) {
-        onMenuOpenChange(showSubtitleMenu || showSubtitleTranslate || showAudioMenu || showSpeedMenu || showSettingsMenu)
-    }
-
-    LaunchedEffect(uiState.activeDetailPanel) {
-        if (uiState.activeDetailPanel != DetailPanelUi.None) {
-            showSubtitleMenu = false
-            showSubtitleTranslate = false
-            showAudioMenu = false
-            showSpeedMenu = false
-            showSettingsMenu = false
-        }
-    }
-
-    if (uiState.isLocked) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable { onToggleLock() },
-            contentAlignment = Alignment.TopEnd
-        ) {
-            IconButton(onClick = onToggleLock, modifier = Modifier.padding(16.dp)) {
-                Icon(LucideIcons.Lock, contentDescription = "Unlock", tint = NetflixWhite)
-            }
-        }
-        return
-    }
-
-    AnimatedVisibility(
-        visible = uiState.showControls,
-        enter = fadeIn(),
-        exit = fadeOut(),
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            // Dark gradient overlay strictly at the bottom
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .height(200.dp)
-                    .background(
-                        androidx.compose.ui.graphics.Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
-                        )
-                    )
-            )
-
-            // Top Bar — back button only
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(start = 12.dp, top = 12.dp)
-                    .align(Alignment.TopStart),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onBackClick,
-                        )
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Icon(LucideIcons.ChevronLeft, contentDescription = "Back", tint = NetflixWhite, modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "Back", color = NetflixWhite, fontSize = 14.sp)
-                }
-            }
-
-
-
-            AnimatedVisibility(
-                visible = uiState.activeDetailPanel == DetailPanelUi.None,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 32.dp, vertical = 24.dp),
-                ) {
-                    // Title and Buttons Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = uiState.mediaTitle ?: "Loading...",
-                            color = NetflixWhite,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f).padding(end = 16.dp)
-                        )
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // CC Button
-                            Box {
-                                MetadataIconButton(LucideIcons.Subtitles, { showSubtitleMenu = true }, uiState.selectedSubtitleIndex != -1)
-                                if (showSubtitleMenu) {
-                                    SubtitleMenuPopup(
-                                        uiState = uiState,
-                                        onDismiss = { showSubtitleMenu = false },
-                                        onSelectPrimary = { viewModel.selectSubtitleTrack(it) },
-                                        onSelectSecondary = { viewModel.selectSecondarySubtitleTrack(it) },
-                                        onSearchSubtitles = { viewModel.showSubtitleSearch() },
-                                        onTranslateSubtitles = { showSubtitleTranslate = true }
-                                    )
-                                }
-                            }
-
-                            // Audio
-                            if (uiState.audioTracks.isNotEmpty()) {
-                                MetadataIconButton(LucideIcons.MusicTrack, { showAudioMenu = true })
-                                DropdownMenu(expanded = showAudioMenu, onDismissRequest = { showAudioMenu = false }) {
-                                    uiState.audioTracks.forEachIndexed { index, track ->
-                                        DropdownMenuItem(
-                                            text = { Text(track.label) },
-                                            onClick = { viewModel.selectAudioTrack(index); showAudioMenu = false },
-                                            leadingIcon = { if (index == uiState.selectedAudioTrackIndex) Icon(LucideIcons.Check, null) }
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Speed
-                            val isSpeedActive = uiState.playbackSpeed != 1.0f
-                            val speedText = if (uiState.playbackSpeed % 1.0f == 0.0f) "${uiState.playbackSpeed.toInt()}x" else "${uiState.playbackSpeed}x"
-                            Box(
-                                modifier = Modifier
-                                    .clickable { showSpeedMenu = true }
-                                    .background(Color.White.copy(alpha = if (isSpeedActive) 0.15f else 0.0f), RoundedCornerShape(6.dp))
-                                    .border(1.dp, Color.White.copy(alpha = if (isSpeedActive) 0.8f else 0.3f), RoundedCornerShape(6.dp))
-                                    .size(36.dp)
-                            ) {
-                                Text(
-                                    text = speedText,
-                                    color = NetflixWhite,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.align(Alignment.Center)
-                                )
-                                DropdownMenu(
-                                    expanded = showSpeedMenu,
-                                    onDismissRequest = { showSpeedMenu = false },
-                                    modifier = Modifier.background(Color(0xFF1C1C1E))
-                                ) {
-                                    Text(
-                                        text = "PLAYBACK SPEED",
-                                        color = Color.White.copy(alpha = 0.5f),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        letterSpacing = 1.sp,
-                                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 12.dp)
-                                    )
-
-                                    listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { speed ->
-                                        val itemText = if (speed == 1.0f) "Normal" else if (speed % 1.0f == 0.0f) "${speed.toInt()}x" else "${speed}x"
-                                        val isSelected = speed == uiState.playbackSpeed
-
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    text = itemText,
-                                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.8f),
-                                                    fontSize = 15.sp
-                                                )
-                                            },
-                                            onClick = { onSetPlaybackSpeed(speed); showSpeedMenu = false },
-                                            leadingIcon = {
-                                                if (isSelected) {
-                                                    Icon(LucideIcons.Check, null, tint = Color.White)
-                                                } else {
-                                                    Spacer(modifier = Modifier.width(24.dp))
-                                                }
-                                            },
-                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Settings
-                            MetadataIconButton(LucideIcons.Settings, { showSettingsMenu = true })
-                            SettingsMenu(
-                                expanded = showSettingsMenu, onDismiss = { showSettingsMenu = false },
-                                aspectRatio = uiState.aspectRatio, onSetAspectRatio = onSetAspectRatio,
-                                maxQuality = uiState.maxQuality, qualityOptions = uiState.qualityOptions,
-                                onSetQuality = onSetQuality, subtitleDelay = uiState.subtitleDelay,
-                                onAdjustSubtitleDelay = onAdjustSubtitleDelay,
-                                subtitleSize = uiState.subtitleSize, onSetSubtitleSize = onSetSubtitleSize,
-                                subtitleColor = uiState.subtitleColor, onSetSubtitleColor = onSetSubtitleColor,
-                                subtitleBackground = uiState.subtitleBackground, onSetSubtitleBackground = onSetSubtitleBackground,
-                                repeatMode = uiState.repeatMode, onSetRepeatMode = onSetRepeatMode,
-                                onTogglePlaybackStats = onTogglePlaybackStats
-                            )
-
-                            // Only show SkipNext for series episodes with a next episode
-                            if (uiState.nextEpisodeId != null) {
-                                MetadataIconButton(LucideIcons.SkipNext, onPlayNextEpisode)
-                            }
-                            MetadataIconButton(LucideIcons.LockOpen, onToggleLock)
-                            MetadataIconButton(if (isFullscreen) LucideIcons.FullscreenExit else LucideIcons.Fullscreen, onToggleFullscreen)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Seek bar Match Web
-                    PlayerSeekBar(
-                        currentPosition = uiState.currentPosition,
-                        duration = uiState.effectiveDuration,
-                        onSeek = onSeek,
-                    )
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    // Bottom row with precise aligned play controls and timing details
-                    Row(
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val displayPos = if (uiState.effectiveDuration > 0 || !uiState.isLoading) formatTime(uiState.currentPosition) else "--:--"
-                        Text(text = displayPos, color = NetflixWhite, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(32.dp))
-
-                        IconButton(onClick = onSeekBackward) {
-                            Icon(LucideIcons.Replay5, contentDescription = "Rewind", tint = NetflixWhite, modifier = Modifier.size(24.dp))
-                        }
-                        Spacer(modifier = Modifier.width(20.dp))
-
-                        IconButton(onClick = onPlayPauseClick, modifier = Modifier.size(48.dp)) {
-                            Icon(
-                                if (uiState.isPlaying) LucideIcons.Pause else LucideIcons.PlayArrow,
-                                contentDescription = if (uiState.isPlaying) "Pause" else "Play",
-                                tint = NetflixWhite,
-                                modifier = Modifier.size(36.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(20.dp))
-                        IconButton(onClick = onSeekForward) {
-                            Icon(LucideIcons.Forward5, contentDescription = "Forward", tint = NetflixWhite, modifier = Modifier.size(24.dp))
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        val displayRem = if (uiState.effectiveDuration > 0 || !uiState.isLoading) "-${formatTime((uiState.effectiveDuration - uiState.currentPosition).coerceAtLeast(0L))}" else "--:--"
-                        Text(text = displayRem, color = NetflixWhite, fontSize = 14.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        DetailTabButton(
-                            icon = LucideIcons.Info,
-                            label = "Info",
-                            isActive = false,
-                            onClick = { onToggleDetailPanel(DetailPanelUi.Info) },
-                        )
-                        if (uiState.mediaContext?.mediaType == "episode" && uiState.seasons.isNotEmpty()) {
-                            DetailTabButton(
-                                icon = LucideIcons.ListIcon,
-                                label = "Season",
-                                isActive = false,
-                                onClick = { onToggleDetailPanel(DetailPanelUi.Season) },
-                            )
-                        }
-                    }
-                }
-            }
-
-            AnimatedVisibility(
-                visible = uiState.activeDetailPanel != DetailPanelUi.None,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter),
-            ) {
-                WatchDetailPanel(
-                    uiState = uiState,
-                    onToggleDetailPanel = onToggleDetailPanel,
-                    onSelectSeason = onSelectSeasonPanelSeason,
-                    onSelectEpisode = onSelectEpisode,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 24.dp),
-                )
-            }
-        }
-
-        if (showSubtitleTranslate) {
-            SubtitleTranslateSection(
-                subtitles = uiState.subtitleTracks.filter { it.id > 0 },
-                onTranslate = { subtitleId, targetLanguage ->
-                    viewModel.translateSubtitle(subtitleId, targetLanguage)
-                },
-                onDismiss = { showSubtitleTranslate = false },
-                isTranslating = isTranslatingSubtitle,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-}
-
-@Composable
-fun MetadataIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-    isActive: Boolean = false
-) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .background(Color.White.copy(alpha = if (isActive) 0.15f else 0.0f), RoundedCornerShape(6.dp))
-            .border(1.dp, Color.White.copy(alpha = if (isActive) 0.8f else 0.3f), RoundedCornerShape(6.dp))
-            .size(36.dp)
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = NetflixWhite,
-            modifier = Modifier.size(18.dp)
-        )
-    }
-}
-
-@Composable
-private fun DetailTabButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    isActive: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier.clickable(onClick = onClick),
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = if (isActive) NetflixWhite else NetflixWhite.copy(alpha = 0.45f),
-            modifier = Modifier.size(16.dp),
-        )
-        Text(
-            text = label,
-            color = if (isActive) NetflixWhite else NetflixWhite.copy(alpha = 0.45f),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
-private fun WatchDetailPanel(
-    uiState: PlayerUiState,
-    onToggleDetailPanel: (DetailPanelUi) -> Unit,
-    onSelectSeason: (Int) -> Unit,
-    onSelectEpisode: (Int, Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val mediaDetail = uiState.mediaDetail
-    val mediaContext = uiState.mediaContext
-    val playbackInfo = uiState.playbackInfo
-    val isEpisode = mediaContext?.mediaType == "episode"
-    val selectedAudio = playbackInfo?.audioTracks?.find { it.selected }
-        ?: playbackInfo?.audioTracks?.find { it.isDefault }
-        ?: playbackInfo?.audioTracks?.firstOrNull()
-
-    Column(modifier = modifier) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 8.dp, bottom = 16.dp),
-        ) {
-            DetailTabButton(
-                icon = LucideIcons.Info,
-                label = "Info",
-                isActive = uiState.activeDetailPanel == DetailPanelUi.Info,
-                onClick = { onToggleDetailPanel(DetailPanelUi.Info) },
-            )
-            if (isEpisode && uiState.seasons.isNotEmpty()) {
-                DetailTabButton(
-                    icon = LucideIcons.ListIcon,
-                    label = "Season",
-                    isActive = uiState.activeDetailPanel == DetailPanelUi.Season,
-                    onClick = { onToggleDetailPanel(DetailPanelUi.Season) },
-                )
-            }
-        }
-
-        when (uiState.activeDetailPanel) {
-            DetailPanelUi.Info -> {
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = Color.White.copy(alpha = 0.08f),
-                    tonalElevation = 0.dp,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(180.dp)
-                                .height(102.dp)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Color.Black.copy(alpha = 0.4f)),
-                        ) {
-                            val imageUrl = mediaDetail?.backdropPath ?: mediaDetail?.posterPath
-                            if (imageUrl != null) {
-                                AsyncImage(
-                                    model = imageUrl,
-                                    contentDescription = mediaDetail?.title,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                )
-                            } else {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        LucideIcons.PlayArrow,
-                                        contentDescription = null,
-                                        tint = Color.White.copy(alpha = 0.2f),
-                                        modifier = Modifier.size(28.dp),
-                                    )
-                                }
-                            }
-                        }
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = mediaDetail?.title ?: uiState.mediaTitle ?: "Loading...",
-                                color = NetflixWhite,
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-
-                            val episodeLabel = buildEpisodeLabel(mediaContext)
-                            if (episodeLabel != null) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(999.dp),
-                                    color = Color.White.copy(alpha = 0.08f),
-                                ) {
-                                    Text(
-                                        text = episodeLabel,
-                                        color = NetflixWhite.copy(alpha = 0.78f),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            FlowRowLike(
-                                items = buildList {
-                                    mediaDetail?.releaseDate?.take(4)?.takeIf { it.isNotBlank() }?.let(::add)
-                                    formatRuntimeLabel(playbackInfo?.duration ?: mediaDetail?.duration)?.let(::add)
-                                    if ((playbackInfo?.subtitleTracks?.isNotEmpty() == true)) add("CC")
-                                },
-                            )
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            FlowRowLike(
-                                items = buildList {
-                                    formatResolutionLabel(playbackInfo?.height)?.let(::add)
-                                    playbackInfo?.videoCodec?.uppercase()?.takeIf { it.isNotBlank() }?.let(::add)
-                                    selectedAudio?.let { audio ->
-                                        val lang = audio.language.ifBlank { "Audio" }
-                                        add("$lang ${audio.codec.uppercase()} ${formatChannelLayout(audio.channels)}")
-                                    }
-                                },
-                            )
-
-                            mediaDetail?.overview?.takeIf { it.isNotBlank() }?.let { overview ->
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = overview,
-                                    color = NetflixWhite.copy(alpha = 0.68f),
-                                    fontSize = 14.sp,
-                                    lineHeight = 22.sp,
-                                    maxLines = 4,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            DetailPanelUi.Season -> {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        uiState.seasons.forEach { season ->
-                            val isSelected = season.id == uiState.seasonPanelSeasonId
-                            Surface(
-                                shape = RoundedCornerShape(999.dp),
-                                color = if (isSelected) NetflixWhite else Color.White.copy(alpha = 0.08f),
-                                modifier = Modifier.clickable { onSelectSeason(season.id) },
-                            ) {
-                                Text(
-                                    text = "Season ${season.seasonNumber}",
-                                    color = if (isSelected) Color.Black else NetflixWhite.copy(alpha = 0.8f),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(28.dp),
-                        color = Color.Black.copy(alpha = 0.45f),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        when {
-                            uiState.isSeasonPanelLoading -> {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 40.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(color = NetflixWhite)
-                                }
-                            }
-
-                            uiState.seasonPanelEpisodes.isEmpty() -> {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 20.dp, vertical = 28.dp),
-                                ) {
-                                    Text(
-                                        text = "No episodes found",
-                                        color = NetflixWhite.copy(alpha = 0.48f),
-                                        fontSize = 14.sp,
-                                    )
-                                }
-                            }
-
-                            else -> {
-                                LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                ) {
-                                    items(uiState.seasonPanelEpisodes, key = { it.id }) { episode ->
-                                        val isPlayingEpisode = episode.mediaId == uiState.playbackInfo?.mediaId
-                                        Surface(
-                                            shape = RoundedCornerShape(22.dp),
-                                            color = if (isPlayingEpisode) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.55f),
-                                            modifier = Modifier
-                                                .width(220.dp)
-                                                .clickable {
-                                                    onSelectEpisode(episode.mediaId, isPlayingEpisode)
-                                                },
-                                        ) {
-                                            Column {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(124.dp)
-                                                        .background(Color.Black.copy(alpha = 0.4f)),
-                                                ) {
-                                                    if (episode.stillPath != null) {
-                                                        AsyncImage(
-                                                            model = episode.stillPath,
-                                                            contentDescription = episode.title,
-                                                            modifier = Modifier.fillMaxSize(),
-                                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                                        )
-                                                    } else {
-                                                        Box(
-                                                            modifier = Modifier.fillMaxSize(),
-                                                            contentAlignment = Alignment.Center,
-                                                        ) {
-                                                            Icon(
-                                                                LucideIcons.PlayArrow,
-                                                                contentDescription = null,
-                                                                tint = Color.White.copy(alpha = 0.25f),
-                                                                modifier = Modifier.size(28.dp),
-                                                            )
-                                                        }
-                                                    }
-
-                                                    Row(
-                                                        modifier = Modifier
-                                                            .align(Alignment.TopStart)
-                                                            .padding(12.dp),
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                    ) {
-                                                        Surface(
-                                                            shape = RoundedCornerShape(999.dp),
-                                                            color = Color.Black.copy(alpha = 0.58f),
-                                                        ) {
-                                                            Text(
-                                                                text = "E${episode.episodeNumber}",
-                                                                color = NetflixWhite.copy(alpha = 0.78f),
-                                                                fontSize = 10.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                            )
-                                                        }
-                                                        if (isPlayingEpisode) {
-                                                            Surface(
-                                                                shape = RoundedCornerShape(999.dp),
-                                                                color = NetflixRed,
-                                                            ) {
-                                                                Text(
-                                                                    text = "NOW PLAYING",
-                                                                    color = NetflixWhite,
-                                                                    fontSize = 10.sp,
-                                                                    fontWeight = FontWeight.Black,
-                                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                Column(
-                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                                ) {
-                                                    Text(
-                                                        text = episode.title,
-                                                        color = NetflixWhite,
-                                                        fontSize = 15.sp,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        maxLines = 2,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                    Text(
-                                                        text = buildEpisodeMetaLine(episode),
-                                                        color = NetflixWhite.copy(alpha = 0.62f),
-                                                        fontSize = 12.sp,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            DetailPanelUi.None -> Unit
-        }
-    }
-}
-
-@Composable
-private fun FlowRowLike(items: List<String>) {
-    if (items.isEmpty()) return
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        items.forEachIndexed { index, item ->
-            Text(
-                text = item,
-                color = NetflixWhite.copy(alpha = 0.78f),
-                fontSize = 14.sp,
-            )
-            if (index != items.lastIndex) {
-                Text(
-                    text = "•",
-                    color = NetflixWhite.copy(alpha = 0.4f),
-                    fontSize = 12.sp,
-                )
-            }
-        }
-    }
-}
-
-private fun buildEpisodeLabel(mediaContext: com.velox.app.domain.model.MediaWithFilesInfo?): String? {
-    if (mediaContext?.mediaType != "episode") return null
-    val season = mediaContext.seasonNumber ?: return null
-    val episode = mediaContext.episodeNumber ?: return null
-    return "Episode S${season}E${episode}"
-}
-
-private fun formatRuntimeLabel(durationSeconds: Float?): String? {
-    val seconds = durationSeconds?.toInt() ?: return null
-    if (seconds <= 0) return null
-    val hours = seconds / 3600
-    val minutes = (seconds % 3600) / 60
-    return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
-}
-
-private fun formatResolutionLabel(height: Int?): String? {
-    val value = height ?: return null
-    if (value <= 0) return null
-    return "${value}p"
-}
-
-private fun buildEpisodeMetaLine(episode: com.velox.app.domain.model.Episode): String {
-    val parts = mutableListOf("Episode ${episode.episodeNumber}")
-    formatRuntimeLabel(episode.duration)?.let(parts::add)
-    return parts.joinToString(" • ")
-}
-
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-@Composable
-private fun PlayerSeekBar(
-    currentPosition: Long,
-    duration: Long,
-    onSeek: (Long) -> Unit,
-) {
-    var sliderPosition by remember { mutableFloatStateOf(0f) }
-    var isDragging by remember { mutableStateOf(false) }
-
-    LaunchedEffect(currentPosition, duration) {
-        if (!isDragging) {
-            if (duration > 0) {
-                sliderPosition = (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-            } else {
-                sliderPosition = 0f
-            }
-        }
-    }
-
-    Slider(
-        value = sliderPosition,
-        onValueChange = { value ->
-            isDragging = true
-            sliderPosition = value
-        },
-        onValueChangeFinished = {
-            isDragging = false
-            onSeek((sliderPosition * duration).toLong())
-        },
-        thumb = {
-            Box(
-                modifier = Modifier
-                    .size(14.dp)
-                    .background(NetflixWhite, CircleShape)
-            )
-        },
-        track = { sliderState ->
-            SliderDefaults.Track(
-                colors = SliderDefaults.colors(
-                    activeTrackColor = NetflixWhite,
-                    inactiveTrackColor = NetflixWhite.copy(alpha = 0.3f),
-                ),
-                sliderState = sliderState,
-                modifier = Modifier.height(4.dp),
-                drawStopIndicator = null,
-            )
-        },
-        modifier = Modifier.fillMaxWidth(),
-    )
-}
-
-private fun formatTime(ms: Long): String {
-    if (ms <= 0) return "0:00"
-    val totalSeconds = ms / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format("%d:%02d", minutes, seconds)
-    }
-}
-
-@Composable
-private fun SettingsSectionTitle(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White.copy(alpha = 0.4f))
-        Spacer(modifier = Modifier.width(5.dp))
-        Text(
-            text = title,
-            color = Color.White.copy(alpha = 0.4f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.sp
-        )
-    }
-}
-
-@Composable
-private fun SettingsMenu(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    aspectRatio: AspectRatioUi,
-    onSetAspectRatio: (AspectRatioUi) -> Unit,
-    maxQuality: Int,
-    qualityOptions: List<QualityOptionUi>,
-    onSetQuality: (Int) -> Unit,
-    subtitleDelay: Float,
-    onAdjustSubtitleDelay: (Float) -> Unit,
-    subtitleSize: SubtitleSizeUi,
-    onSetSubtitleSize: (SubtitleSizeUi) -> Unit,
-    subtitleColor: String,
-    onSetSubtitleColor: (String) -> Unit,
-    subtitleBackground: SubtitleBackgroundUi,
-    onSetSubtitleBackground: (SubtitleBackgroundUi) -> Unit,
-    repeatMode: RepeatModeUi,
-    onSetRepeatMode: (RepeatModeUi) -> Unit,
-    onTogglePlaybackStats: () -> Unit,
-) {
-    if (!expanded) return
-    // Two-view navigation like webapp: 'main' or 'quality'
-    var settingsView by remember { mutableStateOf("main") }
-
-    androidx.compose.ui.window.Popup(
-        alignment = Alignment.BottomEnd,
-        offset = androidx.compose.ui.unit.IntOffset(-40, -180),
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.PopupProperties(focusable = true)
-    ) {
-        Box(
-            modifier = Modifier
-                .width(240.dp)
-                .background(Color(0xFF1E1E1E), RoundedCornerShape(12.dp))
-                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-        ) {
-            if (settingsView == "quality") {
-                // Quality submenu (separate view with back button — matches webapp)
-                Column {
-                    // Header with back button
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { settingsView = "main" }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(LucideIcons.ChevronLeft, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White.copy(0.7f))
-                        Text(stringResource(R.string.player_quality), color = Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
-
-                    // Quality options list
-                    Column(
-                        modifier = Modifier
-                            .heightIn(max = 300.dp)
-                            .verticalScroll(rememberScrollState())
-                            .padding(vertical = 4.dp)
-                    ) {
-                        qualityOptions.forEach { option ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onSetQuality(option.height); settingsView = "main" }
-                                    .then(if (maxQuality == option.height) Modifier.background(Color.White.copy(alpha = 0.1f)) else Modifier)
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(
-                                        text = option.label,
-                                        color = if (maxQuality == option.height) Color.White else Color.White.copy(alpha = 0.7f),
-                                        fontSize = 12.sp,
-                                    )
-                                    if (option.instant) {
-                                        Icon(LucideIcons.FlashOn, contentDescription = null, modifier = Modifier.size(11.dp), tint = Color(0xFFFACC15))
-                                    }
-                                }
-                                if (maxQuality == option.height) {
-                                    Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                                }
-                            }
-                        }
-                        // Auto option at bottom with separator
-                        Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSetQuality(0); settingsView = "main" }
-                                .then(if (maxQuality == 0) Modifier.background(Color.White.copy(alpha = 0.1f)) else Modifier)
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(stringResource(R.string.player_auto), color = if (maxQuality == 0) Color.White else Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-                            if (maxQuality == 0) {
-                                Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Main settings view
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 480.dp)
-                        .verticalScroll(rememberScrollState())
-                        .padding(12.dp)
-                ) {
-                    // ASPECT RATIO
-                    SettingsSectionTitle("ASPECT RATIO", LucideIcons.Fullscreen)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        val options = listOf("Auto", "Cover", "Fill")
-                        val selectedIndex = when (aspectRatio) { AspectRatioUi.Contain -> 0; AspectRatioUi.Cover -> 1; AspectRatioUi.Fill -> 2 }
-                        options.forEachIndexed { i, text ->
-                            val isSelected = selectedIndex == i
-                            Box(
-                                modifier = Modifier.weight(1f).height(32.dp)
-                                    .background(if (isSelected) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                                    .clickable { onSetAspectRatio(AspectRatioUi.values()[i]) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(text, color = if (isSelected) Color.White else Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                            }
-                        }
-                    }
-
-                    Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp, modifier = Modifier.padding(vertical = 10.dp))
-
-                    // SUBTITLES
-                    SettingsSectionTitle("SUBTITLES", LucideIcons.Subtitles)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        val sizeOptions = listOf("S" to SubtitleSizeUi.Small, "M" to SubtitleSizeUi.Medium, "L" to SubtitleSizeUi.Large)
-                        sizeOptions.forEach { (text, size) ->
-                            val isSelected = subtitleSize == size
-                            Box(modifier = Modifier.weight(1f).height(32.dp)
-                                .background(if (isSelected) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                                .clickable { onSetSubtitleSize(size) },
-                                contentAlignment = Alignment.Center) {
-                                Text(text, color = if (isSelected) Color.White else Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        val bgOptions = listOf("None" to SubtitleBackgroundUi.None, "Semi" to SubtitleBackgroundUi.Semi, "Solid" to SubtitleBackgroundUi.Solid)
-                        bgOptions.forEach { (text, bg) ->
-                            val isSelected = subtitleBackground == bg
-                            Box(modifier = Modifier.weight(1f).height(32.dp)
-                                .background(if (isSelected) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                                .clickable { onSetSubtitleBackground(bg) },
-                                contentAlignment = Alignment.Center) {
-                                Text(text, color = if (isSelected) Color.White else Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val colorOptions = listOf("#ffffff" to Color.White, "#fde047" to Color(0xFFFDE047), "#4ade80" to Color(0xFF4ADE80), "#60a5fa" to Color(0xFF60A5FA))
-                        colorOptions.forEach { (hex, color) ->
-                            val isSelected = subtitleColor == hex
-                            Box(modifier = Modifier.size(20.dp)
-                                .background(color, CircleShape)
-                                .border(if (isSelected) 2.dp else 1.dp, if (isSelected) Color.White else Color.White.copy(alpha = 0.2f), CircleShape)
-                                .clickable { onSetSubtitleColor(hex) })
-                        }
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    // Delay container with subtle background (matches webapp)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.player_delay), color = Color.White.copy(0.7f), fontSize = 12.sp)
-                            Text(if (subtitleDelay > 0) "+${String.format("%.2f", subtitleDelay)}s" else "${String.format("%.2f", subtitleDelay)}s", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(modifier = Modifier.weight(1f).height(32.dp)
-                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                            .clickable { onAdjustSubtitleDelay(-0.25f) }, contentAlignment = Alignment.Center) {
-                            Text("-0.25s", color = Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
-                        Box(modifier = Modifier.weight(1f).height(32.dp)
-                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                            .clickable { onAdjustSubtitleDelay(-subtitleDelay) }, contentAlignment = Alignment.Center) {
-                            Text(stringResource(R.string.player_reset), color = Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
-                        Box(modifier = Modifier.weight(1f).height(32.dp)
-                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                            .clickable { onAdjustSubtitleDelay(0.25f) }, contentAlignment = Alignment.Center) {
-                            Text("+0.25s", color = Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-
-                    Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp, modifier = Modifier.padding(vertical = 10.dp))
-
-                    // QUALITY — clickable row that navigates to quality submenu
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { settingsView = "quality" }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(LucideIcons.FlashOn, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White.copy(0.5f))
-                            Spacer(Modifier.width(5.dp))
-                            Text(stringResource(R.string.player_quality), color = Color.White.copy(0.7f), fontSize = 12.sp)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (maxQuality == 0) "Auto" else "${maxQuality}p", color = Color.White.copy(0.5f), fontSize = 12.sp)
-                            Icon(LucideIcons.ChevronRight, contentDescription = null, tint = Color.White.copy(0.5f), modifier = Modifier.size(14.dp))
-                        }
-                    }
-
-                    Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp, modifier = Modifier.padding(vertical = 10.dp))
-
-                    // REPEAT
-                    SettingsSectionTitle("REPEAT", LucideIcons.Repeat)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        val repeatOptions = listOf("None" to RepeatModeUi.None, "One" to RepeatModeUi.One, "All" to RepeatModeUi.All)
-                        repeatOptions.forEach { (text, mode) ->
-                            val isSelected = repeatMode == mode
-                            Box(
-                                modifier = Modifier.weight(1f).height(32.dp)
-                                    .background(if (isSelected) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                                    .clickable { onSetRepeatMode(mode) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    if (isSelected) Icon(if (mode == RepeatModeUi.One) LucideIcons.RepeatOne else LucideIcons.Repeat, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                                    Text(text, color = if (isSelected) Color.White else Color.White.copy(0.7f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                    }
-
-                    Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp, modifier = Modifier.padding(vertical = 10.dp))
-
-                    // PLAYBACK INFO
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onTogglePlaybackStats(); onDismiss() }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(LucideIcons.ShowChart, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White.copy(0.5f))
-                        Spacer(Modifier.width(5.dp))
-                        Text(stringResource(R.string.player_playback_info), color = Color.White.copy(0.7f), fontSize = 12.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PlaybackStatsOverlay(
-    visible: Boolean,
-    playbackInfo: com.velox.app.domain.model.PlaybackInfo?,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (visible && playbackInfo != null) {
-        val isTranscoding = playbackInfo.method == "FullTranscode" || playbackInfo.method == "TranscodeAudio"
-        val isPreTranscode = playbackInfo.method == "PreTranscode"
-
-        // Use pretranscode details when available; fallback to original if "copy" or 0
-        val ptCodecValid = playbackInfo.ptVideoCodec != null && playbackInfo.ptVideoCodec != "copy"
-        val ptHeightValid = playbackInfo.ptHeight != null && playbackInfo.ptHeight > 0
-        val videoCodec = if (isPreTranscode && ptCodecValid) playbackInfo.ptVideoCodec else playbackInfo.videoCodec
-        val videoHeight = if (isPreTranscode && ptHeightValid) playbackInfo.ptHeight!! else playbackInfo.height ?: 0
-        val videoWidth = if (isPreTranscode && ptHeightValid && playbackInfo.width != null && playbackInfo.height != null && playbackInfo.height > 0) {
-            (playbackInfo.width.toFloat() / playbackInfo.height * playbackInfo.ptHeight!!).toInt()
-        } else playbackInfo.width ?: 0
-        val videoBitrate = if (isPreTranscode && playbackInfo.ptVideoBitrate != null && playbackInfo.ptVideoBitrate > 0) playbackInfo.ptVideoBitrate else playbackInfo.bitrate ?: 0
-
-        val selectedAudio = playbackInfo.audioTracks.find { it.selected }
-            ?: playbackInfo.audioTracks.find { it.isDefault }
-            ?: playbackInfo.audioTracks.firstOrNull()
-
-        val monoFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(start = 16.dp, top = 80.dp),
-        ) {
-            Surface(
-                modifier = Modifier
-                    .width(320.dp)
-                    .align(Alignment.TopStart),
-                shape = RoundedCornerShape(12.dp),
-                color = Color.Black.copy(alpha = 0.7f),
-            ) {
-                Box {
-                    Column {
-                        // Playback Method
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(stringResource(R.string.player_playback), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                MethodBadge(playbackInfo.method)
-                            }
-                            if (playbackInfo.decisionReason != null) {
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    text = playbackInfo.decisionReason,
-                                    color = Color.White.copy(alpha = 0.6f),
-                                    fontSize = 12.sp,
-                                    fontFamily = monoFamily,
-                                    lineHeight = 18.sp,
-                                )
-                            }
-                        }
-
-                        Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
-
-                        // Video
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(stringResource(R.string.player_video), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                when {
-                                    playbackInfo.method == "FullTranscode" -> StatusBadge("Transcoding", Color(0xFFF87171))
-                                    isPreTranscode -> StatusBadge("PreTranscode", Color(0xFF22D3EE))
-                                    else -> StatusBadge("Direct", Color(0xFF4ADE80))
-                                }
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            val codecLine = buildString {
-                                append(videoCodec?.uppercase() ?: "—")
-                                if (videoHeight > 0) append("  ${videoWidth}×${videoHeight}")
-                                if (!isPreTranscode && playbackInfo.videoProfile != null) append("  ${playbackInfo.videoProfile}")
-                                if (!isPreTranscode && playbackInfo.videoLevel != null) append("  L${playbackInfo.videoLevel}")
-                            }
-                            Text(codecLine, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, fontFamily = monoFamily, lineHeight = 18.sp)
-
-                            val bitrateLineParts = mutableListOf<String>()
-                            if (videoBitrate > 0) {
-                                bitrateLineParts.add(if (videoBitrate >= 1000) "${"%.1f".format(videoBitrate / 1000f)} Mbps" else "$videoBitrate Kbps")
-                            }
-                            if (playbackInfo.videoFps != null && playbackInfo.videoFps > 0) {
-                                val fpsStr = if (playbackInfo.videoFps == playbackInfo.videoFps.toInt().toFloat()) "${playbackInfo.videoFps.toInt()} fps" else "${"%.2f".format(playbackInfo.videoFps)} fps"
-                                bitrateLineParts.add(fpsStr)
-                            }
-                            if (bitrateLineParts.isNotEmpty()) {
-                                Text(bitrateLineParts.joinToString(" · "), color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontFamily = monoFamily, lineHeight = 18.sp)
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text("Dropped: 0", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontFamily = monoFamily)
-                        }
-
-                        // Audio
-                        if (selectedAudio != null) {
-                            Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
-                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(stringResource(R.string.player_audio), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                    when {
-                                        isTranscoding -> StatusBadge("Transcoding", Color(0xFFFACC15))
-                                        isPreTranscode -> StatusBadge("PreTranscode", Color(0xFF22D3EE))
-                                        else -> StatusBadge("Direct", Color(0xFF4ADE80))
-                                    }
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                val channelLayout = formatChannelLayout(selectedAudio.channels)
-                                val audioLine = buildString {
-                                    append(selectedAudio.codec.uppercase())
-                                    append(" $channelLayout")
-                                    if (selectedAudio.language.isNotEmpty()) append(" · ${selectedAudio.language}")
-                                    if (selectedAudio.isDefault) append(" (Default)")
-                                }
-                                Text(audioLine, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, fontFamily = monoFamily, lineHeight = 18.sp)
-
-                                val audioBitrateParts = mutableListOf<String>()
-                                if (selectedAudio.bitrate != null && selectedAudio.bitrate > 0) {
-                                    audioBitrateParts.add(if (selectedAudio.bitrate >= 1000) "${selectedAudio.bitrate / 1000} Kbps" else "${selectedAudio.bitrate} bps")
-                                }
-                                if (selectedAudio.sampleRate != null && selectedAudio.sampleRate > 0) {
-                                    audioBitrateParts.add("${selectedAudio.sampleRate} Hz")
-                                }
-                                if (audioBitrateParts.isNotEmpty()) {
-                                    Text(audioBitrateParts.joinToString(" · "), color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontFamily = monoFamily, lineHeight = 18.sp)
-                                }
-                            }
-                        }
-
-                        // Stream
-                        Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                            Text(stringResource(R.string.player_stream), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(6.dp))
-                            val streamType = when {
-                                playbackInfo.method == "DirectPlay" -> "HTTP Range"
-                                isPreTranscode -> "HTTP Range (PreTranscode)"
-                                else -> "HLS"
-                            }
-                            val containerStr = if (isPreTranscode) "MP4" else playbackInfo.container?.uppercase() ?: "—"
-                            val streamLine = buildString {
-                                append("$streamType · $containerStr")
-                                if (!isPreTranscode && playbackInfo.fileSize != null && playbackInfo.fileSize > 0) {
-                                    append(" · ${"%.1f".format(playbackInfo.fileSize / (1024.0 * 1024.0 * 1024.0))} GB")
-                                }
-                            }
-                            Text(streamLine, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, fontFamily = monoFamily, lineHeight = 18.sp)
-
-                            if (playbackInfo.estimatedBitrate != null && playbackInfo.estimatedBitrate > 0 && (isTranscoding || isPreTranscode)) {
-                                val estStr = if (playbackInfo.estimatedBitrate >= 1000) "${"%.1f".format(playbackInfo.estimatedBitrate / 1000f)} Mbps" else "${playbackInfo.estimatedBitrate} Kbps"
-                                Text("Estimated: $estStr", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontFamily = monoFamily, lineHeight = 18.sp)
-                            }
-                        }
-                    }
-
-                    // Close button
-                    IconButton(
-                        onClick = onClose,
-                        modifier = Modifier.align(Alignment.TopEnd).size(36.dp),
-                    ) {
-                        Icon(LucideIcons.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MethodBadge(method: String) {
-    val (bgColor, textColor, label) = when (method) {
-        "DirectPlay" -> Triple(Color(0xFF4ADE80).copy(alpha = 0.2f), Color(0xFF4ADE80), "Direct Play")
-        "DirectStream" -> Triple(Color(0xFF60A5FA).copy(alpha = 0.2f), Color(0xFF60A5FA), "Direct Stream")
-        "PreTranscode" -> Triple(Color(0xFF22D3EE).copy(alpha = 0.2f), Color(0xFF22D3EE), "PreTranscode")
-        "TranscodeAudio" -> Triple(Color(0xFFFACC15).copy(alpha = 0.2f), Color(0xFFFACC15), "Transcode Audio")
-        "FullTranscode" -> Triple(Color(0xFFF87171).copy(alpha = 0.2f), Color(0xFFF87171), "Full Transcode")
-        else -> Triple(Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.6f), method)
-    }
-    Surface(shape = RoundedCornerShape(4.dp), color = bgColor) {
-        Text(label, color = textColor, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-    }
-}
-
-@Composable
-private fun StatusBadge(label: String, color: Color) {
-    Surface(shape = RoundedCornerShape(4.dp), color = color.copy(alpha = 0.2f)) {
-        Text(label, color = color, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-    }
-}
-
-private fun formatChannelLayout(channels: Int): String {
-    return when (channels) {
-        1 -> "1.0"
-        2 -> "2.0"
-        6 -> "5.1"
-        8 -> "7.1"
-        else -> "$channels.0"
-    }
-}
-
-@Composable
-private fun UpNextCard(
-    title: String,
-    countdown: Int,
-    onPlayNext: () -> Unit,
-    onDismiss: () -> Unit,
-    bottomPadding: androidx.compose.ui.unit.Dp = 180.dp,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.BottomEnd,
-    ) {
-        Surface(
-            modifier = Modifier.padding(end = 16.dp, bottom = bottomPadding),
-            shape = RoundedCornerShape(8.dp),
-            color = Color.Black.copy(alpha = 0.9f),
-        ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-        ) {
-            Text(
-                text = "Up next",
-                color = NetflixWhite.copy(alpha = 0.6f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = title,
-                color = NetflixWhite,
-                fontSize = 14.sp,
-                maxLines = 2,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(
-                    onClick = onPlayNext,
-                    colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                ) {
-                    Icon(
-                        LucideIcons.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Play Next",
-                        fontSize = 12.sp,
-                    )
-                }
-                TextButton(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.textButtonColors(contentColor = NetflixWhite.copy(alpha = 0.6f)),
-                ) {
-                    Text(
-                        text = "Dismiss",
-                        fontSize = 12.sp,
-                    )
-                }
-            }
-        }
-    }
-    }
-}
-
-@Composable
-fun SubtitleTranslateSection(
-    subtitles: List<SubtitleTrackUi>,
-    onTranslate: (subtitleId: Int, targetLanguage: String) -> Unit,
-    onDismiss: () -> Unit,
-    isTranslating: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val translateLanguages = listOf(
-        "vi" to "Vietnamese",
-        "en" to "English",
-        "fr" to "French",
-        "de" to "German",
-        "es" to "Spanish",
-        "ja" to "Japanese",
-        "ko" to "Korean",
-        "zh" to "Chinese",
-    )
-
-    var selectedSubtitleId by remember(subtitles) { mutableIntStateOf(subtitles.firstOrNull()?.id ?: -1) }
-    var selectedTargetLang by remember { mutableStateOf<String?>(null) }
-    var submitted by remember { mutableStateOf(false) }
-
-    LaunchedEffect(isTranslating) {
-        if (submitted && !isTranslating) {
-            onDismiss()
-        }
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = NetflixBlack,
-        modifier = modifier,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-        ) {
-            Text(
-                text = "Translate Subtitle",
-                color = NetflixWhite,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Source subtitle selector (if multiple)
-            if (subtitles.size > 1) {
-                Text(
-                    text = "Source Subtitle",
-                    color = NetflixWhite.copy(alpha = 0.7f),
-                    fontSize = 14.sp,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    subtitles.filter { it.id > 0 }.forEach { subtitle ->
-                        FilterChip(
-                            selected = selectedSubtitleId == subtitle.id,
-                            onClick = { selectedSubtitleId = subtitle.id },
-                            label = { Text(subtitle.label) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = Color(0xFF2A2A2A),
-                                labelColor = NetflixWhite,
-                                selectedContainerColor = NetflixRed,
-                                selectedLabelColor = NetflixWhite,
-                            ),
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // Target language selector
-            Text(
-                text = "Translate To",
-                color = NetflixWhite.copy(alpha = 0.7f),
-                fontSize = 14.sp,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                translateLanguages.forEach { lang ->
-                    FilterChip(
-                        selected = selectedTargetLang == lang.first,
-                        onClick = { selectedTargetLang = lang.first },
-                        label = { Text(lang.second) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            containerColor = Color(0xFF2A2A2A),
-                            labelColor = NetflixWhite,
-                            selectedContainerColor = NetflixRed,
-                            selectedLabelColor = NetflixWhite,
-                        ),
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Translate button
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Button(
-                    onClick = {
-                        if (selectedSubtitleId >= 0 && selectedTargetLang != null) {
-                            submitted = true
-                            onTranslate(selectedSubtitleId, selectedTargetLang!!)
-                        }
-                    },
-                    enabled = selectedSubtitleId >= 0 && selectedTargetLang != null && !isTranslating,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    if (isTranslating) {
-                        CircularProgressIndicator(
-                            color = NetflixWhite,
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Text(stringResource(R.string.player_translate))
-                }
-
-                TextButton(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.textButtonColors(contentColor = NetflixWhite.copy(alpha = 0.7f)),
-                ) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
-        }
-    }
-}
-
-// Note: VideoPlayer requires ExoPlayer (platform API) and cannot be rendered in IDE preview.
-// The following previews cover self-contained sub-components.
-
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun UpNextCardPreview() {
-    VeloxTheme {
-        UpNextCard(
-            title = "S2E5 - The Battle of Winterfell",
-            countdown = 8,
-            onPlayNext = {},
-            onDismiss = {},
-        )
-    }
-}
-
-private val SamplePlaybackInfo = com.velox.app.domain.model.PlaybackInfo(
-    mediaId = 1,
-    primaryFileId = 1,
-    method = "DirectPlay",
-    streamUrl = "http://server:8098/api/stream/1",
-    directUrl = "http://server:8098/api/stream/1?pm=direct",
-    abrUrl = null,
-    pretranscodeUrl = "http://server:8098/api/stream/1/pretranscode",
-    hlsUrl = "http://server:8098/api/stream/1/hls/master.m3u8",
-    prefer = "direct",
-    streamSessionId = "abc123",
-    ptVideoCodec = "h264",
-    ptAudioCodec = "aac",
-    ptHeight = 1080,
-    ptVideoBitrate = 8000,
-    ptAudioBitrate = 128,
-    position = 120f,
-    duration = 7200f,
-    width = 1920,
-    height = 1080,
-    audioTracks = emptyList(),
-    subtitleTracks = emptyList(),
-    skipSegments = emptyList(),
-    availableQualities = emptyList(),
-)
-
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun PlaybackStatsOverlayPreview() {
-    VeloxTheme {
-        PlaybackStatsOverlay(
-            visible = true,
-            playbackInfo = SamplePlaybackInfo,
-            onClose = {},
-        )
     }
 }

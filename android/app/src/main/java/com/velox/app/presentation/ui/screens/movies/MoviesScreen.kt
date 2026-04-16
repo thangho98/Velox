@@ -1,10 +1,6 @@
 package com.velox.app.presentation.ui.screens.movies
 
-import androidx.compose.ui.res.stringResource
-import com.velox.app.R
 import androidx.compose.foundation.background
-import com.velox.app.presentation.ui.components.LucideIcons
-import com.velox.app.presentation.ui.components.NotificationBell
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -24,17 +20,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.velox.app.presentation.ui.components.ResponsiveImage
+import com.velox.app.R
 import com.velox.app.domain.model.MediaItem
 import com.velox.app.presentation.ui.components.FilterBottomSheet
+import com.velox.app.presentation.ui.components.LucideIcons
+import com.velox.app.presentation.ui.components.NotificationBell
 import com.velox.app.presentation.ui.components.QuickActionsMenu
 import com.velox.app.presentation.viewmodel.MoviesUiState
 import com.velox.app.presentation.viewmodel.MoviesViewModel
@@ -43,8 +44,9 @@ import com.velox.app.ui.theme.NetflixDark
 import com.velox.app.ui.theme.NetflixGray
 import com.velox.app.ui.theme.NetflixLightGray
 import com.velox.app.ui.theme.NetflixRed
-import com.velox.app.ui.theme.VeloxTheme
 import com.velox.app.ui.theme.NetflixWhite
+import com.velox.app.ui.theme.VeloxTheme
+import kotlinx.coroutines.launch
 
 private val ALPHABET = ('A'..'Z').toList() + '#'
 
@@ -56,7 +58,7 @@ fun MoviesScreen(
     onSettingsClick: () -> Unit,
     viewModel: MoviesViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     MoviesContent(
         uiState = uiState,
@@ -429,13 +431,22 @@ fun MovieCard(
             shape = RoundedCornerShape(8.dp),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                if (item.posterPath != null) {
-                    AsyncImage(
-                        model = item.posterPath,
-                        contentDescription = item.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
+                if (item.poster != null || item.posterPath != null) {
+                    if (item.poster != null) {
+                        ResponsiveImage(
+                            data = item.poster,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        AsyncImage(
+                            model = item.posterPath,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
                 } else {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -466,6 +477,12 @@ fun MovieCard(
                         fontSize = 16.sp,
                     )
                 }
+
+                // Media Type Badge
+                com.velox.app.presentation.ui.components.MediaBadge(
+                    mediaType = item.mediaType,
+                    modifier = Modifier.align(Alignment.TopStart)
+                )
 
                 // Progress bar + percentage
                 val position = item.position ?: 0f
@@ -564,4 +581,5 @@ private val SampleMovieItem = MediaItem(
     rating = 8.8f,
     mediaType = "movie",
     overview = "A thief who steals corporate secrets through dream-sharing technology.",
+
 )

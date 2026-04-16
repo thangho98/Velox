@@ -1,21 +1,18 @@
 package com.velox.app.presentation.ui.screens.auth
 
-import androidx.compose.ui.res.stringResource
-import com.velox.app.R
 import androidx.compose.foundation.background
-import com.velox.app.presentation.ui.components.LucideIcons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
@@ -24,29 +21,33 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.velox.app.R
+import com.velox.app.presentation.ui.components.LucideIcons
+import com.velox.app.presentation.viewmodel.ConnectionInfo
+import com.velox.app.presentation.viewmodel.ConnectionStatus
 import com.velox.app.presentation.viewmodel.LoginUiState
 import com.velox.app.presentation.viewmodel.LoginViewModel
-import com.velox.app.presentation.viewmodel.ConnectionStatus
-import com.velox.app.presentation.viewmodel.ConnectionInfo
-import com.velox.app.ui.theme.VeloxTheme
 import com.velox.app.ui.theme.NetflixBlack
 import com.velox.app.ui.theme.NetflixDark
 import com.velox.app.ui.theme.NetflixGray
 import com.velox.app.ui.theme.NetflixLightGray
 import com.velox.app.ui.theme.NetflixRed
 import com.velox.app.ui.theme.NetflixWhite
+import com.velox.app.ui.theme.VeloxTheme
 import kotlinx.coroutines.launch
 
 @Composable
@@ -54,8 +55,8 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val connectionInfo by viewModel.connectionInfo.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val connectionInfo by viewModel.connectionInfo.collectAsStateWithLifecycle()
 
     LoginScreenContent(
         uiState = uiState,

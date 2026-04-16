@@ -1,12 +1,17 @@
 package com.velox.app.data.util
 
 /**
- * Resolve an image path (TMDb, local://, or already-absolute) to a full URL.
+ * Resolve an image path returned by the backend to a full URL.
  *
- * Mirrors the logic in packages/shared/lib/image.ts on the web side:
- * - `local://foo.jpg` → `{apiBase}/images/local/media/foo.jpg`
- * - `http://…` or `/api/…` → pass-through
- * - bare path like `tmdb/path.jpg` → TMDb CDN URL
+ * The backend normalizes everything to fully-routed relative paths like
+ * `/api/images/local/media/42/poster.jpg` or `/api/images/tmdb/abc.jpg`.
+ * Size is expressed as `?width=N` — the backend maps that to the nearest
+ * TMDb bucket (w92/w185/.../original).
+ *
+ * External URLs (http/https) pass through untouched.
+ *
+ * `size` accepts either a numeric width ("500") or a TMDb size token
+ * ("w500", "h632", "original") for source compatibility with older callers.
  */
 object ImageUrlResolver {
     private var baseUrlProvider: (() -> String?)? = null
@@ -15,29 +20,32 @@ object ImageUrlResolver {
         baseUrlProvider = provider
     }
 
-    fun resolve(path: String?, size: String = "w500"): String? {
+    fun resolve(path: String?, size: String? = "w500"): String? {
         if (path.isNullOrEmpty()) return null
-        if (path.startsWith("http")) return path
-        if (path.startsWith("/api/")) {
-            var baseUrl = baseUrlProvider?.invoke()?.removeSuffix("/") ?: return path
-            if (baseUrl.endsWith("/api")) {
-                baseUrl = baseUrl.removeSuffix("/api")
-            }
-            return "$baseUrl$path"
+        if (path.startsWith("http://") || path.startsWith("https://")) return path
+
+        val base = baseUrlProvider?.invoke()?.removeSuffix("/") ?: return null
+        val baseWithoutApi = if (base.endsWith("/api")) base.removeSuffix("/api") else base
+
+        val joined = when {
+            path.startsWith("/api/") -> "$baseWithoutApi$path"
+            path.startsWith("/") -> "$baseWithoutApi$path"
+            else -> "$baseWithoutApi/$path"
         }
 
-        // local:// poster/backdrop uploaded by the user
-        if (path.startsWith("local://")) {
-            val baseUrl = baseUrlProvider?.invoke() ?: return null
-            return "${baseUrl.removeSuffix("/")}/images/local/media/${path.removePrefix("local://")}"
-        }
+        val width = coerceWidth(size) ?: return joined
+        val separator = if ('?' in joined) '&' else '?'
+        return "$joined${separator}width=$width"
+    }
 
-        val baseUrl = baseUrlProvider?.invoke()?.removeSuffix("/") ?: return null
-
-        // Strip leading slash if present
-        val cleaned = if (path.startsWith("/")) path.substring(1) else path
-
-        // Proxy through Velox backend like web app
-        return "$baseUrl/images/tmdb/$size/$cleaned"
+    // Strip TMDb size prefixes (`w500`, `h632`) down to the numeric width the
+    // backend expects. Returns null to skip the width query param entirely.
+    private fun coerceWidth(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        if (raw == "original") return "original"
+        val match = Regex("^[a-zA-Z](\\d+)$").matchEntire(raw)
+        if (match != null) return match.groupValues[1]
+        val n = raw.toIntOrNull()
+        return if (n != null && n > 0) n.toString() else null
     }
 }
