@@ -26,12 +26,13 @@ func (r *MediaFileRepo) WithTx(tx *sql.Tx) *MediaFileRepo {
 // scanMediaFile scans a media file row into a model.MediaFile
 func scanMediaFile(scanner interface{ Scan(...any) error }) (*model.MediaFile, error) {
 	var mf model.MediaFile
-	var isPrimary int
+	var isPrimary, isHDR int
 	var lastVerified sql.NullString
 
 	err := scanner.Scan(&mf.ID, &mf.MediaID, &mf.FilePath, &mf.FileSize, &mf.Duration,
 		&mf.Width, &mf.Height, &mf.VideoCodec, &mf.VideoProfile, &mf.VideoLevel, &mf.VideoFPS,
 		&mf.AudioCodec, &mf.Container, &mf.Bitrate,
+		&isHDR, &mf.DVProfile, &mf.ColorTransfer, &mf.ColorPrimaries,
 		&mf.Fingerprint, &isPrimary, &mf.AddedAt, &lastVerified)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -40,6 +41,7 @@ func scanMediaFile(scanner interface{ Scan(...any) error }) (*model.MediaFile, e
 		return nil, fmt.Errorf("scanning media file: %w", err)
 	}
 	mf.IsPrimary = isPrimary == 1
+	mf.IsHDR = isHDR == 1
 	if lastVerified.Valid {
 		mf.LastVerifiedAt = &lastVerified.String
 	}
@@ -51,19 +53,27 @@ func (r *MediaFileRepo) Create(ctx context.Context, mf *model.MediaFile) error {
 	query := `INSERT INTO media_files
 		(media_id, file_path, file_size, duration, width, height,
 		 video_codec, video_profile, video_level, video_fps,
-		 audio_codec, container, bitrate, fingerprint, is_primary)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 audio_codec, container, bitrate,
+		 is_hdr, dv_profile, color_transfer, color_primaries,
+		 fingerprint, is_primary)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, added_at, last_verified_at`
 
 	isPrimary := 0
 	if mf.IsPrimary {
 		isPrimary = 1
 	}
+	isHDR := 0
+	if mf.IsHDR {
+		isHDR = 1
+	}
 
 	row := r.db.QueryRowContext(ctx, query,
 		mf.MediaID, mf.FilePath, mf.FileSize, mf.Duration, mf.Width, mf.Height,
 		mf.VideoCodec, mf.VideoProfile, mf.VideoLevel, mf.VideoFPS,
-		mf.AudioCodec, mf.Container, mf.Bitrate, mf.Fingerprint, isPrimary)
+		mf.AudioCodec, mf.Container, mf.Bitrate,
+		isHDR, mf.DVProfile, mf.ColorTransfer, mf.ColorPrimaries,
+		mf.Fingerprint, isPrimary)
 
 	var lastVerified sql.NullString
 	err := row.Scan(&mf.ID, &mf.AddedAt, &lastVerified)
@@ -81,6 +91,7 @@ func (r *MediaFileRepo) GetByID(ctx context.Context, id int64) (*model.MediaFile
 	row := r.db.QueryRowContext(ctx, `SELECT id, media_id, file_path, file_size, duration,
 		width, height, video_codec, video_profile, video_level, video_fps,
 		audio_codec, container, bitrate,
+		is_hdr, dv_profile, color_transfer, color_primaries,
 		fingerprint, is_primary, added_at, last_verified_at
 		FROM media_files WHERE id = ?`, id)
 	return scanMediaFile(row)
@@ -93,15 +104,22 @@ func (r *MediaFileRepo) Update(ctx context.Context, mf *model.MediaFile) error {
 		isPrimary = 1
 	}
 
+	isHDR := 0
+	if mf.IsHDR {
+		isHDR = 1
+	}
+
 	res, err := r.db.ExecContext(ctx, `UPDATE media_files SET
 		file_path = ?, file_size = ?, duration = ?, width = ?, height = ?,
 		video_codec = ?, video_profile = ?, video_level = ?, video_fps = ?,
 		audio_codec = ?, container = ?, bitrate = ?,
+		is_hdr = ?, dv_profile = ?, color_transfer = ?, color_primaries = ?,
 		fingerprint = ?, is_primary = ?, last_verified_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
 		mf.FilePath, mf.FileSize, mf.Duration, mf.Width, mf.Height,
 		mf.VideoCodec, mf.VideoProfile, mf.VideoLevel, mf.VideoFPS,
 		mf.AudioCodec, mf.Container, mf.Bitrate,
+		isHDR, mf.DVProfile, mf.ColorTransfer, mf.ColorPrimaries,
 		mf.Fingerprint, isPrimary, mf.ID)
 	if err != nil {
 		return fmt.Errorf("update media file %d: %w", mf.ID, err)
@@ -131,6 +149,7 @@ func (r *MediaFileRepo) ListByMediaID(ctx context.Context, mediaID int64) ([]mod
 	rows, err := r.db.QueryContext(ctx, `SELECT id, media_id, file_path, file_size, duration,
 		width, height, video_codec, video_profile, video_level, video_fps,
 		audio_codec, container, bitrate,
+		is_hdr, dv_profile, color_transfer, color_primaries,
 		fingerprint, is_primary, added_at, last_verified_at
 		FROM media_files WHERE media_id = ? ORDER BY is_primary DESC, id`, mediaID)
 	if err != nil {
@@ -154,6 +173,7 @@ func (r *MediaFileRepo) GetPrimaryByMediaID(ctx context.Context, mediaID int64) 
 	row := r.db.QueryRowContext(ctx, `SELECT id, media_id, file_path, file_size, duration,
 		width, height, video_codec, video_profile, video_level, video_fps,
 		audio_codec, container, bitrate,
+		is_hdr, dv_profile, color_transfer, color_primaries,
 		fingerprint, is_primary, added_at, last_verified_at
 		FROM media_files WHERE media_id = ? AND is_primary = 1 LIMIT 1`, mediaID)
 	return scanMediaFile(row)
@@ -164,6 +184,7 @@ func (r *MediaFileRepo) FindByFingerprint(ctx context.Context, fingerprint strin
 	row := r.db.QueryRowContext(ctx, `SELECT id, media_id, file_path, file_size, duration,
 		width, height, video_codec, video_profile, video_level, video_fps,
 		audio_codec, container, bitrate,
+		is_hdr, dv_profile, color_transfer, color_primaries,
 		fingerprint, is_primary, added_at, last_verified_at
 		FROM media_files WHERE fingerprint = ?`, fingerprint)
 	return scanMediaFile(row)
@@ -174,6 +195,7 @@ func (r *MediaFileRepo) FindByPath(ctx context.Context, path string) (*model.Med
 	row := r.db.QueryRowContext(ctx, `SELECT id, media_id, file_path, file_size, duration,
 		width, height, video_codec, video_profile, video_level, video_fps,
 		audio_codec, container, bitrate,
+		is_hdr, dv_profile, color_transfer, color_primaries,
 		fingerprint, is_primary, added_at, last_verified_at
 		FROM media_files WHERE file_path = ?`, path)
 	return scanMediaFile(row)
@@ -207,6 +229,7 @@ func (r *MediaFileRepo) ListByLibraryID(ctx context.Context, libraryID int64, li
 	rows, err := r.db.QueryContext(ctx, `SELECT mf.id, mf.media_id, mf.file_path, mf.file_size, mf.duration,
 		mf.width, mf.height, mf.video_codec, mf.video_profile, mf.video_level, mf.video_fps,
 		mf.audio_codec, mf.container, mf.bitrate,
+		mf.is_hdr, mf.dv_profile, mf.color_transfer, mf.color_primaries,
 		mf.fingerprint, mf.is_primary, mf.added_at, mf.last_verified_at
 		FROM media_files mf
 		JOIN media m ON m.id = mf.media_id
@@ -234,6 +257,7 @@ func (r *MediaFileRepo) ListAllPaginated(ctx context.Context, limit, offset int)
 	rows, err := r.db.QueryContext(ctx, `SELECT id, media_id, file_path, file_size, duration,
 		width, height, video_codec, video_profile, video_level, video_fps,
 		audio_codec, container, bitrate,
+		is_hdr, dv_profile, color_transfer, color_primaries,
 		fingerprint, is_primary, added_at, last_verified_at
 		FROM media_files ORDER BY id LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {

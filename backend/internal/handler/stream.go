@@ -260,7 +260,8 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 		MaxHeight:         maxHeight,
 	}
 
-	sess, err := h.mgr.GetOrCreate(r.Context(), key, mf.FilePath, mf.Duration, audioTracks)
+	dvProfile := mf.DVProfile
+	sess, err := h.mgr.GetOrCreate(r.Context(), key, mf.FilePath, mf.Duration, audioTracks, dvProfile)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "cannot create session")
 		return
@@ -352,7 +353,8 @@ func (h *StreamHandler) serveV2HLSMedia(w http.ResponseWriter, r *http.Request) 
 	audioTracks, _ := h.svc.ListAudioTracksForMediaFile(r.Context(), mf.ID)
 	audioTracks = pickAudioTracks(audioTracks, r.URL.Query().Get("at"))
 
-	sess, err := h.mgr.GetOrCreate(r.Context(), key, mf.FilePath, mf.Duration, audioTracks)
+	dvProfile := mf.DVProfile
+	sess, err := h.mgr.GetOrCreate(r.Context(), key, mf.FilePath, mf.Duration, audioTracks, dvProfile)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "cannot retrieve session")
 		return true

@@ -14,20 +14,24 @@ import (
 
 // ProbeResult contains basic media file metadata
 type ProbeResult struct {
-	Duration     float64
-	Width        int
-	Height       int
-	VideoCodec   string
-	VideoProfile string  // e.g. "High", "Main 10"
-	VideoLevel   int     // e.g. 40, 51
-	VideoFPS     float64 // frames per second from r_frame_rate
-	AudioCodec   string
-	Container    string
-	Bitrate      int64
-	HasSub       bool
-	AudioTracks  []AudioTrackInfo
-	Subtitles    []SubtitleInfo
-	Chapters     []ChapterInfo // NEW: chapter markers for intro/credits skip
+	Duration       float64
+	Width          int
+	Height         int
+	VideoCodec     string
+	VideoProfile   string  // e.g. "High", "Main 10"
+	VideoLevel     int     // e.g. 40, 51
+	VideoFPS       float64 // frames per second from r_frame_rate
+	AudioCodec     string
+	Container      string
+	Bitrate        int64
+	HasSub         bool
+	IsHDR          bool   // BT.2020/PQ/HLG or DV detected
+	DVProfile      int    // Dolby Vision profile (0 = none, 5/7/8 = present)
+	ColorTransfer  string // e.g. smpte2084 (PQ), arib-std-b67 (HLG), bt709
+	ColorPrimaries string // e.g. bt2020, bt709
+	AudioTracks    []AudioTrackInfo
+	Subtitles      []SubtitleInfo
+	Chapters       []ChapterInfo // chapter markers for intro/credits skip
 }
 
 // AudioTrackInfo contains detailed audio track metadata
@@ -192,6 +196,14 @@ func Probe(path string) (*ProbeResult, error) {
 				if r.VideoFPS == 0 {
 					r.VideoFPS = parseFrameRate(s.AvgFrameRate)
 				}
+				r.ColorTransfer = s.ColorTransfer
+				r.ColorPrimaries = s.ColorPrimaries
+				for _, sd := range s.SideDataList {
+					if sd.DVProfile > 0 {
+						r.DVProfile = sd.DVProfile
+						break
+					}
+				}
 			}
 		case "audio":
 			if firstAudioCodec == "" {
@@ -257,6 +269,8 @@ func Probe(path string) (*ProbeResult, error) {
 	if r.AudioCodec == "" && firstAudioCodec != "" {
 		r.AudioCodec = firstAudioCodec
 	}
+
+	r.IsHDR = isHDRLikeFromDetailed(detailed, path)
 
 	return r, nil
 }
@@ -473,4 +487,33 @@ func parseTimeBase(timeBase string, ticks int64) float64 {
 		return 0
 	}
 	return float64(ticks) * num / den
+}
+
+// GetDVProfile returns the Dolby Vision profile of the primary video stream, or 0 if none.
+func GetDVProfile(path string) int {
+	cmd := exec.Command(ffmpegbin.FFprobe(),
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_streams",
+		path,
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+	var detailed DetailedProbeResult
+	if err := json.Unmarshal(out, &detailed); err != nil {
+		return 0
+	}
+	for _, stream := range detailed.Streams {
+		if stream.CodecType == "video" {
+			for _, side := range stream.SideDataList {
+				if side.SideDataType == "DOVI configuration record" && side.DVProfile > 0 {
+					return side.DVProfile
+				}
+			}
+			break
+		}
+	}
+	return 0
 }
