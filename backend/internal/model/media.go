@@ -71,6 +71,10 @@ type MediaFile struct {
 	AudioCodec     string  `json:"audio_codec"`
 	Container      string  `json:"container"`
 	Bitrate        int     `json:"bitrate"`
+	IsHDR          bool    `json:"is_hdr,omitempty"`
+	DVProfile      int     `json:"dv_profile,omitempty"`
+	ColorTransfer  string  `json:"color_transfer,omitempty"`
+	ColorPrimaries string  `json:"color_primaries,omitempty"`
 	Fingerprint    string  `json:"fingerprint"` // "{file_size}:{xxhash64_first_64KB}"
 	IsPrimary      bool    `json:"is_primary"`
 	AddedAt        string  `json:"added_at"`

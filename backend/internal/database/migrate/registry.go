@@ -210,6 +210,12 @@ func All() []Migration {
 			Up:      up034,
 			Down:    down034,
 		},
+		{
+			Version: 35,
+			Name:    "media_file_hdr_metadata",
+			Up:      up035,
+			Down:    down035,
+		},
 	}
 }
 
