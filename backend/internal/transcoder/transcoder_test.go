@@ -25,7 +25,7 @@ func TestHlsPrefixOmitsTinySeekOffset(t *testing.T) {
 }
 
 func TestMasterPlaylistPathIncludesSeekOffsetPrefix(t *testing.T) {
-	tcr := New("/tmp/velox-hls", "", 1)
+	tcr := New("/tmp/velox-hls", "", 1, false)
 	got := tcr.MasterPlaylistPath(42, "sess123", 7, 3, false, 120)
 
 	if !strings.HasSuffix(got, "/42/sssess123_f7_sub3_off120000_master.m3u8") {
@@ -34,7 +34,7 @@ func TestMasterPlaylistPathIncludesSeekOffsetPrefix(t *testing.T) {
 }
 
 func TestCancelTranscodeByStreamSessionIDExcept(t *testing.T) {
-	tcr := New("/tmp/velox-hls", "", 1)
+	tcr := New("/tmp/velox-hls", "", 1, false)
 	cancelled := make([]string, 0, 2)
 	cancelFor := func(name string) func() {
 		return func() {

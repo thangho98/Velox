@@ -116,7 +116,8 @@ func (t *Transcoder) runHLSFFmpeg(ctx context.Context, inputPath, dir, prefix st
 		)
 	} else {
 		args = []string{"-hide_banner", "-loglevel", "warning"}
-		args = append(args, buildFFmpegInputArgs(hwAccel, hdr)...)
+		// TODO: Legacy mode GenerateHLS doesn't pass DVProfile right now. Force SW tonemapping (false) to be safe.
+		args = append(args, buildFFmpegInputArgs(hwAccel, hdr, 0, false)...)
 		if startOffset > 0 {
 			args = append(args, "-ss", fmt.Sprintf("%.3f", startOffset))
 		}
@@ -124,7 +125,7 @@ func (t *Transcoder) runHLSFFmpeg(ctx context.Context, inputPath, dir, prefix st
 		if siIdx >= 0 {
 			args = append(args, buildImageSubtitleBurnInArgs(hwAccel, hdr, inputPath, siIdx)...)
 		} else {
-			encArgs := buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)
+			encArgs := buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath, 0, false)
 			// Insert scale filter for max_height (before any existing -vf).
 			// Use HW-aware scale filter to avoid mixing software/hardware filters.
 			if maxHeight > 0 {
@@ -362,7 +363,7 @@ func (t *Transcoder) runMultiOutputHLS(ctx context.Context, inputPath, dir, pref
 	if videoCopy {
 		args = append(args, ffmpegInputProbeArgs()...)
 	} else {
-		args = append(args, buildFFmpegInputArgs(hwAccel, hdr)...)
+		args = append(args, buildFFmpegInputArgs(hwAccel, hdr, 0, false)...)
 	}
 	if startOffset > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.3f", startOffset))
@@ -387,7 +388,7 @@ func (t *Transcoder) runMultiOutputHLS(ctx context.Context, inputPath, dir, pref
 		args = append(args, buildImageSubtitleBurnInVideoOnlyArgs(hwAccel, hdr, inputPath, siIdx)...)
 	} else {
 		args = append(args, "-map", "0:v:0")
-		args = append(args, buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath)...)
+		args = append(args, buildVideoEncodeArgs(hwAccel, hdr, siIdx, inputPath, 0, false)...)
 	}
 	var videoHLSArgs []string
 	if videoCopy {
@@ -641,8 +642,10 @@ type V2EncoderOpts struct {
 	AudioTracks       []model.AudioTrack
 	VideoCopy         bool
 	SubtitleStreamIdx int
+	DVProfile         int
 	MaxHeight         int
 	HwAccel           string
+	EnableHwTonemap   bool
 	SegLength         float64
 }
 
@@ -661,7 +664,7 @@ func StartHLSV2Encoder(ctx context.Context, opts V2EncoderOpts) (*exec.Cmd, erro
 	if opts.VideoCopy {
 		args = append(args, ffmpegInputProbeArgs()...)
 	} else {
-		args = append(args, buildFFmpegInputArgs(opts.HwAccel, hdr)...)
+		args = append(args, buildFFmpegInputArgs(opts.HwAccel, hdr, opts.DVProfile, opts.EnableHwTonemap)...)
 	}
 
 	if startOffset > 0 {
@@ -693,7 +696,7 @@ func StartHLSV2Encoder(ctx context.Context, opts V2EncoderOpts) (*exec.Cmd, erro
 		args = append(args, buildImageSubtitleBurnInVideoOnlyArgs(opts.HwAccel, hdr, opts.InputPath, opts.SubtitleStreamIdx)...)
 	} else {
 		args = append(args, "-map", "0:v:0")
-		encArgs := buildVideoEncodeArgs(opts.HwAccel, hdr, opts.SubtitleStreamIdx, opts.InputPath)
+		encArgs := buildVideoEncodeArgs(opts.HwAccel, hdr, opts.SubtitleStreamIdx, opts.InputPath, opts.DVProfile, opts.EnableHwTonemap)
 		if opts.MaxHeight > 0 {
 			scaleFilter := hwScaleFilter(opts.HwAccel, opts.MaxHeight)
 			inserted := false

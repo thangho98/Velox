@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/thawng/velox/internal/model"
+	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/pkg/ffmpegbin"
 	"github.com/thawng/velox/pkg/ffprobe"
 )
@@ -157,9 +158,9 @@ func (s *PretranscodeService) processJob(ctx context.Context, job *model.Pretran
 	if isAudioRemux && !needsVideoTranscode {
 		errEncode = s.runAudioRemux(ctx, mf.FilePath, outputPath, profile)
 	} else if isAudioRemux && needsVideoTranscode {
-		errEncode = s.runUniversalTranscode(ctx, mf.FilePath, outputPath, profile, mf.Height, isHDR)
+		errEncode = s.runUniversalTranscode(ctx, mf, outputPath, profile, isHDR)
 	} else {
-		errEncode = s.encodeFile(ctx, mf.FilePath, outputPath, profile, mf.AudioCodec, isHDR)
+		errEncode = s.encodeFile(ctx, mf, outputPath, profile, mf.AudioCodec, isHDR)
 	}
 
 	if errEncode != nil {
@@ -263,26 +264,28 @@ func (s *PretranscodeService) runAudioRemux(ctx context.Context, inputPath, outp
 }
 
 // runUniversalTranscode transcodes non-H.264 sources to H.264+AAC at source resolution.
-func (s *PretranscodeService) runUniversalTranscode(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceHeight int, hdr bool) error {
-	bitrate := estimateBitrateForHeight(sourceHeight)
+func (s *PretranscodeService) runUniversalTranscode(ctx context.Context, mf *model.MediaFile, outputPath string, profile *model.PretranscodeProfile, hdr bool) error {
+	bitrate := estimateBitrateForHeight(mf.Height)
 	if hdr {
-		log.Printf("pretranscode: HDR/DV source detected, forcing software tonemap for %s", filepath.Base(inputPath))
-		return s.runUniversalTranscodeWith(ctx, inputPath, outputPath, profile, sourceHeight, bitrate, "", true)
+		log.Printf("pretranscode: HDR/DV source detected for %s", filepath.Base(mf.FilePath))
+		return s.runUniversalTranscodeWith(ctx, mf.FilePath, outputPath, profile, mf.Height, bitrate, "", true, mf)
 	}
 	// Try HW accel first
 	if s.hwAccel != "" {
-		err := s.runUniversalTranscodeWith(ctx, inputPath, outputPath, profile, sourceHeight, bitrate, s.hwAccel, false)
+		err := s.runUniversalTranscodeWith(ctx, mf.FilePath, outputPath, profile, mf.Height, bitrate, s.hwAccel, false, mf)
 		if err == nil {
 			return nil
 		}
 		log.Printf("pretranscode: HW universal transcode failed (%s), retrying software: %v", s.hwAccel, err)
 		_ = os.Remove(outputPath)
 	}
-	return s.runUniversalTranscodeWith(ctx, inputPath, outputPath, profile, sourceHeight, bitrate, "", false)
+	return s.runUniversalTranscodeWith(ctx, mf.FilePath, outputPath, profile, mf.Height, bitrate, "", false, mf)
 }
 
-func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceHeight, bitrate int, hwAccel string, hdr bool) error {
+func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceHeight, bitrate int, hwAccel string, hdr bool, mf *model.MediaFile) error {
 	args := []string{"-hide_banner", "-loglevel", "error", "-stats", "-y"}
+
+	dvProfile := mf.DVProfile
 
 	if !hdr {
 		switch hwAccel {
@@ -291,21 +294,58 @@ func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inp
 		case "nvenc":
 			args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
 		}
+	} else {
+		// HW Tonemap Path evaluates probe results
+		if transcoder.ShouldUseHwTonemap(hwAccel, dvProfile, s.enableHwTonemap) {
+			switch hwAccel {
+			case "vaapi":
+				args = append(args, "-vaapi_device", "/dev/dri/renderD128", "-hwaccel", "vaapi")
+			case "nvenc":
+				args = append(args, "-init_hw_device", "vulkan=vk:0", "-filter_hw_device", "vk")
+			}
+			if transcoder.NeedsDoviStripBSF(dvProfile) {
+				args = append(args, "-bsf:v:0", "hevc_metadata=remove_dovi=1")
+			}
+		} else if hwAccel == "vaapi" {
+			// SW HDR tonemap + HW Encode requires device init for vaapi
+			args = append(args, "-vaapi_device", "/dev/dri/renderD128")
+		}
 	}
 
 	args = append(args, "-i", inputPath)
 
 	if hdr {
-		args = append(args,
-			"-vf", buildPretranscodeHDRScaleFilter(inputPath, sourceHeight, "yuv420p"),
-			"-c:v", "libx264",
-			"-preset", "medium",
-			"-crf", "20",
-			"-pix_fmt", "yuv420p",
-			"-colorspace", "bt709",
-			"-color_primaries", "bt709",
-			"-color_trc", "bt709",
-		)
+		if transcoder.ShouldUseHwTonemap(hwAccel, dvProfile, s.enableHwTonemap) {
+			if hwAccel == "vaapi" {
+				vf := buildPretranscodeHDRScaleFilter(inputPath, sourceHeight, "nv12", hwAccel, dvProfile, s.enableHwTonemap)
+				args = append(args,
+					"-vf", vf,
+					"-c:v", "h264_vaapi",
+					"-profile:v", "main",
+					"-b:v", fmt.Sprintf("%dk", bitrate),
+				)
+			} else if hwAccel == "nvenc" {
+				vf := buildPretranscodeHDRScaleFilter(inputPath, sourceHeight, "yuv420p", hwAccel, dvProfile, s.enableHwTonemap)
+				args = append(args,
+					"-vf", vf,
+					"-c:v", "h264_nvenc",
+					"-preset", "p4",
+					"-profile:v", "high",
+					"-b:v", fmt.Sprintf("%dk", bitrate),
+					"-pix_fmt", "yuv420p",
+				)
+			}
+		} else {
+			vf := buildPretranscodeHDRScaleFilter(inputPath, sourceHeight, "yuv420p", hwAccel, dvProfile, s.enableHwTonemap)
+			args = append(args,
+				"-vf", vf,
+				"-c:v", "libx264",
+				"-preset", "medium",
+				"-crf", "20",
+				"-pix_fmt", "yuv420p",
+			)
+		}
+		args = append(args, "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709")
 	} else {
 		switch hwAccel {
 		case "vaapi":
@@ -351,7 +391,17 @@ func (s *PretranscodeService) runUniversalTranscodeWith(ctx context.Context, inp
 //
 // Uses tonemapx (Jellyfin SIMD-optimized) which correctly handles both standard
 // HDR10 (BT.2020/PQ) and Dolby Vision (including Profile 5 IPT-PQ-C2).
-func buildPretranscodeHDRScaleFilter(inputPath string, height int, outFmt string) string {
+// outFmt controls the SW fallback pixel format.
+func buildPretranscodeHDRScaleFilter(inputPath string, height int, outFmt string, hwAccel string, dvProfile int, enableHwTonemap bool) string {
+	if transcoder.ShouldUseHwTonemap(hwAccel, dvProfile, enableHwTonemap) {
+		hwFilter := transcoder.HDRToneMapFilterForHW(hwAccel, inputPath, dvProfile, enableHwTonemap)
+		if hwAccel == "vaapi" {
+			return hwFilter + fmt.Sprintf(",scale_vaapi=w=-2:h=%d:format=nv12", height)
+		}
+		// nvenc vulkan
+		return hwFilter + fmt.Sprintf(",scale=-2:%d", height)
+	}
+
 	prefix := ""
 	if ffprobe.NeedsHDRColorMetadataFallback(inputPath) {
 		prefix = "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,"
@@ -380,79 +430,98 @@ func estimateBitrateForHeight(height int) int {
 	}
 }
 
-func (s *PretranscodeService) encodeFile(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, sourceAudioCodec string, hdr bool) error {
+func (s *PretranscodeService) encodeFile(ctx context.Context, mf *model.MediaFile, outputPath string, profile *model.PretranscodeProfile, sourceAudioCodec string, hdr bool) error {
 	if hdr {
-		// HDR/DV: software tonemap is required, but try HW encode (hybrid) first
+		// HDR/DV: software tonemap is required, but try HW encode (hybrid/HW) first
 		if s.hwAccel != "" {
-			log.Printf("pretranscode: HDR/DV source detected, hybrid tonemap (SW decode+tonemap → %s encode) for %s", s.hwAccel, filepath.Base(inputPath))
-			err := s.runFFmpeg(ctx, inputPath, outputPath, profile, s.hwAccel, sourceAudioCodec, true)
+			log.Printf("pretranscode: HDR/DV source detected, trying tonemap for %s", filepath.Base(mf.FilePath))
+			err := s.runFFmpeg(ctx, mf, outputPath, profile, s.hwAccel, sourceAudioCodec, true)
 			if err == nil {
 				return nil
 			}
-			log.Printf("pretranscode: HDR hybrid encode failed (%s), retrying full software: %v", s.hwAccel, err)
+			log.Printf("pretranscode: HDR HW/hybrid encode failed (%s), retrying full software: %v", s.hwAccel, err)
 			_ = os.Remove(outputPath)
 		} else {
-			log.Printf("pretranscode: HDR/DV source detected, full software tonemap for %s", filepath.Base(inputPath))
+			log.Printf("pretranscode: HDR/DV source detected, full SW tonemap for %s", filepath.Base(mf.FilePath))
 		}
-		return s.runFFmpeg(ctx, inputPath, outputPath, profile, "", sourceAudioCodec, true)
+		return s.runFFmpeg(ctx, mf, outputPath, profile, "", sourceAudioCodec, true)
 	}
 	// Try HW accel first, fallback to software
 	if s.hwAccel != "" {
-		err := s.runFFmpeg(ctx, inputPath, outputPath, profile, s.hwAccel, sourceAudioCodec, false)
+		err := s.runFFmpeg(ctx, mf, outputPath, profile, s.hwAccel, sourceAudioCodec, false)
 		if err == nil {
 			return nil
 		}
 		log.Printf("pretranscode: HW encode failed (%s), retrying software: %v", s.hwAccel, err)
 		_ = os.Remove(outputPath)
 	}
-	return s.runFFmpeg(ctx, inputPath, outputPath, profile, "", sourceAudioCodec, false)
+	return s.runFFmpeg(ctx, mf, outputPath, profile, "", sourceAudioCodec, false)
 }
 
-func (s *PretranscodeService) runFFmpeg(ctx context.Context, inputPath, outputPath string, profile *model.PretranscodeProfile, hwAccel, sourceAudioCodec string, hdr bool) error {
+func (s *PretranscodeService) runFFmpeg(ctx context.Context, mf *model.MediaFile, outputPath string, profile *model.PretranscodeProfile, hwAccel, sourceAudioCodec string, hdr bool) error {
 	args := []string{"-hide_banner", "-loglevel", "error", "-stats", "-y"}
 
+	dvProfile := mf.DVProfile
+
 	// HW device init — needed for both normal HW and HDR hybrid (SW tonemap → HW encode)
-	switch hwAccel {
-	case "vaapi":
-		args = append(args, "-vaapi_device", "/dev/dri/renderD128")
-	case "nvenc":
-		if !hdr {
+	if !hdr {
+		switch hwAccel {
+		case "vaapi":
+			args = append(args, "-vaapi_device", "/dev/dri/renderD128")
+		case "nvenc":
 			args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
-		}
-	case "qsv":
-		if !hdr {
+		case "qsv":
 			args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
-		}
-	case "videotoolbox":
-		if !hdr {
+		case "videotoolbox":
 			args = append(args, "-hwaccel", "videotoolbox")
 		}
+	} else {
+		// HW Tonemap Path evaluates probe results
+		if transcoder.ShouldUseHwTonemap(hwAccel, dvProfile, s.enableHwTonemap) {
+			switch hwAccel {
+			case "vaapi":
+				args = append(args, "-vaapi_device", "/dev/dri/renderD128", "-hwaccel", "vaapi")
+			case "nvenc":
+				args = append(args, "-init_hw_device", "vulkan=vk:0", "-filter_hw_device", "vk")
+			}
+			if transcoder.NeedsDoviStripBSF(dvProfile) {
+				args = append(args, "-bsf:v:0", "hevc_metadata=remove_dovi=1")
+			}
+		} else if hwAccel == "vaapi" {
+			// SW HDR tonemap + HW Encode requires device init for vaapi
+			args = append(args, "-vaapi_device", "/dev/dri/renderD128")
+		}
 	}
-
-	args = append(args, "-i", inputPath)
+	args = append(args, "-i", mf.FilePath)
 
 	if hdr {
 		// HDR/DV: software tonemap always runs on CPU.
 		// When hwAccel is set, upload tonemapped frames to GPU for HW encode (hybrid).
 		switch hwAccel {
 		case "vaapi":
-			// SW tonemap → nv12 → hwupload to VAAPI surface
-			baseFilter := buildPretranscodeHDRScaleFilter(inputPath, profile.Height, "nv12")
-			args = append(args, "-vf", baseFilter+",hwupload",
-				"-c:v", "h264_vaapi", "-profile:v", "main",
-				"-b:v", fmt.Sprintf("%dk", profile.VideoBitrate))
+			baseFilter := buildPretranscodeHDRScaleFilter(mf.FilePath, profile.Height, "nv12", hwAccel, dvProfile, s.enableHwTonemap)
+			if transcoder.ShouldUseHwTonemap(hwAccel, dvProfile, s.enableHwTonemap) {
+				args = append(args, "-vf", baseFilter,
+					"-c:v", "h264_vaapi", "-profile:v", "main",
+					"-b:v", fmt.Sprintf("%dk", profile.VideoBitrate))
+			} else {
+				// SW tonemap → nv12 → hwupload to VAAPI surface
+				args = append(args, "-vf", baseFilter+",hwupload",
+					"-c:v", "h264_vaapi", "-profile:v", "main",
+					"-b:v", fmt.Sprintf("%dk", profile.VideoBitrate))
+			}
 		case "nvenc":
 			// NVENC accepts system memory frames directly
-			args = append(args, "-vf", buildPretranscodeHDRScaleFilter(inputPath, profile.Height, "yuv420p"),
+			args = append(args, "-vf", buildPretranscodeHDRScaleFilter(mf.FilePath, profile.Height, "yuv420p", hwAccel, dvProfile, s.enableHwTonemap),
 				"-c:v", "h264_nvenc", "-preset", "p4", "-tune", "hq", "-profile:v", "high", "-pix_fmt", "yuv420p",
 				"-b:v", fmt.Sprintf("%dk", profile.VideoBitrate))
 		case "qsv":
-			args = append(args, "-vf", buildPretranscodeHDRScaleFilter(inputPath, profile.Height, "nv12")+",hwupload=extra_hw_frames=64",
+			args = append(args, "-vf", buildPretranscodeHDRScaleFilter(mf.FilePath, profile.Height, "nv12", hwAccel, dvProfile, s.enableHwTonemap)+",hwupload=extra_hw_frames=64",
 				"-c:v", "h264_qsv", "-preset", "medium",
 				"-b:v", fmt.Sprintf("%dk", profile.VideoBitrate))
 		default:
 			// Full software
-			args = append(args, "-vf", buildPretranscodeHDRScaleFilter(inputPath, profile.Height, "yuv420p"),
+			args = append(args, "-vf", buildPretranscodeHDRScaleFilter(mf.FilePath, profile.Height, "yuv420p", hwAccel, dvProfile, s.enableHwTonemap),
 				"-c:v", "libx264", "-preset", "medium", "-crf", "22", "-pix_fmt", "yuv420p")
 		}
 		args = append(args, "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709")

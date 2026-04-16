@@ -167,6 +167,11 @@ func newServerApp(cfg *config.Config) (*serverApp, error) {
 	app.repos = newServerRepos(db)
 	go app.wsHub.Run()
 
+	// Phase 1 HW Tonemapping Probe
+	if cfg.EnableHwTonemap {
+		playback.ProbeTonemapCapabilitiesAsync()
+	}
+
 	if err := app.initServices(); err != nil {
 		app.Close()
 		return nil, err
@@ -262,7 +267,7 @@ func (app *serverApp) initServices() error {
 	)
 
 	app.services.metadata, app.tmdbClient = app.initMetadataService(app.services.pipeline)
-	app.services.transcoder = transcoder.New(app.cfg.TranscodePath, app.hwAccel, app.cfg.MaxTranscodes)
+	app.services.transcoder = transcoder.New(app.cfg.TranscodePath, app.hwAccel, app.cfg.MaxTranscodes, app.cfg.EnableHwTonemap)
 	app.services.library = service.NewLibraryService(repos.library, repos.scanJob, app.services.pipeline)
 	app.services.media = service.NewMediaService(repos.media, repos.mediaFile)
 	app.services.media.SetEpisodeRepo(repos.episode)
@@ -282,7 +287,7 @@ func (app *serverApp) initServices() error {
 	app.services.stream = service.NewStreamService(repos.mediaFile, repos.audioTrack, app.services.transcoder)
 
 	outDir := filepath.Join(app.cfg.DataDir, "hls")
-	app.services.streamManager = transcoder.NewManager(outDir, app.hwAccel)
+	app.services.streamManager = transcoder.NewManager(outDir, app.hwAccel, app.cfg.EnableHwTonemap)
 
 	app.services.auth = service.NewAuthService(repos.user, repos.refreshToken, repos.session, app.jwtManager, app.db)
 	app.services.userData = service.NewUserDataService(repos.userData)
@@ -351,6 +356,7 @@ func (app *serverApp) initPretranscodeService() error {
 		repository.NewLibraryRepo(bgDB),
 		app.cfg.PretranscodePath,
 		app.hwAccel,
+		app.cfg.EnableHwTonemap,
 	)
 	app.services.pretranscode.SetNotificationService(app.services.notification)
 	app.services.pretranscode.SetTranscoder(app.services.transcoder)

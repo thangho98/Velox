@@ -18,33 +18,40 @@ import (
 // Each session owns a single long-running jellyfin-ffmpeg process that writes
 // fMP4 segments on demand.  Sessions are garbage-collected after idleTimeout.
 type Manager struct {
-	mu          sync.Mutex
-	sessions    map[hls.SessionKey]*Session
-	gcInterval  time.Duration
-	idleTimeout time.Duration
-	baseOutDir  string
-	hwAccel     string
-	log         *slog.Logger
+	mu              sync.Mutex
+	sessions        map[hls.SessionKey]*Session
+	gcInterval      time.Duration
+	idleTimeout     time.Duration
+	baseOutDir      string
+	hwAccel         string
+	enableHwTonemap bool
+	log             *slog.Logger
 }
 
 // NewManager creates a Manager and starts background session GC.
-func NewManager(baseOutDir string, hwAccel string) *Manager {
+func NewManager(baseOutDir string, hwAccel string, enableHwTonemap bool) *Manager {
 	m := &Manager{
-		sessions:    make(map[hls.SessionKey]*Session),
-		gcInterval:  1 * time.Minute,
-		idleTimeout: 10 * time.Minute,
-		baseOutDir:  baseOutDir,
-		hwAccel:     hwAccel,
-		log:         logger.NewWith("stream-mgr"),
+		sessions:        make(map[hls.SessionKey]*Session),
+		gcInterval:      1 * time.Minute,
+		idleTimeout:     10 * time.Minute,
+		baseOutDir:      baseOutDir,
+		hwAccel:         hwAccel,
+		enableHwTonemap: enableHwTonemap,
+		log:             logger.NewWith("stream-mgr"),
 	}
 	go m.gcLoop()
 	return m
 }
 
+// IsHwTonemapEnabled returns true if hardware tonemapping is globally enabled via config.
+func (m *Manager) IsHwTonemapEnabled() bool {
+	return m.enableHwTonemap
+}
+
 // GetOrCreate returns an existing session for the given key, or creates a new one.
 // Enforces 1 session per StreamSessionID: if the same viewer already has a session
 // with different parameters (e.g. quality change) the old session is closed first.
-func (m *Manager) GetOrCreate(ctx context.Context, key hls.SessionKey, inputPath string, totalDur float64, audioTracks []model.AudioTrack) (*Session, error) {
+func (m *Manager) GetOrCreate(ctx context.Context, key hls.SessionKey, inputPath string, totalDur float64, audioTracks []model.AudioTrack, dvProfile int) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -68,15 +75,17 @@ func (m *Manager) GetOrCreate(ctx context.Context, key hls.SessionKey, inputPath
 	}
 
 	sess := &Session{
-		Key:         key,
-		OutputDir:   outDir,
-		InputPath:   inputPath,
-		HwAccel:     m.hwAccel,
-		TotalDur:    totalDur,
-		AudioTracks: audioTracks,
-		SegLength:   6.0,
-		log:         logger.NewWith("session_v2", "ss", key.StreamSessionID),
-		extinfMap:   make(map[string]map[int]float64),
+		Key:             key,
+		OutputDir:       outDir,
+		InputPath:       inputPath,
+		HwAccel:         m.hwAccel,
+		EnableHwTonemap: m.enableHwTonemap,
+		DVProfile:       dvProfile,
+		TotalDur:        totalDur,
+		AudioTracks:     audioTracks,
+		SegLength:       6.0,
+		log:             logger.NewWith("session_v2", "ss", key.StreamSessionID),
+		extinfMap:       make(map[string]map[int]float64),
 	}
 	sess.Touch()
 	m.sessions[key] = sess

@@ -21,8 +21,9 @@ type Config struct {
 	CORSOrigin        string
 
 	// Hardware transcoding (Plan E Phase 01)
-	HWAccel       string // auto|videotoolbox|vaapi|nvenc|qsv|amf|none
-	MaxTranscodes int    // max concurrent FFmpeg jobs
+	HWAccel         string // auto|videotoolbox|vaapi|nvenc|qsv|amf|none
+	EnableHwTonemap bool   // false by default (feature flag for HW HDR tonemapping)
+	MaxTranscodes   int    // max concurrent FFmpeg jobs
 
 	// Trickplay thumbnails (Plan E Phase 03)
 	TrickplayEnabled  bool
@@ -74,6 +75,7 @@ func Load() *Config {
 		CORSOrigin:        envOrDefault("VELOX_CORS_ORIGIN", "http://localhost:5173"),
 
 		HWAccel:           envOrDefault("VELOX_HW_ACCEL", "auto"),
+		EnableHwTonemap:   envOrDefaultBool("VELOX_HW_TONEMAP", false),
 		MaxTranscodes:     envOrDefaultInt("VELOX_MAX_TRANSCODES", 2),
 		TrickplayEnabled:  envOrDefaultBool("VELOX_TRICKPLAY_ENABLED", false),
 		TrickplayInterval: envOrDefaultInt("VELOX_TRICKPLAY_INTERVAL", 10),

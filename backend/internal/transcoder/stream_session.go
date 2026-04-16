@@ -20,13 +20,15 @@ import (
 // for the requested timeline position. PrimeFromSegment restarts ffmpeg when
 // the player seeks outside the current buffer window.
 type Session struct {
-	Key         hls.SessionKey
-	OutputDir   string
-	InputPath   string
-	HwAccel     string
-	TotalDur    float64
-	AudioTracks []model.AudioTrack
-	SegLength   float64
+	Key             hls.SessionKey
+	OutputDir       string
+	InputPath       string
+	HwAccel         string
+	EnableHwTonemap bool
+	DVProfile       int
+	TotalDur        float64
+	AudioTracks     []model.AudioTrack
+	SegLength       float64
 
 	mu           sync.Mutex
 	cmd          *exec.Cmd
@@ -207,8 +209,10 @@ func (s *Session) startFFmpegFrom(segNum int) error {
 		AudioTracks:       s.AudioTracks,
 		VideoCopy:         s.Key.VideoCopy,
 		SubtitleStreamIdx: s.Key.SubtitleStreamIdx,
+		DVProfile:         s.DVProfile,
 		MaxHeight:         s.Key.MaxHeight,
 		HwAccel:           s.HwAccel,
+		EnableHwTonemap:   s.EnableHwTonemap,
 		SegLength:         s.SegLength,
 	}
 

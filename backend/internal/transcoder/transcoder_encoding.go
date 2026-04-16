@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/thawng/velox/internal/playback"
 	"github.com/thawng/velox/pkg/ffmpegbin"
 	"github.com/thawng/velox/pkg/ffprobe"
 )
@@ -66,20 +67,31 @@ func ffmpegInputProbeArgs() []string {
 }
 
 // buildFFmpegInputArgs returns input-side FFmpeg args (probe + hwaccel).
-// For HDR: always uses software decode so CPU-decoded frames retain correct
-// color metadata for the tonemapx filter chain. Hardware decoders
-// (VideoToolbox, QSV, AMF) can strip or alter color metadata on the decoded
-// frames, causing tonemapx to misinterpret the color space.
-func buildFFmpegInputArgs(hwAccel string, hdr bool) []string {
+func buildFFmpegInputArgs(hwAccel string, hdr bool, dvProfile int, enableHwTonemap bool) []string {
 	args := ffmpegInputProbeArgs()
 	if hdr {
-		// Software decode for ALL HDR — tonemapx needs correct color metadata.
+		if ShouldUseHwTonemap(hwAccel, dvProfile, enableHwTonemap) {
+			switch hwAccel {
+			case "vaapi":
+				args = append(args, "-vaapi_device", "/dev/dri/renderD128", "-hwaccel", "vaapi")
+			case "nvenc":
+				// libplacebo runs on Vulkan; decode stays in software so color
+				// metadata reaches the tonemapper intact, then hwupload → vulkan.
+				args = append(args, "-init_hw_device", "vulkan=vk:0", "-filter_hw_device", "vk")
+			}
+			if NeedsDoviStripBSF(dvProfile) {
+				// Strip DV RPU so the HDR10 base layer is fed to the hardware tonemapper.
+				args = append(args, "-bsf:v:0", "hevc_metadata=remove_dovi=1")
+			}
+			return args
+		}
+
+		// Software decode for SW HDR tonemap — tonemapx needs correct color metadata.
 		if hwAccel == "vaapi" {
 			// VAAPI still needs the device init for hwupload → h264_vaapi encode.
 			args = append(args, "-vaapi_device", "/dev/dri/renderD128")
 		}
-		// All other hwAccel types (nvenc, videotoolbox, qsv, amf):
-		// skip hwaccel decode args — decode in software, encode with HW encoder.
+		// All other hwAccel types: decode in software, encode with HW encoder.
 		return args
 	}
 	args = append(args, hwInputArgs(hwAccel)...)
@@ -119,12 +131,46 @@ func hdrToneMapFilterSW(inputPath, outFmt string) string {
 		)
 }
 
-// hdrToneMapFilterForHW returns the appropriate HDR→SDR tone mapping filter
-// for the given hardware accelerator.
-// Always uses software tonemapx (CPU SIMD) because:
-// 1. tonemap_vaapi does not reliably convert BT.2020 primaries on many GPU drivers
-// 2. tonemapx correctly handles Dolby Vision (including DV Profile 5)
-func hdrToneMapFilterForHW(hwAccel, inputPath string) string {
+// ShouldUseHwTonemap evaluates whether hardware tone mapping is viable.
+// DV Profile 5 (IPT-PQ-C2) cannot be hardware-tonemapped; Profile 7/8 can be
+// unlocked by stripping DV metadata via hevc_metadata BSF (see NeedsDoviStripBSF).
+func ShouldUseHwTonemap(hwAccel string, dvProfile int, enableHwTonemap bool) bool {
+	if !enableHwTonemap {
+		return false
+	}
+	if dvProfile == 5 {
+		return false
+	}
+	switch hwAccel {
+	case "vaapi":
+		return playback.IsVAAPITonemapAvailable()
+	case "nvenc":
+		return playback.IsVulkanPlaceboAvailable()
+	}
+	return false
+}
+
+// NeedsDoviStripBSF returns true when the DV profile has an HDR10 base layer
+// that can be unlocked by stripping DV metadata via hevc_metadata BSF.
+// Profile 7 (dual-layer BL+EL+RPU) and Profile 8 (single-layer BL+RPU) both
+// carry a compliant HDR10 base layer; stripping the DV RPU yields clean HDR10
+// the hardware tonemapper can handle.
+func NeedsDoviStripBSF(dvProfile int) bool {
+	return dvProfile == 7 || dvProfile == 8
+}
+
+// HDRToneMapFilterForHW returns the appropriate HDR→SDR tone mapping filter.
+func HDRToneMapFilterForHW(hwAccel, inputPath string, dvProfile int, enableHwTonemap bool) string {
+	if ShouldUseHwTonemap(hwAccel, dvProfile, enableHwTonemap) {
+		if hwAccel == "vaapi" {
+			return "format=p010,hwupload,tonemap_vaapi=format=nv12:matrix=bt709:primaries=bt709:transfer=bt709"
+		}
+		if hwAccel == "nvenc" {
+			// libplacebo on Vulkan → hwdownload to system memory for h264_nvenc.
+			return "format=p010,hwupload,libplacebo=format=yuv420p:colorspace=bt709:color_primaries=bt709:color_trc=bt709:tonemapping=mobius,hwdownload,format=yuv420p"
+		}
+	}
+
 	switch hwAccel {
 	case "vaapi":
 		// Software tonemap → NV12 → hwupload to VAAPI surface for h264_vaapi.
@@ -136,10 +182,10 @@ func hdrToneMapFilterForHW(hwAccel, inputPath string) string {
 
 // buildVideoEncodeArgs builds -vf + -c:v args for single-quality HLS encoding.
 // Handles HW encoder selection, HDR→SDR tone mapping, and subtitle burn-in.
-func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string) []string {
+func buildVideoEncodeArgs(hwAccel string, hdr bool, siIdx int, inputPath string, dvProfile int, enableHwTonemap bool) []string {
 	var filters []string
 	if hdr {
-		filters = append(filters, hdrToneMapFilterForHW(hwAccel, inputPath))
+		filters = append(filters, HDRToneMapFilterForHW(hwAccel, inputPath, dvProfile, enableHwTonemap))
 	}
 	if siIdx >= 0 && hasSubtitlesFilter {
 		escaped := escapeFFmpegSubtitlePath(inputPath)

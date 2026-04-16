@@ -35,19 +35,20 @@ const staleSessionTimeout = 5 * time.Minute
 
 // Transcoder manages FFmpeg-based HLS transcoding and remuxing.
 type Transcoder struct {
-	outputDir string
-	hwAccel   string        // resolved HW accel type ("videotoolbox", "nvenc", "vaapi", "qsv", "amf", or "")
-	semaphore chan struct{} // limits concurrent FFmpeg transcode jobs
-	mu        sync.Mutex
-	active    map[string]*transcodeJob // masterPath → in-progress job
-	stopCh    chan struct{}            // closed when the transcoder is closed
-	log       *slog.Logger
+	outputDir       string
+	hwAccel         string        // resolved HW accel type ("videotoolbox", "nvenc", "vaapi", "qsv", "amf", or "")
+	enableHwTonemap bool          // feature flag for HW HDR tonemapping
+	semaphore       chan struct{} // limits concurrent FFmpeg transcode jobs
+	mu              sync.Mutex
+	active          map[string]*transcodeJob // masterPath → in-progress job
+	stopCh          chan struct{}            // closed when the transcoder is closed
+	log             *slog.Logger
 }
 
 // New creates a Transcoder.
 // hwAccel: resolved hardware accelerator (never "auto"; use playback.DetectHWAccel first).
 // maxConcurrent: max simultaneous FFmpeg transcode jobs (>= 1).
-func New(outputDir string, hwAccel string, maxConcurrent int) *Transcoder {
+func New(outputDir string, hwAccel string, maxConcurrent int, enableHwTonemap bool) *Transcoder {
 	if maxConcurrent <= 0 {
 		maxConcurrent = 2
 	}
@@ -59,12 +60,13 @@ func New(outputDir string, hwAccel string, maxConcurrent int) *Transcoder {
 		log.Println("WARN: FFmpeg missing 'subtitles' filter (libass not linked) — subtitle burn-in disabled, using client-side rendering")
 	}
 	t := &Transcoder{
-		outputDir: outputDir,
-		hwAccel:   hwAccel,
-		semaphore: sem,
-		active:    make(map[string]*transcodeJob),
-		stopCh:    make(chan struct{}),
-		log:       logger.New("transcoder"),
+		outputDir:       outputDir,
+		hwAccel:         hwAccel,
+		enableHwTonemap: enableHwTonemap,
+		semaphore:       sem,
+		active:          make(map[string]*transcodeJob),
+		stopCh:          make(chan struct{}),
+		log:             logger.New("transcoder"),
 	}
 	go t.cleanupStaleJobs()
 	return t

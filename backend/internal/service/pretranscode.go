@@ -21,8 +21,9 @@ type PretranscodeService struct {
 	notificationSvc *NotificationService
 	transcoder      interface{ TryActiveCount() int } // realtime transcoder — nil-safe
 
-	outputBaseDir string
-	hwAccel       string
+	outputBaseDir   string
+	hwAccel         string
+	enableHwTonemap bool
 
 	mu       sync.Mutex
 	paused   atomic.Bool
@@ -42,14 +43,16 @@ func NewPretranscodeService(
 	settingsRepo *repository.AppSettingsRepo,
 	libraryRepo *repository.LibraryRepo,
 	pretranscodePath, hwAccel string,
+	enableHwTonemap bool,
 ) *PretranscodeService {
 	s := &PretranscodeService{
-		repo:          repo,
-		mediaFileRepo: mediaFileRepo,
-		settingsRepo:  settingsRepo,
-		libraryRepo:   libraryRepo,
-		outputBaseDir: pretranscodePath,
-		hwAccel:       hwAccel,
+		repo:            repo,
+		mediaFileRepo:   mediaFileRepo,
+		settingsRepo:    settingsRepo,
+		libraryRepo:     libraryRepo,
+		outputBaseDir:   pretranscodePath,
+		hwAccel:         hwAccel,
+		enableHwTonemap: enableHwTonemap,
 	}
 	s.currentFile.Store("")
 	s.currentSpeed.Store("")
