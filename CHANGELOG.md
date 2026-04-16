@@ -8,9 +8,26 @@
 ### Changed
 - Webapp & Android App: Complete all outstanding UI text bindings to the multi-language string definitions.
 - Android: Decoupled Android `UserProfileViewModel` app language saving logic to persist globally inside `AuthManager` DataStore for instant updates.
+- Android: Added baseline `detekt.yml` static analysis rules and `.editorconfig` formatting rules with ktlint overrides for relaxed Compose UI constraints.
 
 ### Fixed
 - Android: Syntactical escaping errors across all Compose XML String Resource mappings.
+
+## [2026-04-15]
+### Added
+- Backend: Responsive image system with typed TMDb path wrappers (`Poster`/`Backdrop`/`Still`/`Logo`/`Profile`) routed through `/api/images/tmdb/{type}/{path}` with per-type size buckets.
+- Backend: `ImageResource` struct carrying `srcset`, aspect ratio, width/height and blurhash placeholder across media/series/playback/common payloads.
+- Backend: Blurhash service with scan + force-scan backfill integration. New migrations `033_self_describing_image_paths` + `034_image_metadata` table.
+- Webapp: `ResponsiveImage` component using `<picture srcset>` with `react-blurhash` LQIP placeholder for smoother image loading.
+- Shared: `ImageResource` TypeScript type replacing legacy string image fields across all shared contracts.
+
+### Changed
+- Backend: `SearchSeries` N+1 query batched to single `GetBatch`; Still kind fixed in NextUp attach; ProfilePath wired for Person and User avatar.
+- Webapp: Removed legacy string image fields — all consumers now read from `ImageResource`.
+- Docs: Split `development-rules.md` into per-platform files (`development-rules-backend.md`, `development-rules-webapp.md`, `development-rules-mobile.md`) + shared conventions index. `CLAUDE.md` updated to reference the new layout.
+
+### Fixed
+- Backend: Indexed LLM subtitle response validation — enforce expected count, reject duplicate and negative indexes. Prevents silent cue corruption where extra items would overwrite cues of the next batch via `cues[b.start+j].Text = t`, duplicate indexes collapsed the list, and negative indexes were swallowed during reconstruction.
 
 ## [2026-04-14]
 ### Changed
@@ -39,6 +56,9 @@
 
 ### Fixed
 - Android App: Fixed duplicate `@Composable` annotation on `AppVersionCard` blocking Settings compilation.
+- Backend/Transcoder: HDR & Dolby Vision color correctness — replaced the `zscale` tonemap chain with `tonemapx` (Jellyfin SIMD) across all encode paths (transcoder, pretranscode worker, trickplay generator). DV Profile 5 uses `IPT-PQ-C2`, not BT.2020, so the old chain produced a green/magenta shift.
+- Backend/Transcoder: Force software decode for ALL HDR hwaccel paths (VideoToolbox / QSV / AMF were stripping color metadata). Scale filter now correctly ordered AFTER tonemap for HDR content.
+- Backend/Transcoder: Added `NeedsServerTonemap` decision flag for DV content lacking standard color tags — browsers always tonemap on server; Android ExoPlayer direct-plays DV natively.
 
 ## [2026-04-11]
 ### Added
