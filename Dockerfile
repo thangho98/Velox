@@ -12,7 +12,8 @@ WORKDIR /build
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY webapp/package.json webapp/
 COPY packages/shared/package.json packages/shared/
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts
 COPY packages/shared/ packages/shared/
 COPY webapp/ webapp/
 ARG VITE_DEBUG=false
@@ -31,11 +32,14 @@ ENV GOTOOLCHAIN=auto
 
 WORKDIR /build/backend
 COPY backend/go.mod backend/go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 COPY backend/ ./
 
 # Build static binary with CGO
-RUN CGO_ENABLED=1 go build \
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=1 go build \
     -ldflags="-s -w -X main.version=docker" \
     -o /velox ./cmd/server
 
@@ -55,7 +59,10 @@ LABEL org.opencontainers.image.description="Self-hosted home media server"
 #   nginx           — serve frontend SPA + reverse proxy API
 #   tzdata          — timezone support
 #   gosu            — run as non-root (su-exec equivalent)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg \
     ca-certificates \
@@ -72,25 +79,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tini
 
 # Install jellyfin-ffmpeg7 directly from Jellyfin's official repository
-RUN mkdir -p /etc/apt/keyrings && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg && \
     echo "deb [arch=$( dpkg --print-architecture ) signed-by=/etc/apt/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main" | tee /etc/apt/sources.list.d/jellyfin.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends jellyfin-ffmpeg7 && \
     apt-get remove -y gnupg && \
-    apt-get autoremove -y && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get autoremove -y
 
 # GPU drivers — x86_64 only (Intel VAAPI, AMD VAAPI)
 # Note: intel-media-va-driver-non-free is the recommended iHD driver
 ARG TARGETARCH
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    if [ "$TARGETARCH" = "amd64" ]; then \
         sed -i 's/Components: main/Components: main non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && \
         apt-get update && apt-get install -y --no-install-recommends \
         intel-media-va-driver-non-free \
         va-driver-all \
-        mesa-va-drivers && \
-        apt-get clean && rm -rf /var/lib/apt/lists/*; \
+        mesa-va-drivers; \
     fi
 
 # Create velox user (UID/GID configurable at runtime)
@@ -101,8 +110,9 @@ WORKDIR /app
 
 # Python venv for Subscene scraper
 COPY backend/scripts/requirements.txt /app/scripts/requirements.txt
-RUN python3 -m venv /app/scripts/.venv && \
-    /app/scripts/.venv/bin/pip install --no-cache-dir -r /app/scripts/requirements.txt
+RUN python3 -m venv /app/scripts/.venv
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /app/scripts/.venv/bin/pip install -r /app/scripts/requirements.txt
 
 # Copy Subscene scraper
 COPY backend/scripts/subscene_search.py /app/scripts/subscene_search.py

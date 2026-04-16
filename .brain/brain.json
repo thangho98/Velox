@@ -47,7 +47,8 @@
       "Background Subtitle Auto Translate",
       "In-App Updates (Android)",
       "Scheduled Tasks Management",
-      "HDR/Dolby Vision Tonemapping (tonemapx)"
+      "HDR/Dolby Vision Tonemapping (tonemapx)",
+      "In-App Settings Localization (Multi-language Support)"
   ],
   "knowledge_items": {
       "patterns": [
@@ -61,7 +62,9 @@
           "HDR tonemapping: tonemapx filter for ALL paths (live transcode, pretranscode, trickplay, ABR). Scale filter AFTER tonemap for HDR.",
           "HDR decode: Always software decode for HDR content (all hwAccel types). HW decoders strip color metadata.",
           "DV detection: IsHDRLike() detects via color tags + side_data DV profile + filename. NeedsHDRColorMetadataFallback() for DV P5 (missing color tags).",
-          "AI Translation: For reasoning models (Anthropic Claude 3.7, MiniMax), explicitly disable <thinking> blocks in prompt and bump MaxTokens (to 8192) and HTTP Timeout (to 180s) to prevent 'no text content returned' or timeout errors."
+          "AI Translation: For reasoning models (Anthropic Claude 3.7, MiniMax), explicitly disable <thinking> blocks in prompt and bump MaxTokens (to 8192) and HTTP Timeout (to 180s) to prevent 'no text content returned' or timeout errors.",
+          "Docker Build Optimization: Always use BuildKit mounts like --mount=type=cache for package managers (pnpm, go, apt, pip) to persistently cache downloads between builds without bloating the image. Avoid Alpine (-alpine) in favor of Debian-based slim images (-slim) to prevent silent musl libc performance penalties.",
+          "Dynamic Locale Override in Compose: To switch app locale natively on-the-fly without an Activity restart, wrap LocalContext using a ContextWrapper that overrides getResources() returning a new ConfigurationContext. Do NOT directly supply the ConfigurationContext as the LocalContext, otherwise Jetpack Compose's ActivityResultRegistryOwner fails due to lost Activity base inheritance."
       ],
       "gotchas": [
           "Android app lacks websocket implementation; polling/fire-and-forget is required for background tasks for now.",

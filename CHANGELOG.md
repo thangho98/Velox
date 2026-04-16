@@ -1,5 +1,27 @@
 # Changelog
 
+## [2026-04-16]
+### Added
+- Android App: Implement zero-restart dynamic Locale switching (i18n). Switching languages directly overrides Compose's `ConfigurationContext` while keeping `Activity` inheritance intact via an overridden `ContextWrapper`.
+- Android App: AlertDialog notification advising users when an application restart is required for deep-seated locale changes.
+
+### Changed
+- Webapp & Android App: Complete all outstanding UI text bindings to the multi-language string definitions.
+- Android: Decoupled Android `UserProfileViewModel` app language saving logic to persist globally inside `AuthManager` DataStore for instant updates.
+
+### Fixed
+- Android: Syntactical escaping errors across all Compose XML String Resource mappings.
+
+## [2026-04-14]
+### Changed
+- Android App: Massive Clean Architecture refactor. Componentized `SettingsScreen.kt` (3600+ lines) into 17 isolated section files.
+- Android App: Decoupled `SettingsViewModel` from direct network calls by generating `SettingsRepository` with 92 abstract interface methods.
+- Android App: Extracted logic from `SettingsViewModel` God Object into logical partitioned extension files (`SettingsViewModel_Admin.kt`, `SettingsViewModel_System.kt`).
+- Android App: Full Unidirectional Data Flow decoupling for `VideoPlayer`. Converted parameters bounding it to `PlayerViewModel` into a dedicated `PlayerActions` intent interface, making the component stateless and reusable.
+
+### Fixed
+- Android App: Kotlin multi-pass verification to repair split-induced KSP parsing syntax errors across screens and repositories.
+
 ## [2026-04-13]
 ### Added
 - Backend: Scheduled tasks API and `app_versions` database seed migration.
