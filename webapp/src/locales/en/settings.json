@@ -70,6 +70,42 @@
     "markers": {
       "title": "Skip Intro / Credits",
       "description": "Detect and manage intro/credits skip markers"
+    },
+    "pretranscode": {
+      "title": "Pre-transcode",
+      "description": "Encode media in advance for instant playback — no buffering, no waiting."
+    }
+  },
+  "pretranscode": {
+    "offlineEncoding": "Offline Encoding",
+    "offlineEncodingDesc": "Pre-encode your library into browser-compatible H.264+AAC MP4 files. Like Netflix — instant playback, zero transcoding delay.",
+    "qualityProfiles": "Quality Profiles",
+    "schedule": "Schedule",
+    "encodeTime": "Encode time",
+    "concurrentJobs": "Concurrent jobs",
+    "storageEstimation": "Storage Estimation",
+    "library": "Library",
+    "files": "files",
+    "total": "Total",
+    "diskFree": "Disk free",
+    "enough": "Enough",
+    "notEnough": "Not enough",
+    "progress": "Progress",
+    "encoding": "Encoding",
+    "done": "Done",
+    "failed": "Failed",
+    "queued": "Queued",
+    "disk": "Disk",
+    "deleteAll": "Delete All Pre-transcode Files",
+    "deleteAllDesc": "This will permanently delete all pre-encoded files and disable pre-transcode. Your original media files are NOT affected.",
+    "scheduleOptions": {
+      "always": "Always (fastest)",
+      "night": "Night only (00:00–06:00)",
+      "idle": "When idle (no one watching)"
+    },
+    "concurrencyOptions": {
+      "nas": "(NAS-friendly)",
+      "powerful": "(powerful server)"
     }
   },
   "markers": {
@@ -262,7 +298,85 @@
     "autoDownloadDescription": "Automatically download subtitles for configured languages when scanning new media.",
     "targetLanguages": "Target Languages",
     "targetLanguagesDescription": "Comma-separated ISO 639-1 codes (e.g., en,vi,es,fr). Leave empty to disable auto-download.",
-    "placeholder": "e.g., en,vi,es"
+    "placeholder": "e.g., en,vi,es",
+    "autoTranslate": "Auto-Translate Subtitles",
+    "autoTranslateDescription": "Automatically run background tasks to translate existing subtitles to the requested languages. It will only translate if the subtitle does not already exist. Requires AI or DeepL."
+  },
+  "tasks": {
+    "editInterval": "Edit Interval",
+    "editIntervalDesc": "Set how often <1>{{taskName}}</1> should run.",
+    "intervalOptions": {
+      "30m": "Every 30 Minutes",
+      "1h": "Every 1 Hour",
+      "12h": "Every 12 Hours",
+      "24h": "Every 24 Hours",
+      "168h": "Every 7 Days",
+      "custom": "Custom..."
+    },
+    "customPlaceholder": "e.g. 24h, 30m, 7d",
+    "table": {
+      "task": "Task",
+      "interval": "Interval",
+      "lastRun": "Last Run",
+      "nextRun": "Next Run",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "running": "Running",
+      "idle": "Idle"
+    },
+    "action": {
+      "runNow": "Run Now",
+      "running": "Running...",
+      "editInterval": "Edit interval"
+    },
+    "never": "Never",
+    "noTasks": "No scheduled tasks"
+  },
+  "sessionsStr": {
+    "unknownDevice": "Unknown Device",
+    "lastActive": "Last active:",
+    "noSessions": "No active sessions"
+  },
+  "users": {
+    "noUsers": "No users found",
+    "table": {
+      "user": "User",
+      "role": "Role",
+      "created": "Created",
+      "actions": "Actions"
+    },
+    "roles": {
+      "admin": "Admin",
+      "user": "User"
+    },
+    "actions": {
+      "addUser": "Add User",
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "fields": {
+      "username": "Username *",
+      "displayName": "Display Name",
+      "password": "Password *",
+      "newPassword": "New Password (optional)",
+      "administrator": "Administrator"
+    },
+    "modals": {
+      "add": "Add User",
+      "edit": "Edit User",
+      "creating": "Creating...",
+      "create": "Create",
+      "saving": "Saving...",
+      "save": "Save"
+    },
+    "errors": {
+      "required": "Username and password are required",
+      "passwordLength": "Password must be at least 8 characters"
+    }
   },
   "cinema": {
     "enabled": "Enable Cinema Mode",
@@ -274,5 +388,28 @@
     "uploadIntro": "Upload Intro Video",
     "hasIntro": "Custom intro uploaded",
     "noIntro": "No custom intro"
+  },
+  "activity": {
+    "action": "Action",
+    "allActions": "All Actions",
+    "actions": {
+      "login": "Login",
+      "play_start": "Play Start",
+      "play_stop": "Play Stop",
+      "library_scan": "Library Scan",
+      "media_added": "Media Added"
+    },
+    "from": "From",
+    "to": "To",
+    "limit": "Limit",
+    "table": {
+      "time": "Time",
+      "user": "User",
+      "action": "Action",
+      "media": "Media",
+      "ip": "IP"
+    },
+    "system": "System",
+    "noActivity": "No activity found"
   }
 }

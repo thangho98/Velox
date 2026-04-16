@@ -38,6 +38,11 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
+import android.content.res.Configuration
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalConfiguration
 import com.velox.app.data.api.AuthManager
 import com.velox.app.presentation.navigation.VeloxNavHost
 import com.velox.app.ui.theme.VeloxTheme
@@ -55,12 +60,34 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            VeloxTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        VeloxNavHost(authManager = authManager)
-                        MandatoryUpdateOverlay()
-                        NotificationPermissionRequester()
+            val appLanguage by authManager.appLanguage.collectAsState(initial = "en")
+            val currentLang = if (appLanguage.isNullOrEmpty()) "en" else appLanguage!!
+
+            val context = LocalContext.current
+            val locale = remember(currentLang) { Locale(currentLang) }
+            val wrappedContext = remember(currentLang) {
+                Locale.setDefault(locale)
+                val config = Configuration(context.resources.configuration)
+                config.setLocale(locale)
+                val configContext = context.createConfigurationContext(config)
+                object : android.content.ContextWrapper(context) {
+                    override fun getResources(): android.content.res.Resources {
+                        return configContext.resources
+                    }
+                }
+            }
+
+            CompositionLocalProvider(
+                LocalContext provides wrappedContext,
+                LocalConfiguration provides wrappedContext.resources.configuration
+            ) {
+                VeloxTheme {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            VeloxNavHost(authManager = authManager)
+                            MandatoryUpdateOverlay()
+                            NotificationPermissionRequester()
+                        }
                     }
                 }
             }

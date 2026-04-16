@@ -10,6 +10,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.res.stringResource
+import com.velox.app.R
 import com.velox.app.domain.model.Library
 import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.viewmodel.*
@@ -60,7 +62,7 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    val titleText = selectedTab?.title ?: "Settings"
+                    val titleText = selectedTab?.let { stringResource(it.titleRes) } ?: stringResource(R.string.settings_title)
                     Text(titleText, color = NetflixWhite, fontWeight = FontWeight.Bold)
                 },
                 navigationIcon = {
@@ -99,7 +101,7 @@ fun SettingsScreen(
                 ) {
                     item {
                         Text(
-                            text = "WEB SETTINGS",
+                            text = stringResource(R.string.settings_group_web),
                             color = NetflixLightGray,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
@@ -114,7 +116,7 @@ fun SettingsScreen(
                     if (profileState.isAdmin) {
                         item {
                             Text(
-                                text = "ADMIN PREFERENCES",
+                                text = stringResource(R.string.settings_group_admin),
                                 color = NetflixLightGray,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
@@ -128,7 +130,7 @@ fun SettingsScreen(
 
                         item {
                             Text(
-                                text = "VELOX SERVER",
+                                text = stringResource(R.string.settings_group_server),
                                 color = NetflixLightGray,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,

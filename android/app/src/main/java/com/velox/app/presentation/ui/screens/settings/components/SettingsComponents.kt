@@ -206,7 +206,7 @@ internal fun SettingsGroupCard(
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
-                    Text(section.title, color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(section.titleRes), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.weight(1f))
                     Icon(LucideIcons.ChevronRight, contentDescription = null, tint = NetflixGray, modifier = Modifier.size(20.dp))
                 }

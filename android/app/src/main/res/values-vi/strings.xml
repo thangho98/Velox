@@ -69,4 +69,150 @@
     <string name="player_audio">Âm thanh</string>
     <string name="player_stream">Luồng stream</string>
     <string name="player_translate">Dịch</string>
+
+    <!-- Settings -->
+    <string name="settings_title_profile">Hồ sơ</string>
+    <string name="settings_desc_profile">Quản lý thông tin tài khoản</string>
+    <string name="settings_title_preferences">Tùy chọn</string>
+    <string name="settings_desc_preferences">Tùy chỉnh trải nghiệm xem phim</string>
+    <string name="settings_title_security">Bảo mật</string>
+    <string name="settings_desc_security">Thay đổi mật khẩu</string>
+    <string name="settings_title_sessions">Phiên đăng nhập</string>
+    <string name="settings_desc_sessions">Quản lý thiết bị đã đăng nhập</string>
+    <string name="settings_title_metadata">Metadata</string>
+    <string name="settings_desc_metadata">Cấu hình metadata cho phim lẻ và phim bộ</string>
+    <string name="settings_title_subtitles">Phụ đề</string>
+    <string name="settings_title_tasks">Tác vụ</string>
+    <string name="settings_desc_tasks">Tác vụ nền và bảo trì</string>
+    <string name="settings_title_dashboard">Bảng điều khiển</string>
+    <string name="settings_desc_dashboard">Thông tin và trạng thái máy chủ</string>
+    <string name="settings_title_users">Người dùng</string>
+    <string name="settings_desc_users">Quản lý tài khoản người dùng</string>
+    <string name="settings_notifications">Thông báo</string>
+
+    <string name="action_save_changes">Lưu thay đổi</string>
+    <string name="action_update_password">Cập nhật mật khẩu</string>
+    <string name="action_revoke">Thu hồi</string>
+    <string name="action_refresh_metadata">Làm mới Metadata</string>
+    <string name="action_save">Lưu</string>
+    
+    <!-- User Form -->
+    <string name="user_display_name">Tên hiển thị</string>
+    <string name="user_role">Vai trò</string>
+    <string name="user_current_password">Mật khẩu hiện tại</string>
+    <string name="user_new_password">Mật khẩu mới</string>
+    <string name="user_confirm_password">Xác nhận mật khẩu</string>
+    <string name="user_cannot_change_username">Không thể đổi tên đăng nhập</string>
+    <string name="settings_title_playback">Phát lại</string>
+    <string name="settings_title_cinema">Chế độ rạp xi nê</string>
+    <string name="settings_title_pretranscode">Transcode trước</string>
+    <string name="settings_title_markers">Bỏ qua giới thiệu</string>
+    <string name="settings_title_libraries">Thư viện</string>
+    <string name="settings_title_activity">Hoạt động</string>
+    <string name="settings_title_webhooks">Webhooks</string>
+
+    <string name="settings_group_web">CÀI ĐẶT WEB</string>
+    <string name="settings_group_admin">TÙY CHỌN QUẢN TRỊ VIÊN</string>
+    <string name="settings_group_server">MÁY CHỦ VELOX</string>
+
+    <string name="settings_title">Cài đặt</string>
+
+    <!-- Playback & Cinema Settings -->
+    <string name="settings_playback_desc">Cấu hình chính sách phát trực tuyến toàn cầu</string>
+    <string name="playback_mode">Chế độ Phát</string>
+    <string name="playback_mode_desc">Kiểm soát xem máy chủ sẽ tự động tối ưu hóa việc phát hay ép buộc phát trực tiếp khi có thể.</string>
+    <string name="playback_auto">Tự động</string>
+    <string name="playback_auto_desc">Tự động điều chỉnh chất lượng dựa trên điều kiện mạng và khả năng của thiết bị. Phù hợp nhất cho sử dụng chung.</string>
+    <string name="playback_direct">Bắt buộc Phát Trực Tiếp</string>
+    <string name="playback_direct_desc">Vô hiệu hóa chuyển mã. Phương tiện sẽ được stream trực tiếp nếu có thể.</string>
+    <string name="cinema_mode">Chế độ Rạp phim</string>
+    <string name="cinema_mode_desc">Cấu hình phát trailer và video intro tùy chỉnh trước phim chính.</string>
+    <string name="cinema_mode_warning">Lưu ý: Chế độ Rạp phim hiện chỉ được hỗ trợ trên Ứng dụng Web và qua Casting. Các cài đặt này sẽ không ảnh hưởng đến việc phát trên thiết bị Android này.</string>
+    <string name="cinema_enable">Bật Chế độ Rạp phim</string>
+    <string name="cinema_enable_desc">Phát trailer từ các bộ phim sắp chiếu hoặc trong thư viện của bạn trước phim chính.</string>
+    <string name="cinema_max_trailers">Số Trailer Tối đa</string>
+    <string name="cinema_max_trailers_desc">Số lượng tối đa các trailer sẽ phát trước nội dung chính.</string>
+    <string name="cinema_custom_intro">Intro Tùy chỉnh</string>
+    <string name="cinema_intro_uploaded">Đã tải lên Intro</string>
+    <string name="cinema_upload_intro_desc">Tải lên một video intro tùy chỉnh để phát trước phim.</string>
+    <string name="cinema_upload_new">Tải lên Intro Mới</string>
+    <string name="cinema_upload">Tải lên Intro</string>
+    <string name="cinema_trailers_original">Gốc</string>
+    <string name="cinema_trailers_1">1 Trailer</string>
+    <string name="cinema_trailers_2">2 Trailer</string>
+    <string name="cinema_trailers_3">3 Trailer</string>
+
+    <string name="action_add_user">Thêm Người Dùng</string>
+    <string name="users_empty">Không tìm thấy người dùng nào</string>
+    <string name="user_user">Người dùng</string>
+    <string name="user_created">Ngày tạo</string>
+    <string name="user_actions">Hành động</string>
+    <string name="action_edit">Chỉnh sửa</string>
+    <string name="action_delete">Xóa</string>
+    <string name="user_admin">Quản trị viên</string>
+
+    <string name="action_add_library">Thêm Thư Viện</string>
+    <string name="libraries_empty">Chưa cấu hình thư viện</string>
+    <string name="library_name">Tên</string>
+    <string name="library_type">Loại</string>
+    <string name="library_paths">Đường dẫn (cách nhau bởi dấu phẩy)</string>
+
+    <string name="dashboard_total_media">Tổng Phương Tiện</string>
+    <string name="dashboard_series">TV Series</string>
+    <string name="dashboard_total_size">Tổng Kích Thước</string>
+    <string name="dashboard_server_info">Thông Tin Máy Chủ</string>
+    <string name="dashboard_version">Phiên bản</string>
+    <string name="dashboard_os">HĐH</string>
+    <string name="dashboard_architecture">Kiến trúc</string>
+    <string name="dashboard_database">Cơ sở dữ liệu</string>
+    <string name="dashboard_uptime">Thời gian hoạt động</string>
+
+    <string name="action_add_webhook">Thêm Webhook</string>
+    <string name="webhooks_empty">Chưa cấu hình webhooks</string>
+    <string name="webhooks_enabled">Đã bật</string>
+    <string name="webhooks_url">Đường dẫn URL</string>
+    <string name="webhooks_events">Sự kiện (cách nhau bởi dấu phẩy)</string>
+
+    <string name="tasks_task">Tác vụ</string>
+    <string name="tasks_schedule">Lịch trình</string>
+    <string name="tasks_last_next">Lần chạy trước / tiếp theo</string>
+    <string name="tasks_status">Trạng thái</string>
+    <string name="tasks_action">Hành động</string>
+    <string name="tasks_interval">Chu kỳ</string>
+    <string name="tasks_empty">Chưa có tác vụ</string>
+    
+    <string name="subtitles_os">OpenSubtitles.com</string>
+    <string name="subtitles_os_desc">Yêu cầu cả API key và tài khoản.</string>
+    <string name="subtitles_api_key">API Key</string>
+    <string name="subtitles_account">Tài khoản</string>
+    <string name="subtitles_auto_download">Tự động tải phụ đề</string>
+    <string name="subtitles_auto_download_desc">Chọn ngôn ngữ để tự động tải phụ đề.</string>
+    <string name="subtitles_ai">Dịch Phụ Đề Bằng AI</string>
+    <string name="subtitles_desc">Cấu hình nhà cung cấp và tuỳ chọn tự tải</string>
+    
+    <string name="pretranscode_desc">Chuyển mã thư viện sang định dạng MP4 H.264+AAC hỗ trợ trình duyệt.</string>
+    <string name="pretranscode_encode_adv">Chuyển mã trước để xem mượt mà - không chờ đệm.</string>
+    <string name="pretranscode_storage">Ước tính dung lượng</string>
+    <string name="pretranscode_profiles">Hồ sơ chất lượng</string>
+    <string name="pretranscode_delete_all">Xóa tất cả file chuyển mã</string>
+    <string name="pretranscode_delete_desc">Thao tác này xoá vĩnh viễn file đã chuyển mã.</string>
+
+    <string name="markers_desc">Phát hiện tự động đoạn Intro / Credits của phim</string>
+    <string name="markers_overview">Tổng quan</string>
+    <string name="markers_source">Nguồn số liệu</string>
+    <string name="markers_detection">Quét phim</string>
+    <string name="action_run_detection">Bắt đầu quét</string>
+
+    <string name="activity_empty">Không có hoạt động</string>
+    <string name="activity_time">Thời gian</string>
+    <string name="activity_media">Phim ảnh</string>
+    
+    <string name="sessions_empty">Rỗng</string>
+    
+    <string name="metadata_v4_token">Token API v4</string>
+    <string name="metadata_refresh_all">Làm mới dữ liệu Metadata</string>
+    <string name="metadata_bulk_fetch">Tải lại hàng loạt thông tin phim và số điểm đánh giá.</string>
+
+    <string name="dialog_title_language_changed">Đã áp dụng ngôn ngữ</string>
+    <string name="dialog_desc_language_changed">Bạn đã thay đổi ngôn ngữ ứng dụng. Để đảm bảo toàn bộ nội dung và thành phần giao diện được dịch đầy đủ, vui lòng khởi động lại ứng dụng.</string>
 </resources>

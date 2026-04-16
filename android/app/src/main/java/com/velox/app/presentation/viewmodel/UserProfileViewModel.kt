@@ -1,5 +1,8 @@
 package com.velox.app.presentation.viewmodel
 
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.velox.app.data.model.*
@@ -13,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.velox.app.data.api.AuthManager
 
 data class UserProfileUiState(
     val isLoading: Boolean = false,
@@ -39,14 +43,20 @@ data class UserProfileUiState(
     val successMessage: String? = null,
 )
 
+
 @HiltViewModel
 class UserProfileViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     internal val settingsRepository: SettingsRepository,
+    private val authManager: AuthManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(UserProfileUiState())
     val uiState: StateFlow<UserProfileUiState> = _uiState.asStateFlow()
+
+    val currentAppLanguage: StateFlow<String> = authManager.appLanguage
+        .map { it ?: "en" }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, "en")
 
     init {
         loadUserInfo()
@@ -158,6 +168,9 @@ class UserProfileViewModel @Inject constructor(
                 )
             )
                 .onSuccess {
+                    prefs.language?.let { lang ->
+                        authManager.saveAppLanguage(if (lang.isBlank()) "en" else lang)
+                    }
                     _uiState.update { it.copy(successMessage = "Preferences updated successfully") }
                 }
                 .onError { error ->

@@ -68,7 +68,7 @@ fun ActivitySectionRoute(
 @Composable
 internal fun ActivitySectionContent(viewModel: SystemAdminViewModel, uiState: SystemAdminUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Activity Feed", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.settings_title_activity), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
         if (uiState.isLoading && uiState.activityLogs.isEmpty()) {
             Text("Loading activity...", color = NetflixLightGray)
@@ -81,7 +81,7 @@ internal fun ActivitySectionContent(viewModel: SystemAdminViewModel, uiState: Sy
                 shape = RoundedCornerShape(8.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("No activity found", color = NetflixLightGray, fontSize = 14.sp)
+                    Text(stringResource(R.string.activity_empty), color = NetflixLightGray, fontSize = 14.sp)
                 }
             }
         } else {
@@ -98,10 +98,10 @@ internal fun ActivitySectionContent(viewModel: SystemAdminViewModel, uiState: Sy
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Time", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.8f))
+                        Text(stringResource(R.string.activity_time), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.8f))
                         Text("User", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.2f))
-                        Text("Action", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.5f))
-                        Text("Media", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2.5f))
+                        Text(stringResource(R.string.tasks_action), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.5f))
+                        Text(stringResource(R.string.activity_media), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2.5f))
                     }
 
                     HorizontalDivider(color = Color.White.copy(alpha = 0.05f))

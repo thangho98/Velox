@@ -112,8 +112,8 @@ export function MetadataSection() {
   return (
     <div className="max-w-xl space-y-6">
       <SectionHeader
-        title="Metadata"
-        description="Configure metadata providers for movies and TV shows"
+        title={t('sections.metadata.title')}
+        description={t('sections.metadata.description')}
       />
 
       <div className="rounded-lg bg-netflix-dark p-5">
@@ -441,10 +441,10 @@ export function MetadataSection() {
       </div>
 
       <div className="rounded-lg bg-netflix-dark p-5">
-        <div className="mb-1 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-white">{t('actions.refreshAllMetadata')}</h3>
-        </div>
-        <p className="mb-4 text-xs text-gray-400">{t('messages.howItWorksDescription')}</p>
+        <h3 className="mb-2 text-sm font-semibold text-white">{t('providers.refresh.title')}</h3>
+        <p className="mb-5 text-xs text-gray-400">
+          {t('providers.refresh.description')}
+        </p>
         <div className="flex items-center gap-3">
           <button
             onClick={() => bulkRefresh()}

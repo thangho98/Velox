@@ -69,9 +69,9 @@ fun SubtitlesSectionRoute(
 internal fun SubtitlesSectionContent(viewModel: MediaSettingsViewModel, uiState: MediaSettingsUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Column {
-            Text("Subtitles", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.settings_title_subtitles), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Configure subtitle providers and auto-download settings", color = NetflixLightGray, fontSize = 14.sp)
+            Text(stringResource(R.string.subtitles_desc), color = NetflixLightGray, fontSize = 14.sp)
         }
 
         // OpenSubtitles Settings
@@ -170,7 +170,7 @@ internal fun AITranslationSettingsCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("AI Subtitle Localization", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.subtitles_ai), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.width(8.dp))
                 Surface(
                     color = statusColor.copy(alpha = 0.2f),
@@ -204,7 +204,7 @@ internal fun AITranslationSettingsCard(
             )
 
             Spacer(modifier = Modifier.height(12.dp))
-            Text("API Key", color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.subtitles_api_key), color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
                 value = apiKey,
@@ -264,7 +264,7 @@ internal fun AITranslationSettingsCard(
             ) {
                 Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Save", fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.action_save), fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -289,16 +289,16 @@ internal fun OpenSubsSettingsCard(
             val statusColor = if (settings?.passwordSet == true && apiKey.isNotEmpty()) androidx.compose.ui.graphics.Color(0xFF22C55E) else androidx.compose.ui.graphics.Color(0xFF6B7280)
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("OpenSubtitles.com", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.subtitles_os), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.width(8.dp))
                 if (settings?.passwordSet == true && apiKey.isNotEmpty()) {
                     Surface(color = statusColor.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
-                        Text("Enabled", color = statusColor, fontSize = 10.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                        Text(stringResource(R.string.webhooks_enabled), color = statusColor, fontSize = 10.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Requires both API key and account credentials.", color = NetflixLightGray, fontSize = 12.sp)
+            Text(stringResource(R.string.subtitles_os_desc), color = NetflixLightGray, fontSize = 12.sp)
             Spacer(modifier = Modifier.height(16.dp))
 
             var apiKeyVisible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -309,7 +309,7 @@ internal fun OpenSubsSettingsCard(
                     Box(contentAlignment = Alignment.Center) { Text("1", color = NetflixWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("API Key", color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.subtitles_api_key), color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
@@ -333,7 +333,7 @@ internal fun OpenSubsSettingsCard(
                     Box(contentAlignment = Alignment.Center) { Text("2", color = NetflixWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Account", color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.subtitles_account), color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
@@ -371,7 +371,7 @@ internal fun OpenSubsSettingsCard(
             ) {
                 Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Save", fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.action_save), fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -393,7 +393,7 @@ internal fun AutoSubSettingsCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Auto-Download Languages", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.subtitles_auto_download), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.width(8.dp))
                 if (selectedLangs.isNotEmpty()) {
                     Surface(color = androidx.compose.ui.graphics.Color(0xFF3B82F6).copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
@@ -402,7 +402,7 @@ internal fun AutoSubSettingsCard(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Select target languages for automatic subtitle downloads.", color = NetflixLightGray, fontSize = 12.sp)
+            Text(stringResource(R.string.subtitles_auto_download_desc), color = NetflixLightGray, fontSize = 12.sp)
             Spacer(modifier = Modifier.height(12.dp))
 
             androidx.compose.foundation.layout.FlowRow(
@@ -442,7 +442,7 @@ internal fun AutoSubSettingsCard(
             ) {
                 Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Save", fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.action_save), fontWeight = FontWeight.Medium)
             }
         }
     }

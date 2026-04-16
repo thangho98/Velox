@@ -1,3 +1,4 @@
+import { useTranslation } from '@/hooks/useTranslation'
 import { useState } from 'react'
 import { LuPlus, LuGlobe, LuPause, LuPlay, LuTrash2 } from 'react-icons/lu'
 import {
@@ -32,6 +33,8 @@ function parseWebhookEvents(raw: string): string[] {
 }
 
 export function WebhooksSection() {
+  const { t } = useTranslation('settings')
+
   const { data: webhooks, isLoading } = useWebhooks()
   const { mutate: createWebhook, isPending: isCreating } = useCreateWebhook()
   const { mutate: updateWebhook } = useUpdateWebhook()

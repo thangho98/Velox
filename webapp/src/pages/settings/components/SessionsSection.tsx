@@ -29,11 +29,11 @@ export function SessionsSection() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-white">
-                    {session.device_name || 'Unknown Device'}
+                    {session.device_name || t('sessions.unknownDevice')}
                   </p>
                   <p className="text-xs text-gray-400">{session.ip_address}</p>
                   <p className="text-xs text-gray-500">
-                    Last active: {new Date(session.last_active_at).toLocaleString()}
+                    {t('sessions.lastActive')} {new Date(session.last_active_at).toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -41,12 +41,12 @@ export function SessionsSection() {
                 onClick={() => revokeSession(session.id)}
                 className="rounded bg-netflix-gray px-3 py-1.5 text-sm text-white transition-colors hover:bg-netflix-red"
               >
-                Revoke
+                {t('actions.revoke')}
               </button>
             </div>
           ))}
           {sessions?.length === 0 && (
-            <p className="py-8 text-center text-sm text-gray-400">No active sessions</p>
+            <p className="py-8 text-center text-sm text-gray-400">{t('sessions.noSessions')}</p>
           )}
         </div>
       )}

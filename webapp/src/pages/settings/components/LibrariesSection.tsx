@@ -1,3 +1,4 @@
+import { useTranslation } from '@/hooks/useTranslation'
 import { useState } from 'react'
 import {
   LuPlus,
@@ -51,6 +52,8 @@ interface LibraryFormData {
 const DEFAULT_LIB_FORM: LibraryFormData = { name: '', paths: [''], type: 'movies' }
 
 export function LibrariesSection() {
+  const { t } = useTranslation('settings')
+
   const { data: libraries, isLoading } = useLibraries()
   const { mutate: createLibrary, isPending: isCreating } = useCreateLibrary()
   const { mutate: deleteLibrary } = useDeleteLibrary()

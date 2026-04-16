@@ -71,7 +71,7 @@ internal fun PlaybackSectionContent(viewModel: MediaSettingsViewModel, uiState: 
         Column {
             Text(stringResource(R.string.player_playback), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Configure global playback streaming policy", color = NetflixLightGray, fontSize = 14.sp)
+            Text(stringResource(R.string.settings_playback_desc), color = NetflixLightGray, fontSize = 14.sp)
         }
 
         Surface(
@@ -80,9 +80,9 @@ internal fun PlaybackSectionContent(viewModel: MediaSettingsViewModel, uiState: 
             shape = RoundedCornerShape(12.dp),
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Playback Mode", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.playback_mode), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Controls whether the server should automatically optimize playback or force direct streaming when possible.", color = NetflixLightGray, fontSize = 12.sp)
+                Text(stringResource(R.string.playback_mode_desc), color = NetflixLightGray, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 val currentMode = uiState.adminPlaybackSettings?.playbackMode ?: "auto"
@@ -109,9 +109,9 @@ internal fun PlaybackSectionContent(viewModel: MediaSettingsViewModel, uiState: 
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Automatic", color = NetflixWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.playback_auto), color = NetflixWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Automatically adapt quality based on network conditions and device capabilities. Best for general use.", color = NetflixLightGray, fontSize = 12.sp)
+                            Text(stringResource(R.string.playback_auto_desc), color = NetflixLightGray, fontSize = 12.sp)
                         }
                     }
                 }
@@ -140,9 +140,9 @@ internal fun PlaybackSectionContent(viewModel: MediaSettingsViewModel, uiState: 
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Force Direct Play", color = NetflixWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.playback_direct), color = NetflixWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Disable transcoding gracefully. Media will be streamed directly when possible.", color = NetflixLightGray, fontSize = 12.sp)
+                            Text(stringResource(R.string.playback_direct_desc), color = NetflixLightGray, fontSize = 12.sp)
                         }
                     }
                 }
@@ -171,9 +171,9 @@ fun CinemaSectionRoute(
 internal fun CinemaSectionContent(viewModel: MediaSettingsViewModel, uiState: MediaSettingsUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Column {
-            Text("Cinema Mode", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.cinema_mode), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Configure trailer playback and custom intros before your movies and TV shows.", color = NetflixLightGray, fontSize = 14.sp)
+            Text(stringResource(R.string.cinema_mode_desc), color = NetflixLightGray, fontSize = 14.sp)
         }
 
         Surface(
@@ -185,7 +185,7 @@ internal fun CinemaSectionContent(viewModel: MediaSettingsViewModel, uiState: Me
             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(LucideIcons.Info, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFFEAB308), modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("Please note: Cinema Mode is currently only supported on the Web application and via Casting. These settings will not affect playback on this Android device.", color = androidx.compose.ui.graphics.Color(0xFFFEF08A), fontSize = 13.sp)
+                Text(stringResource(R.string.cinema_mode_warning), color = androidx.compose.ui.graphics.Color(0xFFFEF08A), fontSize = 13.sp)
             }
         }
 
@@ -198,9 +198,9 @@ internal fun CinemaSectionContent(viewModel: MediaSettingsViewModel, uiState: Me
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Enable Cinema Mode", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.cinema_enable), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("Play trailers from upcoming movies or your own library before the main feature.", color = NetflixLightGray, fontSize = 12.sp)
+                        Text(stringResource(R.string.cinema_enable_desc), color = NetflixLightGray, fontSize = 12.sp)
                     }
                     Switch(
                         checked = uiState.adminCinemaSettings?.enabled ?: false,
@@ -223,15 +223,15 @@ internal fun CinemaSectionContent(viewModel: MediaSettingsViewModel, uiState: Me
             shape = RoundedCornerShape(12.dp),
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Max Trailers", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.cinema_max_trailers), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Maximum number of trailers to play before the main content.", color = NetflixLightGray, fontSize = 12.sp)
+                Text(stringResource(R.string.cinema_max_trailers_desc), color = NetflixLightGray, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 SettingsDropdown(
                     label = "",
                     value = uiState.adminCinemaSettings?.maxTrailers ?: "2",
-                    options = listOf("0" to "Original", "1" to "1 Trailer", "2" to "2 Trailers", "3" to "3 Trailers"),
+                    options = listOf("0" to stringResource(R.string.cinema_trailers_original), "1" to stringResource(R.string.cinema_trailers_1), "2" to stringResource(R.string.cinema_trailers_2), "3" to stringResource(R.string.cinema_trailers_3)),
                     onValueChange = { viewModel.updateCinemaSettings(maxTrailers = it) }
                 )
             }
@@ -245,15 +245,15 @@ internal fun CinemaSectionContent(viewModel: MediaSettingsViewModel, uiState: Me
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text("Custom Intro", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.cinema_custom_intro), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     if (uiState.adminCinemaSettings?.hasIntro == true) {
                         Surface(color = androidx.compose.ui.graphics.Color(0xFF22C55E).copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
-                            Text("Intro uploaded", color = androidx.compose.ui.graphics.Color(0xFF22C55E), fontSize = 10.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                            Text(stringResource(R.string.cinema_intro_uploaded), color = androidx.compose.ui.graphics.Color(0xFF22C55E), fontSize = 10.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Upload a custom intro video to play before movies.", color = NetflixLightGray, fontSize = 12.sp)
+                Text(stringResource(R.string.cinema_upload_intro_desc), color = NetflixLightGray, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
@@ -263,7 +263,7 @@ internal fun CinemaSectionContent(viewModel: MediaSettingsViewModel, uiState: Me
                 ) {
                     Icon(LucideIcons.Upload, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (uiState.adminCinemaSettings?.hasIntro == true) "Upload New Intro" else "Upload Intro", fontWeight = FontWeight.Medium)
+                    Text(if (uiState.adminCinemaSettings?.hasIntro == true) stringResource(R.string.cinema_upload_new) else stringResource(R.string.cinema_upload), fontWeight = FontWeight.Medium)
                 }
             }
         }

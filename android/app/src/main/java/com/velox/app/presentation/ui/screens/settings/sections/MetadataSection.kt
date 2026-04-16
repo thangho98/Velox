@@ -69,9 +69,9 @@ fun MetadataSectionRoute(
 internal fun MetadataSectionContent(viewModel: MediaSettingsViewModel, uiState: MediaSettingsUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Column {
-            Text("Metadata", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.settings_title_metadata), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Configure metadata providers for movies and TV shows", color = NetflixLightGray, fontSize = 14.sp)
+            Text(stringResource(R.string.settings_desc_metadata), color = NetflixLightGray, fontSize = 14.sp)
         }
 
         // TMDb Settings
@@ -128,9 +128,9 @@ internal fun MetadataSectionContent(viewModel: MediaSettingsViewModel, uiState: 
             shape = RoundedCornerShape(12.dp),
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Refresh all metadata", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.metadata_refresh_all), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Bulk fetch missing metadata and update ratings for all media.", color = NetflixLightGray, fontSize = 14.sp)
+                Text(stringResource(R.string.metadata_bulk_fetch), color = NetflixLightGray, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = { viewModel.refreshAllMetadata() },
@@ -139,7 +139,7 @@ internal fun MetadataSectionContent(viewModel: MediaSettingsViewModel, uiState: 
                 ) {
                     Icon(LucideIcons.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Refresh Metadata", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.action_refresh_metadata), fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -190,7 +190,7 @@ internal fun ProviderSettingsCard(
 
             var apiKeyVisible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
-            Text("API / v4 Token", color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.metadata_v4_token), color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
                 value = editedApiKey,
@@ -215,7 +215,7 @@ internal fun ProviderSettingsCard(
             ) {
                 Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Save", fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.action_save), fontWeight = FontWeight.Medium)
             }
         }
     }

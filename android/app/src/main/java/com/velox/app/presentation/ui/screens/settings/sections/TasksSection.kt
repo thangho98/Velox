@@ -88,7 +88,7 @@ internal fun TasksSectionContent(viewModel: SystemAdminViewModel, uiState: Syste
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Scheduled Tasks", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.settings_title_tasks), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
         if (uiState.tasks.isEmpty()) {
             Surface(
@@ -99,7 +99,7 @@ internal fun TasksSectionContent(viewModel: SystemAdminViewModel, uiState: Syste
                 shape = RoundedCornerShape(8.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("No tasks configured", color = NetflixLightGray, fontSize = 14.sp)
+                    Text(stringResource(R.string.tasks_empty), color = NetflixLightGray, fontSize = 14.sp)
                 }
             }
         } else {
@@ -116,11 +116,11 @@ internal fun TasksSectionContent(viewModel: SystemAdminViewModel, uiState: Syste
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Task", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2f))
-                        Text("Interval", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                        Text("Last / Next Run", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2f))
-                        Text("Status", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                        Text("Action", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.5f))
+                        Text(stringResource(R.string.tasks_task), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2f))
+                        Text(stringResource(R.string.tasks_interval), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.tasks_last_next), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2f))
+                        Text(stringResource(R.string.tasks_status), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.tasks_action), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.5f))
                     }
 
                     HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
@@ -296,7 +296,7 @@ internal fun EditIntervalDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                 shape = RoundedCornerShape(8.dp),
             ) {
-                Text("Save", color = NetflixWhite)
+                Text(stringResource(R.string.action_save), color = NetflixWhite)
             }
         },
         dismissButton = {

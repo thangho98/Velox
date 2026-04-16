@@ -68,8 +68,8 @@ fun SessionsSectionRoute(
 @Composable
 internal fun SessionsSectionContent(viewModel: UserProfileViewModel, uiState: UserProfileUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Active Sessions", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text("Manage devices signed into your account", color = NetflixLightGray, fontSize = 14.sp)
+        Text(stringResource(R.string.settings_title_sessions), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.settings_desc_sessions), color = NetflixLightGray, fontSize = 14.sp)
 
         if (uiState.isLoading) {
             Box(
@@ -79,7 +79,7 @@ internal fun SessionsSectionContent(viewModel: UserProfileViewModel, uiState: Us
                 CircularProgressIndicator(color = NetflixRed)
             }
         } else if (uiState.sessions.isEmpty()) {
-            Text("No active sessions", color = NetflixLightGray)
+            Text(stringResource(R.string.sessions_empty), color = NetflixLightGray)
         } else {
             uiState.sessions.forEach { session ->
                 SessionCard(
@@ -129,7 +129,7 @@ internal fun SessionCard(session: Session, onRevoke: () -> Unit) {
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     modifier = Modifier.height(32.dp)
                 ) {
-                    Text("Revoke", color = NetflixWhite, fontSize = 14.sp)
+                    Text(stringResource(R.string.action_revoke), color = NetflixWhite, fontSize = 14.sp)
                 }
             }
         }

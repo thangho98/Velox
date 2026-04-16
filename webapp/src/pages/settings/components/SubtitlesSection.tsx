@@ -683,14 +683,14 @@ function AutoTranslateCard() {
     <div className="rounded-lg bg-netflix-dark p-5">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-white">Auto-Translate Subtitles</h3>
+          <h3 className="text-sm font-semibold text-white">{t('subtitles.autoTranslate')}</h3>
           {enabled ? (
             <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-              Enabled
+              {t('status.enabled')}
             </span>
           ) : (
             <span className="rounded bg-gray-500/20 px-2 py-0.5 text-[10px] font-medium text-gray-400">
-              Disabled
+              {t('status.disabled')}
             </span>
           )}
         </div>
@@ -706,9 +706,7 @@ function AutoTranslateCard() {
       </div>
 
       <p className="mb-4 text-xs text-gray-400">
-        Automatically run background tasks to translate existing subtitles to the requested
-        languages. It will only translate if the subtitle does not already exist. Requires AI or
-        DeepL.
+        {t('subtitles.autoTranslateDescription')}
       </p>
 
       <div

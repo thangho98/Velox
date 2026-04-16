@@ -4,8 +4,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useUsers, useCreateUser, useUpdateUser, useDeleteUser } from '@/hooks/stores/useUsers'
 import { SectionHeader, Field, Modal, ErrorMsg, Spinner, inputClass, inputDisabled } from './shared'
 import type { User } from '@/types/api'
+import { useTranslation } from '@/hooks/useTranslation'
 
 export function UsersSection() {
+  const { t } = useTranslation('settings')
   const { user: currentUser } = useAuthStore()
   const { data: users, isLoading } = useUsers()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -15,7 +17,7 @@ export function UsersSection() {
     <div className="max-w-3xl">
       <div className="flex items-center justify-between">
         <SectionHeader
-          title="Users"
+          title={t('sections.users.title')}
           description={`${users?.length || 0} ${(users?.length || 0) === 1 ? 'user' : 'users'}`}
         />
         <button
@@ -23,7 +25,7 @@ export function UsersSection() {
           className="flex items-center gap-2 rounded bg-netflix-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-netflix-red-hover"
         >
           <LuPlus size={16} />
-          Add User
+          {t('users.actions.addUser')}
         </button>
       </div>
 
@@ -35,10 +37,10 @@ export function UsersSection() {
             <table className="w-full">
               <thead className="border-b border-netflix-gray bg-netflix-black/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">User</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Role</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Created</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">{t('users.table.user')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">{t('users.table.role')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">{t('users.table.created')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">{t('users.table.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -68,7 +70,7 @@ export function UsersSection() {
                             : 'bg-blue-500/20 text-blue-400'
                         }`}
                       >
-                        {u.is_admin ? 'Admin' : 'User'}
+                        {u.is_admin ? t('users.roles.admin') : t('users.roles.user')}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-400">
@@ -80,7 +82,7 @@ export function UsersSection() {
                           onClick={() => setEditingUser(u)}
                           className="rounded bg-netflix-gray px-3 py-1 text-xs text-white hover:bg-gray-600"
                         >
-                          Edit
+                          {t('users.actions.edit')}
                         </button>
                         {currentUser && u.id !== currentUser.id && <DeleteUserBtn userId={u.id} />}
                       </div>
@@ -91,7 +93,7 @@ export function UsersSection() {
             </table>
           </div>
           {users?.length === 0 && (
-            <p className="py-8 text-center text-sm text-gray-400">No users found</p>
+            <p className="py-8 text-center text-sm text-gray-400">{t('users.noUsers')}</p>
           )}
         </div>
       )}
@@ -103,6 +105,7 @@ export function UsersSection() {
 }
 
 function CreateUserModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation('settings')
   const { mutate: createUser, isPending } = useCreateUser()
   const [form, setForm] = useState({
     username: '',
@@ -116,21 +119,21 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
     e.preventDefault()
     setError('')
     if (!form.username || !form.password) {
-      setError('Username and password are required')
+      setError(t('users.errors.required'))
       return
     }
     if (form.password.length < 8) {
-      setError('Password must be at least 8 characters')
+      setError(t('users.errors.passwordLength'))
       return
     }
     createUser(form, { onSuccess: onClose, onError: (err: Error) => setError(err.message) })
   }
 
   return (
-    <Modal title="Add User" onClose={onClose}>
+    <Modal title={t('users.modals.add')} onClose={onClose}>
       {error && <ErrorMsg>{error}</ErrorMsg>}
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Username *">
+        <Field label={t('users.fields.username')}>
           <input
             type="text"
             value={form.username}
@@ -139,7 +142,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             required
           />
         </Field>
-        <Field label="Display Name">
+        <Field label={t('users.fields.displayName')}>
           <input
             type="text"
             value={form.display_name}
@@ -147,7 +150,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             className={inputClass}
           />
         </Field>
-        <Field label="Password *">
+        <Field label={t('users.fields.password')}>
           <input
             type="password"
             value={form.password}
@@ -166,7 +169,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             className="h-4 w-4 rounded"
           />
           <label htmlFor="new_is_admin" className="text-sm text-gray-300">
-            Administrator
+            {t('users.fields.administrator')}
           </label>
         </div>
         <div className="flex justify-end gap-3 pt-2">
@@ -175,14 +178,14 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             onClick={onClose}
             className="rounded px-4 py-2 text-gray-300 hover:bg-netflix-gray hover:text-white"
           >
-            Cancel
+            {t('users.actions.cancel')}
           </button>
           <button
             type="submit"
             disabled={isPending}
             className="rounded bg-netflix-red px-4 py-2 font-semibold text-white hover:bg-netflix-red-hover disabled:opacity-50"
           >
-            {isPending ? 'Creating...' : 'Create'}
+            {isPending ? t('users.modals.creating') : t('users.modals.create')}
           </button>
         </div>
       </form>
@@ -191,6 +194,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
 }
 
 function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
+  const { t } = useTranslation('settings')
   const { mutate: updateUser, isPending } = useUpdateUser()
   const [form, setForm] = useState({
     display_name: user.display_name || '',
@@ -208,7 +212,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
     }
     if (form.password) {
       if (form.password.length < 8) {
-        setError('Password must be at least 8 characters')
+        setError(t('users.errors.passwordLength'))
         return
       }
       data.password = form.password
@@ -220,13 +224,13 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
   }
 
   return (
-    <Modal title="Edit User" onClose={onClose}>
+    <Modal title={t('users.modals.edit')} onClose={onClose}>
       {error && <ErrorMsg>{error}</ErrorMsg>}
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Username">
+        <Field label={t('fields.username')}>
           <input type="text" value={user.username} disabled className={inputDisabled} />
         </Field>
-        <Field label="Display Name">
+        <Field label={t('users.fields.displayName')}>
           <input
             type="text"
             value={form.display_name}
@@ -234,12 +238,12 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
             className={inputClass}
           />
         </Field>
-        <Field label="New Password (optional)">
+        <Field label={t('users.fields.newPassword')}>
           <input
             type="password"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
-            placeholder="Leave blank to keep current"
+            placeholder=""
             className={inputClass}
           />
         </Field>
@@ -252,7 +256,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
             className="h-4 w-4 rounded"
           />
           <label htmlFor="edit_is_admin" className="text-sm text-gray-300">
-            Administrator
+            {t('users.fields.administrator')}
           </label>
         </div>
         <div className="flex justify-end gap-3 pt-2">
@@ -261,14 +265,14 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
             onClick={onClose}
             className="rounded px-4 py-2 text-gray-300 hover:bg-netflix-gray hover:text-white"
           >
-            Cancel
+            {t('users.actions.cancel')}
           </button>
           <button
             type="submit"
             disabled={isPending}
             className="rounded bg-netflix-red px-4 py-2 font-semibold text-white hover:bg-netflix-red-hover disabled:opacity-50"
           >
-            {isPending ? 'Saving...' : 'Save'}
+            {isPending ? t('users.modals.saving') : t('users.modals.save')}
           </button>
         </div>
       </form>
@@ -277,6 +281,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
 }
 
 function DeleteUserBtn({ userId }: { userId: number }) {
+  const { t } = useTranslation('settings')
   const { mutate: deleteUser, isPending } = useDeleteUser()
   const [confirm, setConfirm] = useState(false)
 
@@ -288,13 +293,13 @@ function DeleteUserBtn({ userId }: { userId: number }) {
           disabled={isPending}
           className="rounded bg-netflix-red px-2.5 py-1 text-xs text-white hover:bg-netflix-red-hover"
         >
-          Confirm
+          {t('users.actions.confirm')}
         </button>
         <button
           onClick={() => setConfirm(false)}
           className="rounded bg-netflix-gray px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-600"
         >
-          Cancel
+          {t('users.actions.cancel')}
         </button>
       </div>
     )
@@ -305,7 +310,7 @@ function DeleteUserBtn({ userId }: { userId: number }) {
       onClick={() => setConfirm(true)}
       className="rounded bg-red-500/20 px-3 py-1 text-xs text-red-400 hover:bg-red-500/30"
     >
-      Delete
+      {t('users.actions.delete')}
     </button>
   )
 }

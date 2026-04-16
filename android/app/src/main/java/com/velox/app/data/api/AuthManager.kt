@@ -36,6 +36,7 @@ class AuthManager @Inject constructor(
         private val IS_ADMIN_KEY = stringPreferencesKey("is_admin")
         private val PROFILE_PATH_KEY = stringPreferencesKey("profile_path")
         private val PROFILE_JSON_KEY = stringPreferencesKey("profile_json")
+        private val APP_LANGUAGE_KEY = stringPreferencesKey("app_language")
 
         private val json = Json { ignoreUnknownKeys = true }
     }
@@ -81,6 +82,10 @@ class AuthManager @Inject constructor(
                 null
             }
         }
+    }
+
+    val appLanguage: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[APP_LANGUAGE_KEY]
     }
 
     fun getAccessTokenSync(): String? = runBlocking {
@@ -129,6 +134,12 @@ class AuthManager @Inject constructor(
             } else {
                 prefs.remove(PROFILE_JSON_KEY)
             }
+        }
+    }
+
+    suspend fun saveAppLanguage(lang: String) {
+        context.dataStore.edit { prefs ->
+            prefs[APP_LANGUAGE_KEY] = lang
         }
     }
 

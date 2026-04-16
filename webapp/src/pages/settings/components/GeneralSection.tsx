@@ -1,7 +1,10 @@
+import { useTranslation } from '@/hooks/useTranslation'
 import { useServerInfo, useLibraryStats } from '@/hooks/stores/useAdmin'
 import { SectionHeader, Spinner, formatBytes, timeAgo } from './shared'
 
 export function GeneralSection() {
+  const { t } = useTranslation('settings')
+
   const { data: serverInfo, isLoading: serverLoading } = useServerInfo()
   const { data: libraryStats, isLoading: statsLoading } = useLibraryStats()
 

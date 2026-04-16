@@ -103,7 +103,7 @@ internal fun UsersSectionContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
-                Text("Users", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.settings_title_users), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 val count = uiState.users.size
                 Text("$count ${if (count == 1) "user" else "users"}", color = NetflixLightGray, fontSize = 14.sp)
             }
@@ -114,7 +114,7 @@ internal fun UsersSectionContent(
             ) {
                 Icon(LucideIcons.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Add User", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.action_add_user), fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -129,7 +129,7 @@ internal fun UsersSectionContent(
                 shape = RoundedCornerShape(8.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("No users found", color = NetflixLightGray, fontSize = 14.sp)
+                    Text(stringResource(R.string.users_empty), color = NetflixLightGray, fontSize = 14.sp)
                 }
             }
         } else {
@@ -146,10 +146,10 @@ internal fun UsersSectionContent(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("User", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2.5f))
-                        Text("Role", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.2f))
-                        Text("Created", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.5f))
-                        Text("Actions", color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2f))
+                        Text(stringResource(R.string.user_user), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2.5f))
+                        Text(stringResource(R.string.user_role), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.2f))
+                        Text(stringResource(R.string.user_created), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.5f))
+                        Text(stringResource(R.string.user_actions), color = NetflixLightGray, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2f))
                     }
 
                     HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
@@ -246,7 +246,7 @@ internal fun UserTableRow(
                 shape = RoundedCornerShape(4.dp),
                 modifier = Modifier.height(28.dp).defaultMinSize(minWidth = 1.dp)
             ) {
-                Text("Edit", fontSize = 11.sp, color = NetflixWhite)
+                Text(stringResource(R.string.action_edit), fontSize = 11.sp, color = NetflixWhite)
             }
 
             if (canDelete) {
@@ -257,7 +257,7 @@ internal fun UserTableRow(
                     shape = RoundedCornerShape(4.dp),
                     modifier = Modifier.height(28.dp).defaultMinSize(minWidth = 1.dp)
                 ) {
-                    Text("Delete", fontSize = 11.sp, color = Color(0xFFF87171)) // Red 400
+                    Text(stringResource(R.string.action_delete), fontSize = 11.sp, color = Color(0xFFF87171)) // Red 400
                 }
             }
         }
@@ -301,7 +301,7 @@ internal fun UserDialog(
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = { displayName = it },
-                    label = { Text("Display Name") },
+                    label = { Text(stringResource(R.string.user_display_name)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = textFieldColors(),
                 )
@@ -310,7 +310,7 @@ internal fun UserDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Admin", color = NetflixWhite)
+                    Text(stringResource(R.string.user_admin), color = NetflixWhite)
                     Switch(
                         checked = isAdmin,
                         onCheckedChange = { isAdmin = it },
@@ -328,7 +328,7 @@ internal fun UserDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
             ) {
-                Text("Save")
+                Text(stringResource(R.string.action_save))
             }
         },
         dismissButton = {

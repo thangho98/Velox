@@ -69,7 +69,43 @@
     },
     "markers": {
       "title": "Bỏ qua Intro / Credits",
-      "description": "Phát hiện và quản lý đoạn intro/credits để bỏ qua"
+      "description": "Quản lý và thiết lập Marker Intro / Credits"
+    },
+    "pretranscode": {
+      "title": "Chuyển mã trước",
+      "description": "Chuyển mã thư viện sang định dạng hỗ trợ xem trực tiếp liền mạch"
+    }
+  },
+  "pretranscode": {
+    "offlineEncoding": "Chuyển mã Offline",
+    "offlineEncodingDesc": "Chuyển mã thư viện sang định dạng H.264+AAC MP4. Cho phép xem trực tiếp ngay lập tức giống Netflix mà không cần chờ đợi.",
+    "qualityProfiles": "Chất lượng Video",
+    "schedule": "Lịch chạy",
+    "encodeTime": "Thời gian chuyển mã",
+    "concurrentJobs": "Số công việc chạy song song",
+    "storageEstimation": "Dự kiến dung lượng lưu trữ",
+    "library": "Thư viện",
+    "files": "tệp",
+    "total": "Tổng cộng",
+    "diskFree": "Dung lượng trống",
+    "enough": "Đủ dung lượng",
+    "notEnough": "Không đủ dung lượng",
+    "progress": "Tiến trình",
+    "encoding": "Đang chuyển mã",
+    "done": "Hoàn tất",
+    "failed": "Thất bại",
+    "queued": "Đang đợi",
+    "disk": "Ổ đĩa",
+    "deleteAll": "Xóa toàn bộ tệp Chuyển mã trước",
+    "deleteAllDesc": "Hành động này sẽ xóa vĩnh viễn các tệp đã chuyển mã. Các tệp gốc của bạn KHÔNG bị ảnh hưởng.",
+    "scheduleOptions": {
+      "always": "Luôn chạy (nhanh nhất)",
+      "night": "Chỉ chạy ban đêm (00:00–06:00)",
+      "idle": "Khi nhàn rỗi (không ai xem)"
+    },
+    "concurrencyOptions": {
+      "nas": "(Tối ưu hoá cho NAS)",
+      "powerful": "(Máy chủ cấu hình mạnh)"
     }
   },
   "markers": {
@@ -262,7 +298,85 @@
     "autoDownloadDescription": "Tự động tải phụ đề cho ngôn ngữ được cấu hình khi quét media mới.",
     "targetLanguages": "Ngôn ngữ mục tiêu",
     "targetLanguagesDescription": "Mã ISO 639-1 cách nhau bằng dấu phẩy (vd: en,vi,es,fr). Để trống để tắt tự động tải.",
-    "placeholder": "vd: en,vi,es"
+    "placeholder": "vd: en,vi,es",
+    "autoTranslate": "Tự động dịch phụ đề",
+    "autoTranslateDescription": "Tự động chạy tác vụ nền để dịch phụ đề hiện có sang ngôn ngữ yêu cầu. Chỉ dịch nếu phụ đề chưa tồn tại. Yêu cầu bật AI hoặc DeepL."
+  },
+  "tasks": {
+    "editInterval": "Sửa Chu Kỳ",
+    "editIntervalDesc": "Đặt tần suất chạy cho <1>{{taskName}}</1>.",
+    "intervalOptions": {
+      "30m": "Mỗi 30 Phút",
+      "1h": "Mỗi 1 Giờ",
+      "12h": "Mỗi 12 Giờ",
+      "24h": "Mỗi 24 Giờ",
+      "168h": "Mỗi 7 Ngày",
+      "custom": "Tùy chỉnh..."
+    },
+    "customPlaceholder": "vd: 24h, 30m, 7d",
+    "table": {
+      "task": "Tác vụ",
+      "interval": "Chu kỳ",
+      "lastRun": "Lần chạy cuối",
+      "nextRun": "Lần chạy tới",
+      "status": "Trạng thái",
+      "actions": "Hành động"
+    },
+    "status": {
+      "running": "Đang chạy",
+      "idle": "Chờ"
+    },
+    "action": {
+      "runNow": "Chạy Ngay",
+      "running": "Đang chạy...",
+      "editInterval": "Sửa chu kỳ"
+    },
+    "never": "Chưa từng chạy",
+    "noTasks": "Không có tác vụ nào được lên lịch"
+  },
+  "sessionsStr": {
+    "unknownDevice": "Thiết bị không xác định",
+    "lastActive": "Hoạt động lần cuối:",
+    "noSessions": "Không có phiên đăng nhập nào"
+  },
+  "users": {
+    "noUsers": "Không tìm thấy người dùng",
+    "table": {
+      "user": "Người dùng",
+      "role": "Vai trò",
+      "created": "Đã tạo",
+      "actions": "Hành động"
+    },
+    "roles": {
+      "admin": "Quản trị viên",
+      "user": "Người dùng"
+    },
+    "actions": {
+      "addUser": "Thêm người dùng",
+      "confirm": "Xác nhận",
+      "cancel": "Hủy",
+      "edit": "Sửa",
+      "delete": "Xóa"
+    },
+    "fields": {
+      "username": "Tên đăng nhập *",
+      "displayName": "Tên hiển thị",
+      "password": "Mật khẩu *",
+      "newPassword": "Mật khẩu mới (tùy chọn)",
+      "administrator": "Quản trị viên"
+    },
+    "modals": {
+      "add": "Thêm người dùng",
+      "edit": "Sửa người dùng",
+      "creating": "Đang tạo...",
+      "create": "Tạo",
+      "saving": "Đang lưu...",
+      "save": "Lưu"
+    },
+    "errors": {
+      "required": "Tên đăng nhập và mật khẩu là bắt buộc",
+      "passwordLength": "Mật khẩu phải có ít nhất 8 ký tự"
+    }
   },
   "cinema": {
     "enabled": "Bật Chế độ Rạp phim",
@@ -274,5 +388,28 @@
     "uploadIntro": "Tải lên video intro",
     "hasIntro": "Đã tải lên intro",
     "noIntro": "Chưa có intro"
+  },
+  "activity": {
+    "action": "Hành động",
+    "allActions": "Tất cả hành động",
+    "actions": {
+      "login": "Đăng nhập",
+      "play_start": "Bắt đầu phát",
+      "play_stop": "Dừng phát",
+      "library_scan": "Quét thư viện",
+      "media_added": "Thêm nội dung"
+    },
+    "from": "Từ",
+    "to": "Đến",
+    "limit": "Giới hạn",
+    "table": {
+      "time": "Thời gian",
+      "user": "Người dùng",
+      "action": "Hành động",
+      "media": "Nội dung",
+      "ip": "IP"
+    },
+    "system": "Hệ thống",
+    "noActivity": "Không có hoạt động nào gần đây"
   }
 }

@@ -102,7 +102,7 @@ internal fun WebhooksSectionContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Webhooks", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.settings_title_webhooks), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Button(
                 onClick = onAddClick,
                 colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
@@ -115,7 +115,7 @@ internal fun WebhooksSectionContent(
         }
 
         if (uiState.webhooks.isEmpty()) {
-            Text("No webhooks configured", color = NetflixLightGray)
+            Text(stringResource(R.string.webhooks_empty), color = NetflixLightGray)
         } else {
             uiState.webhooks.forEach { webhook ->
                 WebhookCard(
@@ -205,14 +205,14 @@ internal fun WebhookDialog(
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("URL") },
+                    label = { Text(stringResource(R.string.webhooks_url)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = textFieldColors(),
                 )
                 OutlinedTextField(
                     value = eventsText,
                     onValueChange = { eventsText = it },
-                    label = { Text("Events (comma separated)") },
+                    label = { Text(stringResource(R.string.webhooks_events)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = textFieldColors(),
                     placeholder = { Text("media_added, library_scan_complete", color = NetflixGray) },
@@ -244,7 +244,7 @@ internal fun WebhookDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
             ) {
-                Text("Save")
+                Text(stringResource(R.string.action_save))
             }
         },
         dismissButton = {

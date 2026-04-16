@@ -73,9 +73,9 @@ internal fun DashboardSectionContent(viewModel: SystemAdminViewModel, uiState: S
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         // Section header (matches web SectionHeader)
         Column {
-            Text("Dashboard", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.settings_title_dashboard), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Server information and status", color = NetflixLightGray, fontSize = 14.sp)
+            Text(stringResource(R.string.settings_desc_dashboard), color = NetflixLightGray, fontSize = 14.sp)
         }
 
         if (uiState.isLoading) {
@@ -88,10 +88,10 @@ internal fun DashboardSectionContent(viewModel: SystemAdminViewModel, uiState: S
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            DashboardStatCard("Total Media", serverInfo?.mediaCount?.toString() ?: "0", modifier = Modifier.weight(1f))
-            DashboardStatCard("Series", serverInfo?.seriesCount?.toString() ?: "0", modifier = Modifier.weight(1f))
-            DashboardStatCard("Users", serverInfo?.userCount?.toString() ?: "0", modifier = Modifier.weight(1f))
-            DashboardStatCard("Total Size", formatBytes(serverInfo?.totalSize ?: 0L), modifier = Modifier.weight(1f))
+            DashboardStatCard(stringResource(R.string.dashboard_total_media), serverInfo?.mediaCount?.toString() ?: "0", modifier = Modifier.weight(1f))
+            DashboardStatCard(stringResource(R.string.dashboard_series), serverInfo?.seriesCount?.toString() ?: "0", modifier = Modifier.weight(1f))
+            DashboardStatCard(stringResource(R.string.settings_title_users), serverInfo?.userCount?.toString() ?: "0", modifier = Modifier.weight(1f))
+            DashboardStatCard(stringResource(R.string.dashboard_total_size), formatBytes(serverInfo?.totalSize ?: 0L), modifier = Modifier.weight(1f))
         }
 
         // Server Information
@@ -101,7 +101,7 @@ internal fun DashboardSectionContent(viewModel: SystemAdminViewModel, uiState: S
             shape = RoundedCornerShape(8.dp),
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("Server Information", color = NetflixWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.dashboard_server_info), color = NetflixWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 DashboardInfoRow("Version", serverInfo?.version ?: "Unknown")

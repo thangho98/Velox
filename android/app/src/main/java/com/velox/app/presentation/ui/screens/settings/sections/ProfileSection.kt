@@ -68,8 +68,8 @@ fun ProfileSectionRoute(
 @Composable
 internal fun ProfileSectionContent(viewModel: UserProfileViewModel, uiState: UserProfileUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Profile", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text("Manage your account information", color = NetflixLightGray, fontSize = 14.sp)
+        Text(stringResource(R.string.settings_title_profile), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.settings_desc_profile), color = NetflixLightGray, fontSize = 14.sp)
 
         OutlinedTextField(
             value = uiState.username,
@@ -83,12 +83,12 @@ internal fun ProfileSectionContent(viewModel: UserProfileViewModel, uiState: Use
                 disabledLabelColor = NetflixLightGray,
             ),
         )
-        Text("Username cannot be changed", color = NetflixLightGray, fontSize = 12.sp)
+        Text(stringResource(R.string.user_cannot_change_username), color = NetflixLightGray, fontSize = 12.sp)
 
         OutlinedTextField(
             value = uiState.displayName,
             onValueChange = viewModel::updateDisplayName,
-            label = { Text("Display Name") },
+            label = { Text(stringResource(R.string.user_display_name)) },
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = NetflixWhite,
@@ -104,7 +104,7 @@ internal fun ProfileSectionContent(viewModel: UserProfileViewModel, uiState: Use
         OutlinedTextField(
             value = if (uiState.isAdmin) "Administrator" else "User",
             onValueChange = {},
-            label = { Text("Role") },
+            label = { Text(stringResource(R.string.user_role)) },
             enabled = false,
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -132,7 +132,7 @@ internal fun ProfileSectionContent(viewModel: UserProfileViewModel, uiState: Use
                     strokeWidth = 2.dp
                 )
             } else {
-                Text("Save Changes")
+                Text(stringResource(R.string.action_save_changes))
             }
         }
 
@@ -160,9 +160,12 @@ fun PreferencesSectionRoute(
 
 @Composable
 internal fun PreferencesSectionContent(viewModel: UserProfileViewModel, uiState: UserProfileUiState) {
+    val appLanguage by viewModel.currentAppLanguage.collectAsStateWithLifecycle()
+    var showLangRestartDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Preferences", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text("Customize your streaming experience", color = NetflixLightGray, fontSize = 14.sp)
+        Text(stringResource(R.string.settings_title_preferences), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.settings_desc_preferences), color = NetflixLightGray, fontSize = 14.sp)
 
         SettingsDropdown(
             label = "Subtitle Language",
@@ -206,7 +209,14 @@ internal fun PreferencesSectionContent(viewModel: UserProfileViewModel, uiState:
         }
 
         Button(
-            onClick = viewModel::savePreferences,
+            onClick = {
+                val newLang = uiState.preferences.language ?: ""
+                val didChangeLang = newLang.isNotEmpty() && newLang != appLanguage
+                viewModel.savePreferences()
+                if (didChangeLang) {
+                    showLangRestartDialog = true
+                }
+            },
             modifier = Modifier.wrapContentWidth(Alignment.Start),
             colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
             shape = RoundedCornerShape(8.dp),
@@ -219,12 +229,29 @@ internal fun PreferencesSectionContent(viewModel: UserProfileViewModel, uiState:
                     strokeWidth = 2.dp
                 )
             } else {
-                Text("Save Changes")
+                Text(stringResource(R.string.action_save_changes))
             }
         }
 
         uiState.successMessage?.let {
             Text(it, color = androidx.compose.ui.graphics.Color(0xFF4CAF50), fontSize = 14.sp)
+        }
+
+        if (showLangRestartDialog) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showLangRestartDialog = false },
+                confirmButton = {
+                    Button(
+                        onClick = { showLangRestartDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = NetflixRed)
+                    ) {
+                        Text("OK", color = NetflixWhite)
+                    }
+                },
+                title = { Text(stringResource(R.string.dialog_title_language_changed), color = NetflixWhite) },
+                text = { Text(stringResource(R.string.dialog_desc_language_changed), color = NetflixLightGray) },
+                containerColor = com.velox.app.ui.theme.NetflixDark
+            )
         }
     }
 }
@@ -244,13 +271,13 @@ fun SecuritySectionRoute(
 @Composable
 internal fun SecuritySectionContent(viewModel: UserProfileViewModel, uiState: UserProfileUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Security", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text("Change your password", color = NetflixLightGray, fontSize = 14.sp)
+        Text(stringResource(R.string.settings_title_security), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.settings_desc_security), color = NetflixLightGray, fontSize = 14.sp)
 
         OutlinedTextField(
             value = uiState.currentPassword,
             onValueChange = viewModel::updateCurrentPassword,
-            label = { Text("Current Password") },
+            label = { Text(stringResource(R.string.user_current_password)) },
             modifier = Modifier.fillMaxWidth(),
             colors = textFieldColors(),
             shape = RoundedCornerShape(8.dp),
@@ -260,7 +287,7 @@ internal fun SecuritySectionContent(viewModel: UserProfileViewModel, uiState: Us
         OutlinedTextField(
             value = uiState.newPassword,
             onValueChange = viewModel::updateNewPassword,
-            label = { Text("New Password") },
+            label = { Text(stringResource(R.string.user_new_password)) },
             modifier = Modifier.fillMaxWidth(),
             colors = textFieldColors(),
             shape = RoundedCornerShape(8.dp),
@@ -270,7 +297,7 @@ internal fun SecuritySectionContent(viewModel: UserProfileViewModel, uiState: Us
         OutlinedTextField(
             value = uiState.confirmPassword,
             onValueChange = viewModel::updateConfirmPassword,
-            label = { Text("Confirm Password") },
+            label = { Text(stringResource(R.string.user_confirm_password)) },
             modifier = Modifier.fillMaxWidth(),
             colors = textFieldColors(),
             shape = RoundedCornerShape(8.dp),
@@ -299,7 +326,7 @@ internal fun SecuritySectionContent(viewModel: UserProfileViewModel, uiState: Us
                     strokeWidth = 2.dp
                 )
             } else {
-                Text("Update Password")
+                Text(stringResource(R.string.action_update_password))
             }
         }
     }

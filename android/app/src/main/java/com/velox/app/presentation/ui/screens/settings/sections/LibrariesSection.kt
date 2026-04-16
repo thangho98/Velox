@@ -105,7 +105,7 @@ internal fun LibrariesSectionContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
-                Text("Libraries", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.settings_title_libraries), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 val count = uiState.libraries.size
                 Text("$count ${if (count == 1) "library" else "libraries"} configured", color = NetflixLightGray, fontSize = 14.sp)
             }
@@ -116,7 +116,7 @@ internal fun LibrariesSectionContent(
             ) {
                 Icon(LucideIcons.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Add Library", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.action_add_library), fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -137,14 +137,14 @@ internal fun LibrariesSectionContent(
                 ) {
                     Icon(LucideIcons.Movie, contentDescription = null, tint = NetflixGray, modifier = Modifier.size(36.dp))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("No libraries configured", color = NetflixLightGray, fontSize = 14.sp)
+                    Text(stringResource(R.string.libraries_empty), color = NetflixLightGray, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = onAddClick,
                         colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
                         shape = RoundedCornerShape(8.dp),
                     ) {
-                        Text("Add Library", fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.action_add_library), fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -323,7 +323,7 @@ internal fun LibraryDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Name") },
+                    label = { Text(stringResource(R.string.library_name)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = textFieldColors(),
                 )
@@ -331,7 +331,7 @@ internal fun LibraryDialog(
                     OutlinedTextField(
                         value = type.replaceFirstChar { it.uppercase() },
                         onValueChange = {},
-                        label = { Text("Type") },
+                        label = { Text(stringResource(R.string.library_type)) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = textFieldColors(),
                         readOnly = true,
@@ -356,7 +356,7 @@ internal fun LibraryDialog(
                 OutlinedTextField(
                     value = paths,
                     onValueChange = { paths = it },
-                    label = { Text("Paths (comma separated)") },
+                    label = { Text(stringResource(R.string.library_paths)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = textFieldColors(),
                 )
@@ -371,7 +371,7 @@ internal fun LibraryDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
             ) {
-                Text("Save")
+                Text(stringResource(R.string.action_save))
             }
         },
         dismissButton = {

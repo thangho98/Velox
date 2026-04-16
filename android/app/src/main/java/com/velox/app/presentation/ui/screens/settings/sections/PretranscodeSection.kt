@@ -102,9 +102,9 @@ internal fun PretranscodeSectionContent(viewModel: MediaSettingsViewModel, uiSta
 
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Column {
-            Text("Pre-transcode", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.settings_title_pretranscode), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Encode media in advance for instant playback — no buffering, no waiting.", color = NetflixLightGray, fontSize = 14.sp)
+            Text(stringResource(R.string.pretranscode_encode_adv), color = NetflixLightGray, fontSize = 14.sp)
         }
 
         // Enable Toggle
@@ -114,7 +114,7 @@ internal fun PretranscodeSectionContent(viewModel: MediaSettingsViewModel, uiSta
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Offline Encoding", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("Pre-encode your library into browser-compatible H.264+AAC MP4 files. Like Netflix — instant playback, zero transcoding delay.", color = NetflixLightGray, fontSize = 12.sp)
+                        Text(stringResource(R.string.pretranscode_desc), color = NetflixLightGray, fontSize = 12.sp)
                     }
                     Switch(
                         checked = settings?.enabled == true,
@@ -129,7 +129,7 @@ internal fun PretranscodeSectionContent(viewModel: MediaSettingsViewModel, uiSta
             // Quality Profiles
             Surface(modifier = Modifier.fillMaxWidth(), color = NetflixDark, shape = RoundedCornerShape(12.dp)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Quality Profiles", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.pretranscode_profiles), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(16.dp))
 
                     profiles.forEach { p ->
@@ -159,7 +159,7 @@ internal fun PretranscodeSectionContent(viewModel: MediaSettingsViewModel, uiSta
             // Schedule & Concurrency
             Surface(modifier = Modifier.fillMaxWidth(), color = NetflixDark, shape = RoundedCornerShape(12.dp)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Schedule", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.tasks_schedule), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(16.dp))
 
                     SettingsDropdown(
@@ -181,7 +181,7 @@ internal fun PretranscodeSectionContent(viewModel: MediaSettingsViewModel, uiSta
             // Storage Estimation
             Surface(modifier = Modifier.fillMaxWidth(), color = NetflixDark, shape = RoundedCornerShape(12.dp)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Storage Estimation", color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.pretranscode_storage), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(16.dp))
 
                     val libraryOptions = libraries.map { it.id.toString() to it.name }
@@ -326,8 +326,8 @@ internal fun PretranscodeSectionContent(viewModel: MediaSettingsViewModel, uiSta
     if (showCleanupConfirm) {
         AlertDialog(
             onDismissRequest = { showCleanupConfirm = false },
-            title = { Text("Delete All Pre-transcode Files", color = NetflixWhite) },
-            text = { Text("This will permanently delete all pre-encoded files and disable pre-transcode. Your original media files are NOT affected.", color = NetflixLightGray) },
+            title = { Text(stringResource(R.string.pretranscode_delete_all), color = NetflixWhite) },
+            text = { Text(stringResource(R.string.pretranscode_delete_desc), color = NetflixLightGray) },
             containerColor = NetflixDark,
             confirmButton = {
                 TextButton(

@@ -69,4 +69,150 @@
     <string name="player_audio">Audio</string>
     <string name="player_stream">Stream</string>
     <string name="player_translate">Translate</string>
+
+    <!-- Settings -->
+    <string name="settings_title_profile">Profile</string>
+    <string name="settings_desc_profile">Manage your account information</string>
+    <string name="settings_title_preferences">Preferences</string>
+    <string name="settings_desc_preferences">Customize your streaming experience</string>
+    <string name="settings_title_security">Security</string>
+    <string name="settings_desc_security">Change your password</string>
+    <string name="settings_title_sessions">Active Sessions</string>
+    <string name="settings_desc_sessions">Manage devices signed into your account</string>
+    <string name="settings_title_metadata">Metadata</string>
+    <string name="settings_desc_metadata">Configure metadata providers for movies and TV shows</string>
+    <string name="settings_title_subtitles">Subtitles</string>
+    <string name="settings_title_tasks">Scheduled Tasks</string>
+    <string name="settings_desc_tasks">Background tasks and maintenance jobs</string>
+    <string name="settings_title_dashboard">Dashboard</string>
+    <string name="settings_desc_dashboard">Server information and status</string>
+    <string name="settings_title_users">Users</string>
+    <string name="settings_desc_users">Manage user accounts</string>
+    <string name="settings_notifications">Notifications</string>
+
+    <string name="action_save_changes">Save Changes</string>
+    <string name="action_update_password">Update Password</string>
+    <string name="action_revoke">Revoke</string>
+    <string name="action_refresh_metadata">Refresh Metadata</string>
+    <string name="action_save">Save</string>
+    
+    <!-- User Form -->
+    <string name="user_display_name">Display Name</string>
+    <string name="user_role">Role</string>
+    <string name="user_current_password">Current Password</string>
+    <string name="user_new_password">New Password</string>
+    <string name="user_confirm_password">Confirm Password</string>
+    <string name="user_cannot_change_username">Username cannot be changed</string>
+    <string name="settings_title_playback">Playback</string>
+    <string name="settings_title_cinema">Cinema Mode</string>
+    <string name="settings_title_pretranscode">Pre-transcode</string>
+    <string name="settings_title_markers">Skip Intro / Credits</string>
+    <string name="settings_title_libraries">Libraries</string>
+    <string name="settings_title_activity">Activity</string>
+    <string name="settings_title_webhooks">Webhooks</string>
+
+    <string name="settings_group_web">WEB SETTINGS</string>
+    <string name="settings_group_admin">ADMIN PREFERENCES</string>
+    <string name="settings_group_server">VELOX SERVER</string>
+
+    <string name="settings_title">Settings</string>
+
+    <!-- Playback & Cinema Settings -->
+    <string name="settings_playback_desc">Configure global playback streaming policy</string>
+    <string name="playback_mode">Playback Mode</string>
+    <string name="playback_mode_desc">Controls whether the server should automatically optimize playback or force direct streaming when possible.</string>
+    <string name="playback_auto">Automatic</string>
+    <string name="playback_auto_desc">Automatically adapt quality based on network conditions and device capabilities. Best for general use.</string>
+    <string name="playback_direct">Force Direct Play</string>
+    <string name="playback_direct_desc">Disable transcoding gracefully. Media will be streamed directly when possible.</string>
+    <string name="cinema_mode">Cinema Mode</string>
+    <string name="cinema_mode_desc">Configure trailer playback and custom intros before your movies and TV shows.</string>
+    <string name="cinema_mode_warning">Please note: Cinema Mode is currently only supported on the Web application and via Casting. These settings will not affect playback on this Android device.</string>
+    <string name="cinema_enable">Enable Cinema Mode</string>
+    <string name="cinema_enable_desc">Play trailers from upcoming movies or your own library before the main feature.</string>
+    <string name="cinema_max_trailers">Max Trailers</string>
+    <string name="cinema_max_trailers_desc">Maximum number of trailers to play before the main content.</string>
+    <string name="cinema_custom_intro">Custom Intro</string>
+    <string name="cinema_intro_uploaded">Intro uploaded</string>
+    <string name="cinema_upload_intro_desc">Upload a custom intro video to play before movies.</string>
+    <string name="cinema_upload_new">Upload New Intro</string>
+    <string name="cinema_upload">Upload Intro</string>
+    <string name="cinema_trailers_original">Original</string>
+    <string name="cinema_trailers_1">1 Trailer</string>
+    <string name="cinema_trailers_2">2 Trailers</string>
+    <string name="cinema_trailers_3">3 Trailers</string>
+
+    <string name="action_add_user">Add User</string>
+    <string name="users_empty">No users found</string>
+    <string name="user_user">User</string>
+    <string name="user_created">Created</string>
+    <string name="user_actions">Actions</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_delete">Delete</string>
+    <string name="user_admin">Admin</string>
+
+    <string name="action_add_library">Add Library</string>
+    <string name="libraries_empty">No libraries configured</string>
+    <string name="library_name">Name</string>
+    <string name="library_type">Type</string>
+    <string name="library_paths">Paths (comma separated)</string>
+
+    <string name="dashboard_total_media">Total Media</string>
+    <string name="dashboard_series">Series</string>
+    <string name="dashboard_total_size">Total Size</string>
+    <string name="dashboard_server_info">Server Information</string>
+    <string name="dashboard_version">Version</string>
+    <string name="dashboard_os">OS</string>
+    <string name="dashboard_architecture">Architecture</string>
+    <string name="dashboard_database">Database</string>
+    <string name="dashboard_uptime">Uptime</string>
+
+    <string name="action_add_webhook">Add Webhook</string>
+    <string name="webhooks_empty">No webhooks configured</string>
+    <string name="webhooks_enabled">Enabled</string>
+    <string name="webhooks_url">URL</string>
+    <string name="webhooks_events">Events (comma separated)</string>
+
+    <string name="tasks_task">Task</string>
+    <string name="tasks_schedule">Schedule</string>
+    <string name="tasks_last_next">Last / Next Run</string>
+    <string name="tasks_status">Status</string>
+    <string name="tasks_action">Action</string>
+    <string name="tasks_interval">Interval</string>
+    <string name="tasks_empty">No tasks configured</string>
+    
+    <string name="subtitles_os">OpenSubtitles.com</string>
+    <string name="subtitles_os_desc">Requires both API key and account credentials.</string>
+    <string name="subtitles_api_key">API Key</string>
+    <string name="subtitles_account">Account</string>
+    <string name="subtitles_auto_download">Auto-Download Languages</string>
+    <string name="subtitles_auto_download_desc">Select target languages for automatic subtitle downloads.</string>
+    <string name="subtitles_ai">AI Subtitle Localization</string>
+    <string name="subtitles_desc">Configure subtitle providers and auto-download settings</string>
+    
+    <string name="pretranscode_desc">Pre-encode your library into browser-compatible MP4 files.</string>
+    <string name="pretranscode_encode_adv">Encode media in advance for instant playback — no buffering.</string>
+    <string name="pretranscode_storage">Storage Estimation</string>
+    <string name="pretranscode_profiles">Quality Profiles</string>
+    <string name="pretranscode_delete_all">Delete All Pre-transcode Files</string>
+    <string name="pretranscode_delete_desc">This will permanently delete all pre-encoded files.</string>
+
+    <string name="markers_desc">Detect and manage intro/credits skip markers</string>
+    <string name="markers_overview">Overview</string>
+    <string name="markers_source">Source Breakdown</string>
+    <string name="markers_detection">Detection</string>
+    <string name="action_run_detection">Run Detection</string>
+
+    <string name="activity_empty">No activity found</string>
+    <string name="activity_time">Time</string>
+    <string name="activity_media">Media</string>
+    
+    <string name="sessions_empty">No active sessions</string>
+    
+    <string name="metadata_v4_token">API / v4 Token</string>
+    <string name="metadata_refresh_all">Refresh all metadata</string>
+    <string name="metadata_bulk_fetch">Bulk fetch missing metadata and update ratings for all media.</string>
+
+    <string name="dialog_title_language_changed">Language Applied</string>
+    <string name="dialog_desc_language_changed">You have changed the application language. To ensure all texts and components are fully translated, a full app restart may be required.</string>
 </resources>

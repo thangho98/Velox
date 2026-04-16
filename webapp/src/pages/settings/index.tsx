@@ -111,7 +111,7 @@ const ALL_SECTIONS: Section[] = [
   },
   {
     id: 'pretranscode',
-    labelKey: 'Pre-transcode',
+    labelKey: 'sections.pretranscode.title',
     icon: <LuHardDrive size={18} />,
     group: 'Admin Preferences',
     adminOnly: true,

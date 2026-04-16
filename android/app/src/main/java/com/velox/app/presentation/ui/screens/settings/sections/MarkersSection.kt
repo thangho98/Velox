@@ -82,15 +82,15 @@ internal fun MarkersSectionContent(viewModel: MediaSettingsViewModel, uiState: M
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         // Section header (matches web SectionHeader)
         Column {
-            Text("Skip Intro / Credits", color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.settings_title_markers), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Detect and manage intro/credits skip markers", color = NetflixLightGray, fontSize = 14.sp)
+            Text(stringResource(R.string.markers_desc), color = NetflixLightGray, fontSize = 14.sp)
         }
 
         // ── Stats Overview Card ──
         val stats = uiState.markerStats
         MarkerCard {
-            Text("Overview", color = NetflixWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.markers_overview), color = NetflixWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(16.dp))
 
             if (uiState.isLoading) {
@@ -152,7 +152,7 @@ internal fun MarkersSectionContent(viewModel: MediaSettingsViewModel, uiState: M
                 HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text("Source Breakdown", color = Color(0xFFD1D5DB), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.markers_source), color = Color(0xFFD1D5DB), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     if (stats.chapterSource > 0) {
@@ -177,7 +177,7 @@ internal fun MarkersSectionContent(viewModel: MediaSettingsViewModel, uiState: M
 
         // ── Run Detection Card ──
         MarkerCard {
-            Text("Detection", color = NetflixWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.markers_detection), color = NetflixWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 "Run audio fingerprint analysis to detect intro/credits segments across your library. Works best for TV series with recurring intros.",
@@ -217,7 +217,7 @@ internal fun MarkersSectionContent(viewModel: MediaSettingsViewModel, uiState: M
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Running...", fontWeight = FontWeight.SemiBold)
                 } else {
-                    Text("Run Detection", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.action_run_detection), fontWeight = FontWeight.SemiBold)
                 }
             }
 

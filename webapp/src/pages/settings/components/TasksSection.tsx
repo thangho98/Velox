@@ -2,15 +2,17 @@ import { useState } from 'react'
 import { LuPlay, LuPencil, LuX } from 'react-icons/lu'
 import { useScheduledTasks, useRunTask, useUpdateTaskInterval } from '@/hooks/stores/useAdmin'
 import { Select } from '@/components/ui/Select'
+import { Trans } from 'react-i18next'
+import { useTranslation } from '@/hooks/useTranslation'
 import { SectionHeader, Spinner, timeAgo } from './shared'
 
-const INTERVAL_OPTIONS = [
-  { label: 'Every 30 Minutes', value: '30m' },
-  { label: 'Every 1 Hour', value: '1h' },
-  { label: 'Every 12 Hours', value: '12h' },
-  { label: 'Every 24 Hours', value: '24h' },
-  { label: 'Every 7 Days', value: '168h' },
-  { label: 'Custom...', value: 'custom' },
+const getIntervalOptions = (t: any) => [
+  { label: t('tasks.intervalOptions.30m'), value: '30m' },
+  { label: t('tasks.intervalOptions.1h'), value: '1h' },
+  { label: t('tasks.intervalOptions.12h'), value: '12h' },
+  { label: t('tasks.intervalOptions.24h'), value: '24h' },
+  { label: t('tasks.intervalOptions.168h'), value: '168h' },
+  { label: t('tasks.intervalOptions.custom'), value: 'custom' },
 ]
 
 function cleanInterval(val: string) {
@@ -29,7 +31,9 @@ function EditIntervalModal({
   onClose: () => void
   onSave: (val: string) => void
 }) {
-  const isPreset = INTERVAL_OPTIONS.some((o) => o.value === currentInterval)
+  const { t } = useTranslation('settings')
+  const options = getIntervalOptions(t)
+  const isPreset = options.some((o) => o.value === currentInterval)
   const [selectedPreset, setSelectedPreset] = useState(isPreset ? currentInterval : 'custom')
   const [customVal, setCustomVal] = useState(!isPreset ? currentInterval : '')
 
@@ -43,13 +47,18 @@ function EditIntervalModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-xl border border-netflix-gray/50 bg-netflix-dark p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">Edit Interval</h3>
+          <h3 className="text-lg font-semibold text-white">{t('tasks.editInterval')}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition">
             <LuX size={20} />
           </button>
         </div>
         <p className="text-sm text-gray-400 mb-4">
-          Set how often <span className="font-semibold text-gray-200">{taskName}</span> should run.
+          <Trans
+            i18nKey="tasks.editIntervalDesc"
+            t={t}
+            values={{ taskName }}
+            components={{ 1: <span className="font-semibold text-gray-200" /> }}
+          />
         </p>
 
         <div className="mb-6 space-y-4">
@@ -58,7 +67,7 @@ function EditIntervalModal({
             onChange={(e) => setSelectedPreset(e.target.value)}
             className="w-full"
           >
-            {INTERVAL_OPTIONS.map((opt) => (
+            {options.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -70,7 +79,7 @@ function EditIntervalModal({
               type="text"
               value={customVal}
               onChange={(e) => setCustomVal(e.target.value)}
-              placeholder="e.g. 24h, 30m, 7d"
+              placeholder={t('tasks.customPlaceholder')}
               className="w-full rounded-lg border border-netflix-gray bg-netflix-black px-4 py-2.5 text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               autoFocus
               onKeyDown={(e) => {
@@ -86,14 +95,14 @@ function EditIntervalModal({
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm font-medium text-gray-300 hover:bg-netflix-gray/50 transition"
           >
-            Cancel
+            {t('actions.cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={selectedPreset === 'custom' && !customVal.trim()}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Save
+            {t('actions.save')}
           </button>
         </div>
       </div>
@@ -102,6 +111,7 @@ function EditIntervalModal({
 }
 
 export function TasksSection() {
+  const { t } = useTranslation('settings')
   const [runningTask, setRunningTask] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState<{ name: string; interval: string } | null>(null)
 
@@ -134,7 +144,7 @@ export function TasksSection() {
 
   return (
     <div className="max-w-3xl">
-      <SectionHeader title="Scheduled Tasks" description="Background tasks and maintenance jobs" />
+      <SectionHeader title={t('sections.tasks.title')} description={t('sections.tasks.description')} />
 
       {editingTask && (
         <EditIntervalModal
@@ -153,18 +163,18 @@ export function TasksSection() {
             <table className="w-full">
               <thead className="border-b border-netflix-gray bg-netflix-black/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Task</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">{t('tasks.table.task')}</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">
-                    Interval
+                    {t('tasks.table.interval')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">
-                    Last Run
+                    {t('tasks.table.lastRun')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">
-                    Next Run
+                    {t('tasks.table.nextRun')}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">{t('tasks.table.status')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">{t('tasks.table.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -185,14 +195,14 @@ export function TasksSection() {
                               setEditingTask({ name: task.name, interval: cleanedInterval })
                             }
                             className="text-gray-500 opacity-0 group-hover:opacity-100 hover:text-white transition-all outline-none"
-                            title="Edit interval"
+                            title={t('tasks.action.editInterval')}
                           >
                             <LuPencil size={14} />
                           </button>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-400">
-                        {task.last_run ? timeAgo(task.last_run) : 'Never'}
+                        {task.last_run ? timeAgo(task.last_run) : t('tasks.never')}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-400">
                         {new Date(task.next_run).toLocaleString()}
@@ -201,10 +211,10 @@ export function TasksSection() {
                         {isTaskRunning ? (
                           <span className="flex items-center gap-1.5 text-xs text-yellow-400">
                             <div className="h-3 w-3 animate-spin rounded-full border-2 border-yellow-400 border-t-transparent" />
-                            Running
+                            {t('tasks.status.running')}
                           </span>
                         ) : (
-                          <span className="text-xs text-gray-500">Idle</span>
+                          <span className="text-xs text-gray-500">{t('tasks.status.idle')}</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -214,7 +224,7 @@ export function TasksSection() {
                           className="flex items-center gap-1.5 rounded bg-netflix-gray px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
                         >
                           <LuPlay size={14} />
-                          {isTaskRunning ? 'Running...' : 'Run Now'}
+                          {isTaskRunning ? t('tasks.action.running') : t('tasks.action.runNow')}
                         </button>
                       </td>
                     </tr>
@@ -224,7 +234,7 @@ export function TasksSection() {
             </table>
           </div>
           {(!tasks || tasks.length === 0) && (
-            <p className="py-8 text-center text-sm text-gray-400">No scheduled tasks</p>
+            <p className="py-8 text-center text-sm text-gray-400">{t('tasks.noTasks')}</p>
           )}
         </div>
       )}
