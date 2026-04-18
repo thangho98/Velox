@@ -54,14 +54,14 @@ fun LibrariesSectionRoute(
     viewModel: SystemAdminViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     var showAddLibraryDialog by remember { mutableStateOf(false) }
     var editingLibrary by remember { mutableStateOf<com.velox.app.domain.model.Library?>(null) }
-    
+
     LaunchedEffect(Unit) {
         viewModel.loadLibraries()
     }
-    
+
     if (showAddLibraryDialog || editingLibrary != null) {
         LibraryDialog(
             library = editingLibrary,
@@ -80,7 +80,7 @@ fun LibrariesSectionRoute(
             },
         )
     }
-    
+
     LibrariesSectionContent(
         uiState = uiState,
         onAddClick = { showAddLibraryDialog = true },

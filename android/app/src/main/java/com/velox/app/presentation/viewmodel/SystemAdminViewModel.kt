@@ -17,24 +17,24 @@ import javax.inject.Inject
 
 data class SystemAdminUiState(
     val isLoading: Boolean = false,
-    
+
     // Dashboard Stats
     val serverInfo: ServerInfoDto? = null,
     val libraryStats: List<LibraryStatsDto> = emptyList(),
     val activityLogs: List<ActivityLogDto> = emptyList(),
-    
+
     // Libraries
     val libraries: List<Library> = emptyList(),
     val scanningLibraryId: Int? = null,
-    
+
     // Users
     val users: List<AdminUser> = emptyList(),
     val currentUserId: Int? = null,
-    
+
     // Tasks
     val tasks: List<TaskDto> = emptyList(),
     val runningTaskName: String? = null,
-    
+
     // Webhooks
     val webhooks: List<Webhook> = emptyList(),
 
@@ -60,16 +60,16 @@ class SystemAdminViewModel @Inject constructor(
     fun loadDashboardData() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            
+
             settingsRepository.fetchServerInfo()
                 .onSuccess { info -> _uiState.update { it.copy(serverInfo = info) } }
-            
+
             settingsRepository.fetchLibraryStats()
                 .onSuccess { stats -> _uiState.update { it.copy(libraryStats = stats) } }
-                
+
             settingsRepository.fetchAdminActivity(limit = 10)
                 .onSuccess { activities -> _uiState.update { it.copy(activityLogs = activities) } }
-                
+
             _uiState.update { it.copy(isLoading = false) }
         }
     }
@@ -110,7 +110,7 @@ class SystemAdminViewModel @Inject constructor(
                                 createdAt = u.createdAt,
                             )
                         }
-                    )}
+                    ) }
                 }
         }
     }

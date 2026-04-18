@@ -61,17 +61,17 @@ fun PretranscodeSectionRoute(
     viewModel: MediaSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadPretranscode()
         viewModel.loadLibraries()
     }
-    
+
     androidx.compose.runtime.DisposableEffect(Unit) {
         viewModel.startPretranscodePolling()
         onDispose { viewModel.stopPretranscodePolling() }
     }
-    
+
     PretranscodeSectionContent(
         viewModel = viewModel,
         uiState = uiState

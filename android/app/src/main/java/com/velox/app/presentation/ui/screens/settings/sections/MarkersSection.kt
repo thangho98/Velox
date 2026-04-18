@@ -54,12 +54,12 @@ fun MarkersSectionRoute(
     viewModel: MediaSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadMarkerStats()
         viewModel.loadLibraries()
     }
-    
+
     MarkersSectionContent(
         viewModel = viewModel,
         uiState = uiState

@@ -54,11 +54,11 @@ fun PlaybackSectionRoute(
     viewModel: MediaSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadPlayback()
     }
-    
+
     PlaybackSectionContent(
         viewModel = viewModel,
         uiState = uiState
@@ -156,11 +156,11 @@ fun CinemaSectionRoute(
     viewModel: MediaSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadCinema()
     }
-    
+
     CinemaSectionContent(
         viewModel = viewModel,
         uiState = uiState

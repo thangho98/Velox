@@ -54,11 +54,11 @@ fun ActivitySectionRoute(
     viewModel: SystemAdminViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadActivity()
     }
-    
+
     ActivitySectionContent(
         viewModel = viewModel,
         uiState = uiState

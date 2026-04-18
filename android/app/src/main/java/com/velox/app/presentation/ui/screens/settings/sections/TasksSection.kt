@@ -54,11 +54,11 @@ fun TasksSectionRoute(
     viewModel: SystemAdminViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadTasks()
     }
-    
+
     TasksSectionContent(
         viewModel = viewModel,
         uiState = uiState

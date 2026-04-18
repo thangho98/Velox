@@ -54,11 +54,11 @@ fun SessionsSectionRoute(
     viewModel: UserProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadProfileData()
     }
-    
+
     SessionsSectionContent(
         viewModel = viewModel,
         uiState = uiState

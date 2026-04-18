@@ -54,11 +54,11 @@ fun DashboardSectionRoute(
     viewModel: SystemAdminViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadDashboardData()
     }
-    
+
     DashboardSectionContent(
         viewModel = viewModel,
         uiState = uiState

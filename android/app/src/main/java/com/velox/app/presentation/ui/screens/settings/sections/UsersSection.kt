@@ -54,14 +54,14 @@ fun UsersSectionRoute(
     viewModel: SystemAdminViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     var showAddUserDialog by remember { mutableStateOf(false) }
     var editingUser by remember { mutableStateOf<AdminUser?>(null) }
-    
+
     LaunchedEffect(Unit) {
         viewModel.loadUsers()
     }
-    
+
     if (showAddUserDialog || editingUser != null) {
         UserDialog(
             user = editingUser,
@@ -80,7 +80,7 @@ fun UsersSectionRoute(
             },
         )
     }
-    
+
     UsersSectionContent(
         uiState = uiState,
         onAddClick = { showAddUserDialog = true },

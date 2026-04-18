@@ -54,14 +54,14 @@ fun WebhooksSectionRoute(
     viewModel: SystemAdminViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     var showAddWebhookDialog by remember { mutableStateOf(false) }
     var editingWebhook by remember { mutableStateOf<Webhook?>(null) }
-    
+
     LaunchedEffect(Unit) {
         viewModel.loadWebhooks()
     }
-    
+
     if (showAddWebhookDialog || editingWebhook != null) {
         WebhookDialog(
             webhook = editingWebhook,
@@ -80,7 +80,7 @@ fun WebhooksSectionRoute(
             },
         )
     }
-    
+
     WebhooksSectionContent(
         uiState = uiState,
         onAddClick = { showAddWebhookDialog = true },

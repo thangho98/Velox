@@ -30,7 +30,7 @@ fun SettingsScreen(
     mediaSettingsViewModel: MediaSettingsViewModel = hiltViewModel(),
 ) {
     var selectedTab by remember { mutableStateOf<SettingsSection?>(null) }
-    
+
     val profileState by profileViewModel.uiState.collectAsStateWithLifecycle()
     val adminState by systemAdminViewModel.uiState.collectAsStateWithLifecycle()
     val mediaState by mediaSettingsViewModel.uiState.collectAsStateWithLifecycle()
@@ -39,8 +39,8 @@ fun SettingsScreen(
 
     LaunchedEffect(profileState.error, adminState.error, mediaState.error) {
         val err = profileState.error ?: adminState.error ?: mediaState.error
-        err?.let { 
-            snackbarHostState.showSnackbar(it) 
+        err?.let {
+            snackbarHostState.showSnackbar(it)
             profileViewModel.clearMessages()
             systemAdminViewModel.clearMessages()
             mediaSettingsViewModel.clearMessages()
@@ -49,8 +49,8 @@ fun SettingsScreen(
 
     LaunchedEffect(profileState.successMessage, adminState.successMessage, mediaState.successMessage) {
         val msg = profileState.successMessage ?: adminState.successMessage ?: mediaState.successMessage
-        msg?.let { 
-            snackbarHostState.showSnackbar(it) 
+        msg?.let {
+            snackbarHostState.showSnackbar(it)
             profileViewModel.clearMessages()
             systemAdminViewModel.clearMessages()
             mediaSettingsViewModel.clearMessages()
