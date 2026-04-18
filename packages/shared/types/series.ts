@@ -62,6 +62,7 @@ export interface SeriesListParams {
   sort?: 'newest' | 'oldest' | 'rating' | 'title'
   limit?: number
   offset?: number
+  start_char?: string
 }
 
 export interface SeriesMetadataEditRequest {

@@ -147,3 +147,9 @@ data class SearchResponse(
     val movies: List<MediaListItemDto>? = null,
     val series: List<SeriesListItemDto>? = null,
 )
+
+@Serializable
+data class AlphabetCountDto(
+    val letter: String,
+    val count: Int,
+)

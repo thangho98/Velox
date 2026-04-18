@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -14,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +34,7 @@ import com.velox.app.presentation.ui.components.NotificationBell
 import com.velox.app.presentation.viewmodel.FavoritesUiState
 import com.velox.app.presentation.viewmodel.FavoritesViewModel
 import com.velox.app.ui.theme.NetflixBlack
+import com.velox.app.ui.theme.NetflixDark
 import com.velox.app.ui.theme.NetflixGray
 import com.velox.app.ui.theme.NetflixLightGray
 import com.velox.app.ui.theme.NetflixRed
@@ -58,10 +61,12 @@ fun FavoritesScreen(
         onNotificationsClick = onNotificationsClick,
         onSettingsClick = onSettingsClick,
         onRetry = { viewModel.refresh() },
-        onToggleFavorite = { viewModel.toggleFavorite(it) }
+        onToggleFavorite = { viewModel.toggleFavorite(it) },
+        onLoadMore = { viewModel.loadMore() }
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FavoritesScreenContent(
     uiState: FavoritesUiState,
@@ -72,7 +77,9 @@ private fun FavoritesScreenContent(
     onSettingsClick: () -> Unit,
     onRetry: () -> Unit,
     onToggleFavorite: (Int) -> Unit,
+    onLoadMore: () -> Unit,
 ) {
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -144,19 +151,46 @@ private fun FavoritesScreenContent(
                     }
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 100.dp),
-                    contentPadding = PaddingValues(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                PullToRefreshBox(
+                    isRefreshing = uiState.isLoading,
+                    onRefresh = onRetry,
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    items(uiState.favorites) { item ->
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 100.dp),
+                        contentPadding = PaddingValues(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                    itemsIndexed(uiState.favorites, key = { _, item -> item.id }) { index, item ->
+                        // Trigger pagination when reaching near the end
+                        if (index >= uiState.favorites.size - 40 && !uiState.isLoadingMore && !uiState.hasReachedMax) {
+                            LaunchedEffect(uiState.favorites.size) {
+                                onLoadMore()
+                            }
+                        }
+
                         FavoriteCard(
                             item = item,
                             onClick = { onMediaClick(item.id) },
                             onRemove = { onToggleFavorite(item.id) },
                         )
                     }
+
+                    if (uiState.isLoadingMore) {
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(24.dp))
+                            }
+                        }
+                    }
+                    }
+
                 }
             }
         }
@@ -199,13 +233,27 @@ private fun FavoriteCard(
                         )
                     }
                 } else {
-                    Box(
-                        contentAlignment = Alignment.Center,
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
+                        Icon(
+                            imageVector = com.velox.app.presentation.ui.components.LucideIcons.Film,
+                            contentDescription = null,
+                            tint = NetflixLightGray,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = item.title.take(2).uppercase(),
+                            text = item.title,
                             color = NetflixLightGray,
-                            fontSize = 24.sp,
+                            fontSize = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
@@ -264,7 +312,8 @@ private fun FavoritesScreenLoadingPreview() {
             onNotificationsClick = {},
             onSettingsClick = {},
             onRetry = {},
-            onToggleFavorite = {}
+            onToggleFavorite = {},
+            onLoadMore = {}
         )
     }
 }
@@ -281,7 +330,8 @@ private fun FavoritesScreenErrorPreview() {
             onNotificationsClick = {},
             onSettingsClick = {},
             onRetry = {},
-            onToggleFavorite = {}
+            onToggleFavorite = {},
+            onLoadMore = {}
         )
     }
 }
@@ -298,7 +348,8 @@ private fun FavoritesScreenEmptyPreview() {
             onNotificationsClick = {},
             onSettingsClick = {},
             onRetry = {},
-            onToggleFavorite = {}
+            onToggleFavorite = {},
+            onLoadMore = {}
         )
     }
 }
@@ -323,7 +374,8 @@ private fun FavoritesScreenWithItemsPreview() {
             onNotificationsClick = {},
             onSettingsClick = {},
             onRetry = {},
-            onToggleFavorite = {}
+            onToggleFavorite = {},
+            onLoadMore = {}
         )
     }
 }

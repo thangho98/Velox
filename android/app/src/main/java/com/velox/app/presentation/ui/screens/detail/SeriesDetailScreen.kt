@@ -41,6 +41,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import com.velox.app.presentation.ui.components.ResponsiveImage
 import com.velox.app.R
 import com.velox.app.domain.model.Episode
@@ -78,7 +79,10 @@ fun SeriesDetailScreen(
         onEpisodeClick = onEpisodeClick,
         onRefresh = { viewModel.refresh() },
         onToggleFavorite = { viewModel.toggleFavorite() },
-        onSeasonSelect = { viewModel.selectSeason(it) }
+        onSeasonSelect = { viewModel.selectSeason(it) },
+        onAutoDownloadSubtitle = { mediaId, onResult ->
+            viewModel.autoDownloadSubtitle(mediaId, onResult)
+        }
     )
 }
 
@@ -92,6 +96,7 @@ fun SeriesDetailContent(
     onToggleFavorite: () -> Unit,
     onSeasonSelect: (Season) -> Unit,
     onEditEpisode: ((Episode) -> Unit)? = null,
+    onAutoDownloadSubtitle: (Int, (Boolean) -> Unit) -> Unit = { _, _ -> },
 ) {
     var currentTrailerIndex by remember { mutableIntStateOf(0) }
     var showTrailer by remember { mutableStateOf(false) }
@@ -140,6 +145,8 @@ fun SeriesDetailContent(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(NetflixBlack)) {
+        val snackbarHostState = remember { SnackbarHostState() }
+        val coroutineScope = rememberCoroutineScope()
         // Fixed Background Backdrop
         val series = uiState.series
         if (series != null && (series.backdropPath != null || series.backdrop != null)) {
@@ -187,6 +194,7 @@ fun SeriesDetailContent(
         }
 
         Scaffold(
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             topBar = {
                 TopAppBar(
                     title = { },
@@ -497,6 +505,17 @@ fun SeriesDetailContent(
                             seriesTitle = series.title,
                             onClick = { onEpisodeClick(episode.mediaId) },
                             onEditClick = if (uiState.isAdmin) { { editingEpisode = episode } } else null,
+                            onAutoDownloadSubtitle = { mediaId, onResult ->
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Searching and downloading subtitle...")
+                                }
+                                onAutoDownloadSubtitle(mediaId) { success ->
+                                    onResult(success)
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(if (success) "Subtitle downloaded successfully!" else "Could not find a subtitle match.")
+                                    }
+                                }
+                            }
                         )
                     }
                 }
@@ -559,8 +578,10 @@ fun EpisodeCard(
     seriesTitle: String,
     onClick: () -> Unit,
     onEditClick: (() -> Unit)? = null,
+    onAutoDownloadSubtitle: (Int, (Boolean) -> Unit) -> Unit = { _, _ -> },
 ) {
     var showActionMenu by remember { mutableStateOf(false) }
+    var isDownloadingSubtitle by remember { mutableStateOf(false) }
 
     val screenWidth = LocalConfiguration.current.screenWidthDp
     val cardPadding = if (screenWidth < 600) 16.dp else 32.dp
@@ -683,6 +704,7 @@ fun EpisodeCard(
             }
             // Action menu
             Box {
+                val coroutineScope = rememberCoroutineScope()
                 ActionMenuButton(
                     expanded = showActionMenu,
                     onClick = { showActionMenu = true },
@@ -696,6 +718,20 @@ fun EpisodeCard(
                             onClick = { showActionMenu = false },
                         ))
                         add(ActionMenuItem.StreamUrl(onClick = { showActionMenu = false }))
+                        add(ActionMenuItem.Custom(
+                            label = "Auto-download subtitles",
+                            icon = LucideIcons.Download,
+                            isLoading = isDownloadingSubtitle,
+                            autoDismiss = false,
+                            onClick = {
+                                if (isDownloadingSubtitle) return@Custom
+                                isDownloadingSubtitle = true
+                                onAutoDownloadSubtitle(episode.mediaId) {
+                                    isDownloadingSubtitle = false
+                                    showActionMenu = false
+                                }
+                            }
+                        ))
                         if (onEditClick != null) {
                             add(ActionMenuItem.Separator)
                             add(ActionMenuItem.Edit(onClick = { showActionMenu = false; onEditClick() }))

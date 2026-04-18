@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thawng/velox/internal/service"
 	"github.com/thawng/velox/internal/watcher"
 )
 
@@ -169,6 +170,86 @@ func (app *serverApp) registerScheduledTasks() {
 	app.services.scheduler.Register("subtitle-auto-translate", 6*time.Hour, func(ctx context.Context) error {
 		return app.services.subtitle.AutoTranslateAll(ctx)
 	})
+
+	app.services.scheduler.Register("subtitle-auto-download", 24*time.Hour, func(ctx context.Context) error {
+		if app.services.subtitleSearch == nil {
+			return nil
+		}
+		limit := 100
+		offset := 0
+		for {
+			files, err := app.repos.mediaFile.ListAllPaginated(ctx, limit, offset)
+			if err != nil {
+				return fmt.Errorf("listing media files: %w", err)
+			}
+			if len(files) == 0 {
+				break
+			}
+			for _, f := range files {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				_ = app.services.subtitleSearch.AutoDownload(ctx, f.MediaID, f.ID)
+			}
+			offset += limit
+		}
+		return nil
+	})
+
+	// Cloud provider session refresh (Plan W). fshare TTL is ~30min; refresh
+	// tick every 5min to catch providers in the "expiring within 5min" window.
+	if app.cloudRegistry != nil {
+		refreshSvc := service.NewProviderRefreshService(
+			app.repos.storageProvider,
+			app.cloudRegistry,
+			app.cfg.Cloud.SecretKey,
+			nil, // use default logger
+		)
+		app.services.scheduler.Register("cloud-provider-refresh", 5*time.Minute, func(ctx context.Context) error {
+			return refreshSvc.RefreshExpiring(ctx, 5*time.Minute)
+		})
+
+		// Backfill cloud media metadata: probe unindexed cloud files for codec,
+		// resolution, audio tracks, and embedded subtitles. Runs sequentially
+		// to avoid FShare rate limiting. Only processes files with empty video_codec.
+		app.services.scheduler.Register("cloud-media-probe", 6*time.Hour, func(ctx context.Context) error {
+			const batchSize = 50
+			probed := 0
+			for {
+				// Always query from offset 0: successfully probed files drop out of the
+				// result set (video_codec becomes non-empty), so the window shifts naturally.
+				// Only increment offset by the number of failures to skip past stuck files.
+				files, err := app.repos.mediaFile.ListUnprobedCloud(ctx, batchSize, 0)
+				if err != nil {
+					return fmt.Errorf("listing unprobed cloud files: %w", err)
+				}
+				if len(files) == 0 {
+					break
+				}
+				batchFailed := 0
+				for i := range files {
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
+					if err := app.services.stream.ProbeAndUpdateCloudMetadata(ctx, &files[i]); err != nil {
+						log.Printf("cloud-media-probe: file %d: %v", files[i].ID, err)
+						batchFailed++
+						continue
+					}
+					probed++
+				}
+				// If every file in the batch failed, stop to avoid infinite loop.
+				if batchFailed == len(files) {
+					log.Printf("cloud-media-probe: entire batch failed (%d files), stopping", batchFailed)
+					break
+				}
+			}
+			if probed > 0 {
+				log.Printf("cloud-media-probe: probed %d files", probed)
+			}
+			return nil
+		})
+	}
 }
 
 func serve(server *http.Server) error {

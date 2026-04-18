@@ -305,3 +305,8 @@ data class PlaybackInfoParams(
     val selectedSubtitle: String? = null,
     val selectedSubtitleId: Int? = null,
 )
+
+data class AlphabetCount(
+    val letter: String,
+    val count: Int,
+)

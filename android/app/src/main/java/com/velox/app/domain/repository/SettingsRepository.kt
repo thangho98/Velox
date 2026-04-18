@@ -76,6 +76,8 @@ interface SettingsRepository {
     suspend fun updateAITranslationSettings(request: UpdateAITranslationRequest,): retrofit2.Response<DataWrapper<AITranslationSettingsDto>>
     suspend fun getAutoSubSettings(): retrofit2.Response<DataWrapper<AutoSubSettingsDto>>
     suspend fun updateAutoSubSettings(request: UpdateAutoSubRequest,): retrofit2.Response<DataWrapper<AutoSubSettingsDto>>
+    suspend fun getAutoTranslateSettings(): retrofit2.Response<DataWrapper<AutoTranslateSettingsDto>>
+    suspend fun updateAutoTranslateSettings(request: UpdateAutoTranslateRequest,): retrofit2.Response<DataWrapper<AutoTranslateSettingsDto>>
     suspend fun getPlaybackSettings(): retrofit2.Response<DataWrapper<PlaybackSettingsDto>>
     suspend fun updatePlaybackSettings(request: UpdatePlaybackRequest,): retrofit2.Response<DataWrapper<PlaybackSettingsDto>>
     suspend fun getCinemaSettings(): retrofit2.Response<DataWrapper<CinemaSettingsDto>>
@@ -176,6 +178,8 @@ interface SettingsRepository {
     suspend fun fetchOpenSubsSettings(): com.velox.app.domain.model.DataResult<OpenSubsSettingsDto>
     suspend fun fetchAITranslationSettings(): com.velox.app.domain.model.DataResult<AITranslationSettingsDto>
     suspend fun fetchAutoSubSettings(): com.velox.app.domain.model.DataResult<AutoSubSettingsDto>
+    suspend fun fetchAutoTranslateSettings(): com.velox.app.domain.model.DataResult<AutoTranslateSettingsDto>
+    suspend fun updateAutoTranslateSettingsSafe(request: UpdateAutoTranslateRequest): com.velox.app.domain.model.DataResult<AutoTranslateSettingsDto>
 
     /** Pretranscode Actions */
     suspend fun fetchPretranscodeEstimate(libraryId: Int): com.velox.app.domain.model.DataResult<StorageEstimateDto>
@@ -205,4 +209,5 @@ data class SubtitleSettingsBundle(
     val openSubs: OpenSubsSettingsDto?,
     val aiTranslation: AITranslationSettingsDto?,
     val autoSub: AutoSubSettingsDto?,
+    val autoTranslate: AutoTranslateSettingsDto?,
 )

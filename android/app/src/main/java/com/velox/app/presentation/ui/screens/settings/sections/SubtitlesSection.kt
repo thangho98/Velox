@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -54,11 +55,11 @@ fun SubtitlesSectionRoute(
     viewModel: MediaSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadSubtitles()
     }
-    
+
     SubtitlesSectionContent(
         viewModel = viewModel,
         uiState = uiState
@@ -94,7 +95,6 @@ internal fun SubtitlesSectionContent(viewModel: MediaSettingsViewModel, uiState:
             description = "Provides subtitles using the Subdl API.",
             apiKey = uiState.subdlSettings?.apiKey ?: "",
             hasBuiltin = uiState.subdlSettings?.hasBuiltin ?: false,
-            isRequired = false,
             placeholder = "Optional",
             url = "https://subdl.com/panel/api",
             onSave = { apiKey -> viewModel.updateProviderApiKey("subdl", apiKey) }
@@ -118,7 +118,6 @@ internal fun SubtitlesSectionContent(viewModel: MediaSettingsViewModel, uiState:
             description = "Translate subtitles using DeepL instead of Google Translate.",
             apiKey = uiState.deepLSettings?.apiKey ?: "",
             hasBuiltin = false,
-            isRequired = false,
             placeholder = "Leave empty to use Google Translate",
             url = "https://www.deepl.com/pro-api",
             onSave = { apiKey -> viewModel.updateProviderApiKey("deepl", apiKey) }
@@ -128,6 +127,11 @@ internal fun SubtitlesSectionContent(viewModel: MediaSettingsViewModel, uiState:
         AutoSubSettingsCard(
             languages = uiState.autoSubSettings?.languages ?: "",
             onSave = { langs -> viewModel.updateAutoSubSettings(langs) }
+        )
+        // Auto-Translate Languages
+        AutoTranslateSettingsCard(
+            settings = uiState.autoTranslateSettings,
+            onSave = { enabled, langs -> viewModel.updateAutoTranslateSettings(enabled, langs) }
         )
     }
 }
@@ -443,6 +447,92 @@ internal fun AutoSubSettingsCard(
                 Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(stringResource(R.string.action_save), fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun AutoTranslateSettingsCard(
+    settings: com.velox.app.data.model.AutoTranslateSettingsDto?,
+    onSave: (Boolean, String) -> Unit
+) {
+    val commonLangs = listOf("en" to "English", "vi" to "Vietnamese", "fr" to "French", "de" to "German", "es" to "Spanish", "ja" to "Japanese", "ko" to "Korean", "zh" to "Chinese")
+    var enabled by androidx.compose.runtime.remember(settings?.enabled) { androidx.compose.runtime.mutableStateOf(settings?.enabled ?: false) }
+    val selectedLangs = androidx.compose.runtime.remember(settings?.languages) {
+        androidx.compose.runtime.mutableStateListOf(*(settings?.languages ?: "").split(",").filter { it.isNotEmpty() }.toTypedArray())
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = NetflixDark,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.subtitles_auto_translate), color = NetflixWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.weight(1f))
+                if (enabled) {
+                    Surface(color = androidx.compose.ui.graphics.Color(0xFF22C55E).copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                        Text(stringResource(R.string.status_enabled), color = androidx.compose.ui.graphics.Color(0xFF22C55E), fontSize = 10.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                } else {
+                    Surface(color = NetflixGray, shape = RoundedCornerShape(4.dp)) {
+                        Text(stringResource(R.string.status_disabled), color = NetflixLightGray, fontSize = 10.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = { enabled = it },
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(stringResource(R.string.subtitles_auto_translate_desc), color = NetflixLightGray, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Column(modifier = Modifier.fillMaxWidth().let { if (!enabled) it.alpha(0.5f) else it }) {
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    for (lang in commonLangs) {
+                        val code = lang.first
+                        val label = lang.second
+                        val isSelected = selectedLangs.contains(code)
+
+                        Surface(
+                            color = if (isSelected) NetflixRed else NetflixGray,
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            modifier = Modifier.clickable(enabled = enabled) {
+                                if (isSelected) selectedLangs.remove(code) else selectedLangs.add(code)
+                            }
+                        ) {
+                            Text(
+                                label,
+                                color = if (isSelected) NetflixWhite else NetflixLightGray,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = { onSave(enabled, selectedLangs.joinToString(",")) },
+                    enabled = enabled || enabled != (settings?.enabled ?: false),
+                    colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    Icon(LucideIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.action_save), fontWeight = FontWeight.Medium)
+                }
             }
         }
     }

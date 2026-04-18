@@ -49,15 +49,31 @@ export function PreferencesSection() {
       />
       <form onSubmit={handleSubmit} className="mt-6 space-y-5">
         <Field label={t('fields.subtitleLanguage')}>
-          <Select
-            value={prefs.subtitle_language}
-            onChange={(e) => setPrefs({ subtitle_language: e.target.value })}
-            className="w-full"
-          >
-            <option value="">{t('options.language.auto')}</option>
-            <option value="vi">{t('options.language.vi')}</option>
-            <option value="en">{t('options.language.en')}</option>
-          </Select>
+          <div className="flex flex-wrap gap-4 mt-2">
+            {[
+              { id: 'vi', label: t('options.language.vi') },
+              { id: 'en', label: t('options.language.en') },
+            ].map((lang) => (
+              <label key={lang.id} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded bg-netflix-gray border-gray-600 text-netflix-red focus:ring-netflix-red"
+                  checked={prefs.subtitle_language.split(',').includes(lang.id)}
+                  onChange={(e) => {
+                    const langs = prefs.subtitle_language.split(',').filter(Boolean)
+                    if (e.target.checked) {
+                      langs.push(lang.id)
+                    } else {
+                      const idx = langs.indexOf(lang.id)
+                      if (idx > -1) langs.splice(idx, 1)
+                    }
+                    setPrefs({ subtitle_language: Array.from(new Set(langs)).join(',') })
+                  }}
+                />
+                <span className="text-gray-300">{lang.label}</span>
+              </label>
+            ))}
+          </div>
         </Field>
         <Field label={t('fields.audioLanguage')}>
           <Select

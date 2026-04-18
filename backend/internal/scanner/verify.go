@@ -140,6 +140,10 @@ func (v *Verifier) VerifyFile(ctx context.Context, fileID int64) (bool, error) {
 }
 
 func fileExists(path string) bool {
+	// Cloud paths (fshare://...) can't be verified with os.Stat — treat as present.
+	if IsCloudPath(path) {
+		return true
+	}
 	_, err := os.Stat(path)
 	return !os.IsNotExist(err)
 }

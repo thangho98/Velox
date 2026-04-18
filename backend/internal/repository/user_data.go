@@ -121,17 +121,30 @@ func (r *UserDataRepo) SetRating(ctx context.Context, userID, mediaID int64, rat
 }
 
 // ListFavorites returns items where is_favorite = 1, JOIN media for title/poster
-func (r *UserDataRepo) ListFavorites(ctx context.Context, userID int64, limit, offset int) ([]*model.UserData, error) {
-	rows, err := r.db.QueryContext(ctx, `
+func (r *UserDataRepo) ListFavorites(ctx context.Context, userID int64, limit, offset int, startChar string) ([]*model.UserData, error) {
+	query := `
 		SELECT ud.user_id, ud.media_id, ud.position, ud.completed, ud.is_favorite, ud.rating, ud.play_count, ud.last_played_at, ud.updated_at,
 			m.title, m.poster_path, COALESCE(mf.duration, 0)
 		FROM user_data ud
 		JOIN media m ON ud.media_id = m.id
 		LEFT JOIN media_files mf ON m.id = mf.media_id AND mf.is_primary = 1
-		WHERE ud.user_id = ? AND ud.is_favorite = 1
-		ORDER BY ud.updated_at DESC
-		LIMIT ? OFFSET ?`,
-		userID, limit, offset)
+		WHERE ud.user_id = ? AND ud.is_favorite = 1`
+
+	args := []interface{}{userID}
+
+	if startChar != "" {
+		if startChar == "#" {
+			query += " AND (m.title < 'A' OR m.title > 'z')"
+		} else {
+			query += " AND m.title LIKE ?"
+			args = append(args, startChar+"%")
+		}
+	}
+
+	query += ` ORDER BY m.title ASC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing favorites: %w", err)
 	}
@@ -159,6 +172,73 @@ func (r *UserDataRepo) ListFavorites(ctx context.Context, userID int64, limit, o
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// GetFavoritesAlphabet returns alphabet counts for the user's favorites
+func (r *UserDataRepo) GetFavoritesAlphabet(ctx context.Context, userID int64) ([]*model.AlphabetCount, error) {
+	query := `
+		SELECT 
+			UPPER(SUBSTR(m.title, 1, 1)) as letter,
+			COUNT(*) as count
+		FROM user_data ud
+		JOIN media m ON ud.media_id = m.id
+		WHERE ud.user_id = ? AND ud.is_favorite = 1
+		GROUP BY letter
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("getting favorites alphabet: %w", err)
+	}
+	defer rows.Close()
+
+	counts := []*model.AlphabetCount{}
+	for rows.Next() {
+		var c model.AlphabetCount
+		if err := rows.Scan(&c.Letter, &c.Count); err != nil {
+			return nil, fmt.Errorf("scanning alphabet count: %w", err)
+		}
+		// Treat non-letters as "#"
+		if len(c.Letter) > 0 {
+			ch := c.Letter[0]
+			if ch < 'A' || ch > 'Z' {
+				c.Letter = "#"
+			}
+		}
+		counts = append(counts, &c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating alphabet counts: %w", err)
+	}
+
+	// Merge '#' counts
+	mergedMap := make(map[string]int)
+	for _, c := range counts {
+		mergedMap[c.Letter] += c.Count
+	}
+
+	var merged []*model.AlphabetCount
+	for k, v := range mergedMap {
+		merged = append(merged, &model.AlphabetCount{Letter: k, Count: v})
+	}
+
+	// Sort: non-letters (#) first, then A-Z
+	for i := 0; i < len(merged); i++ {
+		for j := i + 1; j < len(merged); j++ {
+			a, b := merged[i].Letter, merged[j].Letter
+			if a == "#" {
+				// a is already before b
+				continue
+			} else if b == "#" {
+				// b should be before a
+				merged[i], merged[j] = merged[j], merged[i]
+			} else if a > b {
+				merged[i], merged[j] = merged[j], merged[i]
+			}
+		}
+	}
+
+	return merged, nil
 }
 
 // ListRecentlyWatched returns items ordered by last_played_at DESC, JOIN media

@@ -35,6 +35,8 @@ sealed class ActionMenuItem {
         val icon: ImageVector,
         override val onClick: () -> Unit,
         val danger: Boolean = false,
+        val isLoading: Boolean = false,
+        val autoDismiss: Boolean = true,
     ) : ActionMenuItem()
 }
 
@@ -75,7 +77,10 @@ fun ActionMenu(
                 is ActionMenuItem.RefreshMetadata -> ActionDropdownItem(LucideIcons.Refresh, "Refresh metadata", item.onClick, onDismiss)
                 is ActionMenuItem.Info -> ActionDropdownItem(LucideIcons.Info, "Info", item.onClick, onDismiss)
                 is ActionMenuItem.Edit -> ActionDropdownItem(LucideIcons.Edit, "Edit metadata", item.onClick, onDismiss)
-                is ActionMenuItem.Custom -> ActionDropdownItem(item.icon, item.label, item.onClick, onDismiss, danger = item.danger)
+                is ActionMenuItem.Custom -> ActionDropdownItem(
+                    item.icon, item.label, item.onClick, onDismiss,
+                    danger = item.danger, isLoading = item.isLoading, autoDismiss = item.autoDismiss
+                )
             }
         }
     }
@@ -88,6 +93,8 @@ private fun ActionDropdownItem(
     onClick: () -> Unit,
     onDismiss: () -> Unit,
     danger: Boolean = false,
+    isLoading: Boolean = false,
+    autoDismiss: Boolean = true,
     iconTint: Color = Color(0xFFE5E5E5),
 ) {
     DropdownMenuItem(
@@ -99,16 +106,24 @@ private fun ActionDropdownItem(
             )
         },
         leadingIcon = {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (danger) NetflixRed else iconTint,
-                modifier = Modifier.size(20.dp),
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = if (danger) NetflixRed else iconTint,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (danger) NetflixRed else iconTint,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         },
         onClick = {
             onClick()
-            onDismiss()
+            if (autoDismiss) onDismiss()
         },
     )
 }

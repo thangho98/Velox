@@ -24,6 +24,17 @@ export function useRefreshMetadata(mediaId: number) {
   })
 }
 
+export function useCloudProbe(mediaId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<unknown>(`/media/${mediaId}/cloud-probe`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: mediaKeys.withFiles(mediaId) })
+      queryClient.invalidateQueries({ queryKey: ['streaming'] })
+    },
+  })
+}
+
 // --- Metadata Editor hooks ---
 
 export function useEditMediaMetadata(mediaId: number) {

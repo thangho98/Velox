@@ -17,11 +17,12 @@ import (
 	"github.com/thawng/velox/pkg/nameparser"
 )
 
-// MetadataMatcher is an optional interface for metadata enrichment (TMDb).
+// MetadataMatcher is an optional interface for metadata enrichment.
 // When non-nil, the pipeline calls it after persisting new media.
 type MetadataMatcher interface {
 	MatchAndPersistMovie(ctx context.Context, media *model.Media, parsed nameparser.ParsedMedia, filePath string, force bool) error
 	MatchAndPersistEpisode(ctx context.Context, media *model.Media, parsed nameparser.ParsedMedia, filePath string, libraryID int64, force bool) error
+	MatchAndPersistAnime(ctx context.Context, media *model.Media, parsed nameparser.ParsedMedia, filePath string, libraryID int64, force bool) error
 }
 
 // SubtitleAutoDownloader is an optional interface for auto-downloading subtitles.
@@ -97,10 +98,11 @@ func (p *Pipeline) SetSubtitleAutoDownloader(dl SubtitleAutoDownloader) {
 
 // ScanContext holds state during a scan
 type ScanContext struct {
-	LibraryID int64
-	JobID     int64
-	Force     bool // Force re-parse titles for existing files
-	ctx       context.Context
+	LibraryID   int64
+	LibraryType string
+	JobID       int64
+	Force       bool // Force re-parse titles for existing files
+	ctx         context.Context
 }
 
 // CreateJob creates a queued scan job for a library.
@@ -123,11 +125,18 @@ func (p *Pipeline) RunJob(ctx context.Context, job *model.ScanJob, force bool) e
 		return fmt.Errorf("starting scan job: %w", err)
 	}
 
+	lib, err := p.libraryRepo.GetByID(ctx, job.LibraryID)
+	if err != nil {
+		p.scanJobRepo.Fail(ctx, job.ID, err.Error())
+		return fmt.Errorf("loading library %d: %w", job.LibraryID, err)
+	}
+
 	scanCtx := &ScanContext{
-		LibraryID: job.LibraryID,
-		JobID:     job.ID,
-		Force:     force,
-		ctx:       ctx,
+		LibraryID:   job.LibraryID,
+		LibraryType: lib.Type,
+		JobID:       job.ID,
+		Force:       force,
+		ctx:         ctx,
 	}
 
 	// Discover phase
@@ -508,18 +517,22 @@ func (p *Pipeline) persist(scanCtx *ScanContext, path string, fingerprint string
 		}
 	}
 
-	// Phase 04: TMDb metadata enrichment (non-critical, outside transaction)
+	// Metadata enrichment (non-critical, outside transaction)
 	if p.metadataSvc != nil {
 		media, err := p.mediaRepo.GetByID(ctx, mediaID)
 		if err != nil {
 			log.Printf("Failed to get media %d for metadata: %v", mediaID, err)
 		} else {
 			var metaErr error
-			switch parsed.MediaType {
-			case "episode":
-				metaErr = p.metadataSvc.MatchAndPersistEpisode(ctx, media, parsed, path, scanCtx.LibraryID, false)
-			default:
-				metaErr = p.metadataSvc.MatchAndPersistMovie(ctx, media, parsed, path, false)
+			if scanCtx.LibraryType == model.LibraryTypeAnime {
+				metaErr = p.metadataSvc.MatchAndPersistAnime(ctx, media, parsed, path, scanCtx.LibraryID, false)
+			} else {
+				switch parsed.MediaType {
+				case "episode":
+					metaErr = p.metadataSvc.MatchAndPersistEpisode(ctx, media, parsed, path, scanCtx.LibraryID, false)
+				default:
+					metaErr = p.metadataSvc.MatchAndPersistMovie(ctx, media, parsed, path, false)
+				}
 			}
 			if metaErr != nil {
 				log.Printf("Metadata match for %s: %v", path, metaErr)

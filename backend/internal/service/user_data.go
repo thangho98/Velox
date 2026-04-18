@@ -43,7 +43,7 @@ func (s *UserDataService) UpdateProgress(ctx context.Context, userID, mediaID in
 }
 
 // ListFavorites returns user's favorite items
-func (s *UserDataService) ListFavorites(ctx context.Context, userID int64, limit, offset int) ([]*model.UserData, error) {
+func (s *UserDataService) ListFavorites(ctx context.Context, userID int64, limit, offset int, startChar string) ([]*model.UserData, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -54,11 +54,20 @@ func (s *UserDataService) ListFavorites(ctx context.Context, userID int64, limit
 		offset = 0
 	}
 
-	favorites, err := s.userDataRepo.ListFavorites(ctx, userID, limit, offset)
+	favorites, err := s.userDataRepo.ListFavorites(ctx, userID, limit, offset, startChar)
 	if err != nil {
 		return nil, fmt.Errorf("listing favorites: %w", err)
 	}
 	return favorites, nil
+}
+
+// GetFavoritesAlphabet returns alphabet counts for the user's favorites
+func (s *UserDataService) GetFavoritesAlphabet(ctx context.Context, userID int64) ([]*model.AlphabetCount, error) {
+	counts, err := s.userDataRepo.GetFavoritesAlphabet(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("getting favorites alphabet: %w", err)
+	}
+	return counts, nil
 }
 
 // ToggleFavorite toggles favorite status for a media item

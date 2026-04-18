@@ -180,6 +180,7 @@ export interface ToggleFavoriteResponse {
 export interface FavoritesListParams {
   limit?: number
   offset?: number
+  start_char?: string
 }
 
 export interface RecentlyWatchedParams {

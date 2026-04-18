@@ -59,3 +59,4 @@ mobile/modules/
 # === pnpm ===
 pnpm-lock.yaml
 .pnpm-store/
+deploy-nas.sh

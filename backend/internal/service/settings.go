@@ -10,12 +10,13 @@ import (
 
 // SettingsService orchestrates admin-facing application settings.
 type SettingsService struct {
-	repo             *repository.AppSettingsRepo
-	hasBuiltinTMDb   bool
-	hasBuiltinOMDb   bool
-	hasBuiltinTVDB   bool
-	hasBuiltinFanart bool
-	hasBuiltinSubdl  bool
+	hasBuiltinAniList bool
+	repo              *repository.AppSettingsRepo
+	hasBuiltinTMDb    bool
+	hasBuiltinOMDb    bool
+	hasBuiltinTVDB    bool
+	hasBuiltinFanart  bool
+	hasBuiltinSubdl   bool
 }
 
 // OpenSubtitlesSettings is the admin-facing OpenSubtitles config payload.
@@ -71,12 +72,13 @@ func defaultAITranslationBaseURL(provider string) string {
 // NewSettingsService creates a new settings service.
 func NewSettingsService(repo *repository.AppSettingsRepo, builtinKeys map[string]bool) *SettingsService {
 	return &SettingsService{
-		repo:             repo,
-		hasBuiltinTMDb:   builtinKeys["tmdb"],
-		hasBuiltinOMDb:   builtinKeys["omdb"],
-		hasBuiltinTVDB:   builtinKeys["tvdb"],
-		hasBuiltinFanart: builtinKeys["fanart"],
-		hasBuiltinSubdl:  builtinKeys["subdl"],
+		hasBuiltinAniList: builtinKeys["anilist"],
+		repo:              repo,
+		hasBuiltinTMDb:    builtinKeys["tmdb"],
+		hasBuiltinOMDb:    builtinKeys["omdb"],
+		hasBuiltinTVDB:    builtinKeys["tvdb"],
+		hasBuiltinFanart:  builtinKeys["fanart"],
+		hasBuiltinSubdl:   builtinKeys["subdl"],
 	}
 }
 
@@ -151,6 +153,16 @@ func (s *SettingsService) UpdateOpenSubtitles(
 		Username:    username,
 		PasswordSet: password != "",
 	}, nil
+}
+
+// GetAniList returns the current AniList configuration.
+func (s *SettingsService) GetAniList(ctx context.Context) (*APIKeySettings, error) {
+	return s.getProviderAPIKey(ctx, model.SettingAniListToken, s.hasBuiltinAniList)
+}
+
+// UpdateAniList saves the AniList bearer token.
+func (s *SettingsService) UpdateAniList(ctx context.Context, apiKey string) (*APIKeySettings, error) {
+	return s.updateProviderAPIKey(ctx, model.SettingAniListToken, apiKey, s.hasBuiltinAniList)
 }
 
 // GetTMDb returns the current TMDb configuration.

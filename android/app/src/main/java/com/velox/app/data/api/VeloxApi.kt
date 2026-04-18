@@ -43,7 +43,16 @@ interface VeloxApi {
         @Query("library_id") libraryId: Int? = null,
         @Query("limit") limit: Int = 50,
         @Query("offset") offset: Int = 0,
+        @Query("start_char") startChar: String? = null,
     ): Response<DataWrapper<List<MediaListItemDto>>>
+
+    @GET("media/alphabet")
+    suspend fun getMediaAlphabet(
+        @Query("type") type: String? = null,
+        @Query("genre") genre: String? = null,
+        @Query("year") year: String? = null,
+        @Query("library_id") libraryId: Int? = null,
+    ): Response<DataWrapper<List<AlphabetCountDto>>>
 
     @GET("media/{id}")
     suspend fun getMedia(@Path("id") mediaId: Int): Response<DataWrapper<MediaDto>>
@@ -64,7 +73,15 @@ interface VeloxApi {
         @Query("library_id") libraryId: Int? = null,
         @Query("limit") limit: Int = 50,
         @Query("offset") offset: Int = 0,
+        @Query("start_char") startChar: String? = null,
     ): Response<DataWrapper<List<SeriesListItemDto>>>
+
+    @GET("series/alphabet")
+    suspend fun getSeriesAlphabet(
+        @Query("genre") genre: String? = null,
+        @Query("year") year: String? = null,
+        @Query("library_id") libraryId: Int? = null,
+    ): Response<DataWrapper<List<AlphabetCountDto>>>
 
     @GET("series/{id}")
     suspend fun getSeries(@Path("id") seriesId: Int): Response<DataWrapper<SeriesDto>>
@@ -197,6 +214,11 @@ interface VeloxApi {
     suspend fun refreshMediaMetadata(
         @Path("id") mediaId: Int,
     ): Response<MessageResponse>
+
+    @POST("media/{id}/cloud-probe")
+    suspend fun cloudProbeMedia(
+        @Path("id") mediaId: Int,
+    ): Response<DataWrapper<Any>>
 
     @PATCH("media/{id}/metadata")
     suspend fun updateMediaMetadata(
@@ -367,6 +389,14 @@ interface VeloxApi {
         @Body request: UpdateAutoSubRequest,
     ): Response<DataWrapper<AutoSubSettingsDto>>
 
+    @GET("admin/settings/auto-translate")
+    suspend fun getAutoTranslateSettings(): Response<DataWrapper<AutoTranslateSettingsDto>>
+
+    @PUT("admin/settings/auto-translate")
+    suspend fun updateAutoTranslateSettings(
+        @Body request: UpdateAutoTranslateRequest,
+    ): Response<DataWrapper<AutoTranslateSettingsDto>>
+
     // Playback Settings
     @GET("admin/settings/playback")
     suspend fun getPlaybackSettings(): Response<DataWrapper<PlaybackSettingsDto>>
@@ -449,6 +479,11 @@ interface VeloxApi {
         @Path("id") mediaId: Int,
         @Body request: SubtitleDownloadRequest,
     ): Response<DataWrapper<SubtitleDto>>
+
+    @POST("media/{id}/subtitles/auto-download")
+    suspend fun autoDownloadSubtitle(
+        @Path("id") mediaId: Int,
+    ): Response<DataWrapper<Any>>
 
     // Subtitles - Translate
     @POST("subtitles/{id}/translate")

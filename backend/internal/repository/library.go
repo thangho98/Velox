@@ -50,8 +50,16 @@ func (r *LibraryRepo) populatePaths(ctx context.Context, libs []model.Library) e
 	return rows.Err()
 }
 
+const libraryColumns = "id, name, type, storage_provider_id, source_url, created_at"
+
+func scanLibrary(row interface{ Scan(...any) error }) (model.Library, error) {
+	var l model.Library
+	err := row.Scan(&l.ID, &l.Name, &l.Type, &l.StorageProviderID, &l.SourceURL, &l.CreatedAt)
+	return l, err
+}
+
 func (r *LibraryRepo) List(ctx context.Context) ([]model.Library, error) {
-	rows, err := r.db.QueryContext(ctx, "SELECT id, name, type, created_at FROM libraries ORDER BY name")
+	rows, err := r.db.QueryContext(ctx, "SELECT "+libraryColumns+" FROM libraries ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -59,8 +67,8 @@ func (r *LibraryRepo) List(ctx context.Context) ([]model.Library, error) {
 
 	var libs []model.Library
 	for rows.Next() {
-		var l model.Library
-		if err := rows.Scan(&l.ID, &l.Name, &l.Type, &l.CreatedAt); err != nil {
+		l, err := scanLibrary(rows)
+		if err != nil {
 			return nil, err
 		}
 		libs = append(libs, l)
@@ -76,10 +84,9 @@ func (r *LibraryRepo) List(ctx context.Context) ([]model.Library, error) {
 }
 
 func (r *LibraryRepo) GetByID(ctx context.Context, id int64) (*model.Library, error) {
-	var l model.Library
-	err := r.db.QueryRowContext(ctx,
-		"SELECT id, name, type, created_at FROM libraries WHERE id = ?", id).
-		Scan(&l.ID, &l.Name, &l.Type, &l.CreatedAt)
+	row := r.db.QueryRowContext(ctx,
+		"SELECT "+libraryColumns+" FROM libraries WHERE id = ?", id)
+	l, err := scanLibrary(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -94,6 +101,44 @@ func (r *LibraryRepo) GetByID(ctx context.Context, id int64) (*model.Library, er
 	// populatePaths modifies libs in place; return the updated copy
 	result := libs[0]
 	return &result, nil
+}
+
+// CreateCloud inserts a library backed by a cloud storage provider.
+// storageProviderID must reference an existing storage_providers row; sourceURL
+// is the provider-native folder URL (e.g. https://www.fshare.vn/folder/XYZ).
+// The libraries.path column is set to sourceURL for legacy non-null constraint.
+func (r *LibraryRepo) CreateCloud(ctx context.Context, name, libType string, storageProviderID int64, sourceURL string) (*model.Library, error) {
+	res, err := r.db.ExecContext(ctx,
+		`INSERT INTO libraries (name, path, type, storage_provider_id, source_url)
+		 VALUES (?, ?, ?, ?, ?)`,
+		name, sourceURL, libType, storageProviderID, sourceURL)
+	if err != nil {
+		return nil, fmt.Errorf("create cloud library: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	return r.GetByID(ctx, id)
+}
+
+// ListByProvider returns libraries that reference the given storage provider.
+// Used to warn before deleting a provider (libraries will be orphaned).
+func (r *LibraryRepo) ListByProvider(ctx context.Context, providerID int64) ([]model.Library, error) {
+	rows, err := r.db.QueryContext(ctx,
+		"SELECT "+libraryColumns+" FROM libraries WHERE storage_provider_id = ? ORDER BY name",
+		providerID)
+	if err != nil {
+		return nil, fmt.Errorf("list libraries by provider: %w", err)
+	}
+	defer rows.Close()
+
+	var libs []model.Library
+	for rows.Next() {
+		l, err := scanLibrary(rows)
+		if err != nil {
+			return nil, err
+		}
+		libs = append(libs, l)
+	}
+	return libs, rows.Err()
 }
 
 // Create inserts a new library with one or more root paths.

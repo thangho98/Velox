@@ -1,20 +1,37 @@
-import { useMediaList, useGenres } from '@/hooks/stores/useMedia'
+import { useInfiniteMediaList, useGenres } from '@/hooks/stores/useMedia'
 import { useFilterParams } from '@/hooks/useFilterParams'
+import { useIntersectionObserver } from '@/hooks/useIntersectionObserver'
+import { useEffect } from 'react'
 import { MediaCard } from '@/components/MediaCard'
 import { FilterBar } from '@/components/FilterBar'
 import { AlphaIndex, useAlphaScroll } from '@/components/AlphaIndex'
+import { useMediaAlphabet } from '@/hooks/stores/useMedia'
 import { LuFilm } from 'react-icons/lu'
 
 export default function MoviesPage() {
-  const { filters, setGenre, setYear, setSort, clearFilters, hasActiveFilters } = useFilterParams()
+  const { filters, setGenre, setYear, setSort, setStartChar, clearFilters, hasActiveFilters } =
+    useFilterParams()
 
-  const { data: movies, isLoading } = useMediaList({
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteMediaList({
     type: 'movie',
     genre: filters.genre || undefined,
     year: filters.year || undefined,
     sort: filters.sort,
-    limit: 500,
+    start_char: filters.start_char || undefined,
+    limit: 100,
   })
+
+  const movies = data?.pages.flat() || []
+
+  const { targetRef, isIntersecting } = useIntersectionObserver({
+    rootMargin: '200px',
+  })
+
+  useEffect(() => {
+    if (isIntersecting && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage()
+    }
+  }, [isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const { data: genreList } = useGenres('movie')
   const genres = genreList?.map((g) => g.name) ?? []
@@ -22,9 +39,22 @@ export default function MoviesPage() {
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: currentYear - 1900 + 1 }, (_, i) => String(currentYear - i))
 
-  const { activeLetters, currentLetter, scrollToLetter, getLetterForTitle } = useAlphaScroll(movies)
+  const { currentLetter, getLetterForTitle } = useAlphaScroll(movies)
 
-  const showAlphaIndex = filters.sort === 'title' && (movies?.length ?? 0) > 0
+  // Fetch the active alphabet from the server
+  const { data: alphabetCounts } = useMediaAlphabet({
+    type: 'movie',
+    genre: filters.genre || undefined,
+    year: filters.year || undefined,
+  })
+
+  // The alphabet index is only useful when sorting by title
+  const showAlphaIndex = filters.sort === 'title' && (alphabetCounts?.length ?? 0) > 0
+
+  // Extract active letters from the counts API (ignoring ones with count=0)
+  const activeLetters = new Set(
+    alphabetCounts?.filter((a) => a.count > 0).map((a) => a.letter) || [],
+  )
 
   // Track which letters have been seen to mark only the first item per letter
   const seenLetters = new Set<string>()
@@ -58,8 +88,8 @@ export default function MoviesPage() {
       {showAlphaIndex && (
         <AlphaIndex
           activeLetters={activeLetters}
-          currentLetter={currentLetter}
-          onSelect={scrollToLetter}
+          currentLetter={filters.start_char || currentLetter}
+          onSelect={setStartChar}
         />
       )}
 
@@ -79,12 +109,18 @@ export default function MoviesPage() {
         <div
           className={`grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 ${showAlphaIndex ? 'pr-8' : ''}`}
         >
-          {movies?.map((movie) => {
+          {movies?.map((movie, index) => {
             const letter = getLetterForTitle(movie.sort_title || movie.title)
             const isFirstOfLetter = showAlphaIndex && !seenLetters.has(letter)
             if (isFirstOfLetter) seenLetters.add(letter)
+
+            const isTarget = index === Math.max(0, movies.length - 30)
             return (
-              <div key={movie.id} {...(isFirstOfLetter ? { 'data-alpha-letter': letter } : {})}>
+              <div
+                key={movie.id}
+                ref={isTarget ? targetRef : undefined}
+                {...(isFirstOfLetter ? { 'data-alpha-letter': letter } : {})}
+              >
                 <MediaCard
                   id={movie.id}
                   title={movie.title}
@@ -106,6 +142,12 @@ export default function MoviesPage() {
               </div>
             )
           })}
+
+          {hasNextPage && (
+            <div className="col-span-full flex h-24 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#e50914] border-t-transparent" />
+            </div>
+          )}
         </div>
       )}
     </div>

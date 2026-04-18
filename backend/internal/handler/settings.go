@@ -69,6 +69,34 @@ type tmdbRequest struct {
 	APIKey string `json:"api_key"`
 }
 
+// GetAniList returns the current AniList configuration.
+// GET /api/admin/settings/anilist
+func (h *SettingsHandler) GetAniList(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.settingsSvc.GetAniList(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load settings")
+		return
+	}
+	respondJSON(w, http.StatusOK, settings)
+}
+
+// UpdateAniList saves the AniList bearer token.
+// PUT /api/admin/settings/anilist
+func (h *SettingsHandler) UpdateAniList(w http.ResponseWriter, r *http.Request) {
+	var req tmdbRequest
+	if err := parseJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	settings, err := h.settingsSvc.UpdateAniList(r.Context(), req.APIKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save api_key")
+		return
+	}
+	respondJSON(w, http.StatusOK, settings)
+}
+
 // GetTMDb returns the current TMDb configuration.
 // GET /api/admin/settings/tmdb
 func (h *SettingsHandler) GetTMDb(w http.ResponseWriter, r *http.Request) {

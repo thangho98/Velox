@@ -386,3 +386,15 @@ data class BackfillResultDto(
     val skipped: Int,
     val errors: List<String>? = null,
 )
+
+@Serializable
+data class AutoTranslateSettingsDto(
+    val enabled: Boolean,
+    val languages: String,
+)
+
+@Serializable
+data class UpdateAutoTranslateRequest(
+    val enabled: Boolean,
+    val languages: String,
+)

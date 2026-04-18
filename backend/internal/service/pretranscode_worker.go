@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/thawng/velox/internal/model"
+	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/pkg/ffmpegbin"
 	"github.com/thawng/velox/pkg/ffprobe"
@@ -65,6 +66,12 @@ func (s *PretranscodeService) processJob(ctx context.Context, job *model.Pretran
 	if err != nil {
 		log.Printf("pretranscode: get media file %d: %v", job.MediaFileID, err)
 		_ = s.repo.CompleteJob(ctx, job.ID, "failed")
+		return
+	}
+
+	// Skip cloud files — pretranscode requires local file access
+	if scanner.IsCloudPath(mf.FilePath) {
+		_ = s.repo.CompleteJob(ctx, job.ID, "done")
 		return
 	}
 

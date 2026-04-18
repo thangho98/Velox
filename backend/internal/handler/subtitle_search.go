@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/thawng/velox/internal/auth"
 	"github.com/thawng/velox/internal/service"
 )
 
@@ -72,4 +73,34 @@ func (h *SubtitleSearchHandler) Download(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondJSON(w, http.StatusOK, sub)
+}
+
+// AutoDownloadRequest is the body for POST /api/media/{id}/subtitles/auto-download
+type autoDownloadRequest struct {
+	Language string `json:"language"`
+}
+
+// AutoDownload automatically searches for the best subtitle match and downloads it.
+// POST /api/media/{id}/subtitles/auto-download
+func (h *SubtitleSearchHandler) AutoDownload(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	mediaID, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid media id")
+		return
+	}
+
+	subs, err := h.svc.AutoDownloadForUser(r.Context(), mediaID, userID)
+	if err != nil {
+		log.Printf("auto subtitle download failed for media %d (user: %d): %v", mediaID, userID, err)
+		respondError(w, http.StatusNotFound, "Failed to find matching subtitles")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, subs)
 }

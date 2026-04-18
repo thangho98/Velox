@@ -12,6 +12,7 @@ export * from './media'
 export * from './series'
 export * from './playback'
 export * from './admin'
+export * from './cloud'
 
 // Type placeholders until Phase 02
 export type {} // Ensure this file is treated as a module

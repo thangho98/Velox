@@ -22,13 +22,13 @@ func NewSeriesRepo(db DBTX) *SeriesRepo {
 // Create inserts a new series
 func (r *SeriesRepo) Create(ctx context.Context, s *model.Series) error {
 	query := `INSERT INTO series
-		(library_id, title, sort_title, tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date,
+		(library_id, title, sort_title, tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio, overview, status, network, first_air_date,
 		 poster_path, backdrop_path, logo_path, thumb_path)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, created_at, updated_at`
 
 	row := r.db.QueryRowContext(ctx, query,
-		s.LibraryID, s.Title, s.SortTitle, s.TmdbID, s.ImdbID, s.TvdbID,
+		s.LibraryID, s.Title, s.SortTitle, s.TmdbID, s.ImdbID, s.TvdbID, s.AnilistID, s.RomajiTitle, s.Studio,
 		s.Overview, s.Status, s.Network, s.FirstAirDate, s.PosterPath, s.BackdropPath,
 		s.LogoPath, s.ThumbPath)
 
@@ -40,11 +40,11 @@ func (r *SeriesRepo) Create(ctx context.Context, s *model.Series) error {
 func (r *SeriesRepo) GetByID(ctx context.Context, id int64) (*model.Series, error) {
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
+		tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		metadata_locked, created_at, updated_at
 		FROM series WHERE id = ?`, id).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.AnilistID, &s.RomajiTitle, &s.Studio, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
 			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -58,13 +58,13 @@ func (r *SeriesRepo) GetByID(ctx context.Context, id int64) (*model.Series, erro
 // Update updates a series (full update — used by metadata enrichment pipeline).
 func (r *SeriesRepo) Update(ctx context.Context, s *model.Series) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE series SET
-		title = ?, sort_title = ?, tmdb_id = ?, imdb_id = ?, tvdb_id = ?,
+		title = ?, sort_title = ?, tmdb_id = ?, imdb_id = ?, tvdb_id = ?, anilist_id = ?, romaji_title = ?, studio = ?,
 		overview = ?, status = ?, network = ?, first_air_date = ?,
 		poster_path = ?, backdrop_path = ?, logo_path = ?, thumb_path = ?,
 		metadata_locked = ?,
 		updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
-		s.Title, s.SortTitle, s.TmdbID, s.ImdbID, s.TvdbID,
+		s.Title, s.SortTitle, s.TmdbID, s.ImdbID, s.TvdbID, s.AnilistID, s.RomajiTitle, s.Studio,
 		s.Overview, s.Status, s.Network, s.FirstAirDate,
 		s.PosterPath, s.BackdropPath, s.LogoPath, s.ThumbPath,
 		s.MetadataLocked, s.ID)
@@ -178,7 +178,7 @@ func (r *SeriesRepo) Delete(ctx context.Context, id int64) error {
 // List retrieves series with optional filters
 func (r *SeriesRepo) List(ctx context.Context, libraryID int64, limit, offset int) ([]model.Series, error) {
 	query := `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
+		tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		metadata_locked, created_at, updated_at
 		FROM series WHERE 1=1`
 	args := []any{}
@@ -209,7 +209,7 @@ func (r *SeriesRepo) List(ctx context.Context, libraryID int64, limit, offset in
 	for rows.Next() {
 		var s model.Series
 		if err := rows.Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.AnilistID, &s.RomajiTitle, &s.Studio, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
 			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanning series: %w", err)
 		}
@@ -218,15 +218,15 @@ func (r *SeriesRepo) List(ctx context.Context, libraryID int64, limit, offset in
 	return items, rows.Err()
 }
 
-// GetByTmdbID retrieves series by TMDb ID
-func (r *SeriesRepo) GetByTmdbID(ctx context.Context, tmdbID int64) (*model.Series, error) {
+// GetByTmdbID retrieves series by TMDb ID and Library ID
+func (r *SeriesRepo) GetByTmdbID(ctx context.Context, libraryID int64, tmdbID int64) (*model.Series, error) {
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
+		tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		metadata_locked, created_at, updated_at
-		FROM series WHERE tmdb_id = ?`, tmdbID).
+		FROM series WHERE library_id = ? AND tmdb_id = ?`, libraryID, tmdbID).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.AnilistID, &s.RomajiTitle, &s.Studio, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
 			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -234,15 +234,15 @@ func (r *SeriesRepo) GetByTmdbID(ctx context.Context, tmdbID int64) (*model.Seri
 	return &s, nil
 }
 
-// GetByTvdbID retrieves series by TheTVDB ID
-func (r *SeriesRepo) GetByTvdbID(ctx context.Context, tvdbID int64) (*model.Series, error) {
+// GetByTvdbID retrieves series by TheTVDB ID and Library ID
+func (r *SeriesRepo) GetByTvdbID(ctx context.Context, libraryID int64, tvdbID int64) (*model.Series, error) {
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
+		tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		metadata_locked, created_at, updated_at
-		FROM series WHERE tvdb_id = ?`, tvdbID).
+		FROM series WHERE library_id = ? AND tvdb_id = ?`, libraryID, tvdbID).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.AnilistID, &s.RomajiTitle, &s.Studio, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
 			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -250,15 +250,31 @@ func (r *SeriesRepo) GetByTvdbID(ctx context.Context, tvdbID int64) (*model.Seri
 	return &s, nil
 }
 
-// GetByImdbID retrieves series by IMDb ID
-func (r *SeriesRepo) GetByImdbID(ctx context.Context, imdbID string) (*model.Series, error) {
+// GetByAnilistID retrieves series by AniList ID and Library ID
+func (r *SeriesRepo) GetByAnilistID(ctx context.Context, libraryID int64, anilistID int64) (*model.Series, error) {
 	var s model.Series
 	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
+		tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		metadata_locked, created_at, updated_at
-		FROM series WHERE imdb_id = ?`, imdbID).
+		FROM series WHERE library_id = ? AND anilist_id = ?`, libraryID, anilistID).
 		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.AnilistID, &s.RomajiTitle, &s.Studio, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetByImdbID retrieves series by IMDb ID and Library ID
+func (r *SeriesRepo) GetByImdbID(ctx context.Context, libraryID int64, imdbID string) (*model.Series, error) {
+	var s model.Series
+	err := r.db.QueryRowContext(ctx, `SELECT id, library_id, title, sort_title,
+		tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
+		metadata_locked, created_at, updated_at
+		FROM series WHERE library_id = ? AND imdb_id = ?`, libraryID, imdbID).
+		Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.AnilistID, &s.RomajiTitle, &s.Studio, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
 			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -269,7 +285,7 @@ func (r *SeriesRepo) GetByImdbID(ctx context.Context, imdbID string) (*model.Ser
 // Search searches series by title
 func (r *SeriesRepo) Search(ctx context.Context, query string, limit int) ([]model.Series, error) {
 	q := `SELECT id, library_id, title, sort_title,
-		tmdb_id, imdb_id, tvdb_id, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
+		tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio, overview, status, network, first_air_date, poster_path, backdrop_path, logo_path, thumb_path,
 		metadata_locked, created_at, updated_at
 		FROM series WHERE title LIKE ? OR sort_title LIKE ?
 		ORDER BY sort_title LIMIT ?`
@@ -285,7 +301,7 @@ func (r *SeriesRepo) Search(ctx context.Context, query string, limit int) ([]mod
 	for rows.Next() {
 		var s model.Series
 		if err := rows.Scan(&s.ID, &s.LibraryID, &s.Title, &s.SortTitle,
-			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
+			&s.TmdbID, &s.ImdbID, &s.TvdbID, &s.AnilistID, &s.RomajiTitle, &s.Studio, &s.Overview, &s.Status, &s.Network, &s.FirstAirDate,
 			&s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.ThumbPath, &s.MetadataLocked, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanning series: %w", err)
 		}
@@ -298,7 +314,7 @@ func (r *SeriesRepo) Search(ctx context.Context, query string, limit int) ([]mod
 // Supports filtering by library, search query, genre, and year.
 func (r *SeriesRepo) ListFiltered(ctx context.Context, f model.SeriesListFilter) ([]model.SeriesListItem, error) {
 	query := `SELECT s.id, s.library_id, s.title, s.sort_title,
-		s.tmdb_id, s.imdb_id, s.tvdb_id,
+		s.tmdb_id, s.imdb_id, s.tvdb_id, s.anilist_id, s.romaji_title, s.studio,
 		s.overview, s.status, s.network, s.first_air_date,
 		s.poster_path, s.backdrop_path, s.logo_path, s.thumb_path,
 		s.metadata_locked, s.created_at, s.updated_at,
@@ -341,6 +357,12 @@ func (r *SeriesRepo) ListFiltered(ctx context.Context, f model.SeriesListFilter)
 		args = append(args, f.Year+"%")
 	}
 
+	// StartChar filter
+	if f.StartChar != "" && f.StartChar != "#" {
+		query += " AND UPPER(s.sort_title) >= ?"
+		args = append(args, strings.ToUpper(f.StartChar))
+	}
+
 	query += " GROUP BY s.id"
 
 	// Sort order
@@ -380,7 +402,7 @@ func (r *SeriesRepo) ListFiltered(ctx context.Context, f model.SeriesListFilter)
 		var genreNames sql.NullString
 		if err := rows.Scan(
 			&item.ID, &item.LibraryID, &item.Title, &item.SortTitle,
-			&item.TmdbID, &item.ImdbID, &item.TvdbID,
+			&item.TmdbID, &item.ImdbID, &item.TvdbID, &item.AnilistID, &item.RomajiTitle, &item.Studio,
 			&item.Overview, &item.Status, &item.Network, &item.FirstAirDate,
 			&item.PosterPath, &item.BackdropPath, &item.LogoPath, &item.ThumbPath,
 			&item.MetadataLocked, &item.CreatedAt, &item.UpdatedAt,
@@ -394,6 +416,56 @@ func (r *SeriesRepo) ListFiltered(ctx context.Context, f model.SeriesListFilter)
 			item.Genres = strings.Split(genreNames.String, ",")
 		}
 
+		results = append(results, item)
+	}
+	return results, rows.Err()
+}
+
+// GetAlphabet returns the count of series items for each starting letter
+func (r *SeriesRepo) GetAlphabet(ctx context.Context, f model.SeriesListFilter) ([]model.AlphabetCount, error) {
+	query := `SELECT 
+		(CASE 
+			WHEN UPPER(SUBSTR(s.sort_title, 1, 1)) BETWEEN 'A' AND 'Z' 
+			THEN UPPER(SUBSTR(s.sort_title, 1, 1)) 
+			ELSE '#' END) as letter, 
+		COUNT(DISTINCT s.id) as count 
+		FROM series s
+		LEFT JOIN media_genres mg ON mg.series_id = s.id
+		LEFT JOIN genres g ON g.id = mg.genre_id
+		WHERE 1=1`
+	args := []any{}
+
+	if f.LibraryID > 0 {
+		query += " AND s.library_id = ?"
+		args = append(args, f.LibraryID)
+	}
+	if f.Genre != "" {
+		query += ` AND EXISTS (
+			SELECT 1 FROM media_genres mg2
+			JOIN genres g2 ON g2.id = mg2.genre_id
+			WHERE mg2.series_id = s.id AND g2.name = ?
+		)`
+		args = append(args, f.Genre)
+	}
+	if f.Year != "" {
+		query += " AND s.first_air_date LIKE ?"
+		args = append(args, f.Year+"%")
+	}
+
+	query += " GROUP BY letter ORDER BY letter"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("getting series alphabet: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.AlphabetCount
+	for rows.Next() {
+		var item model.AlphabetCount
+		if err := rows.Scan(&item.Letter, &item.Count); err != nil {
+			return nil, err
+		}
 		results = append(results, item)
 	}
 	return results, rows.Err()

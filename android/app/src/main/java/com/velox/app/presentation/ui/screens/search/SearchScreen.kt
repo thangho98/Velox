@@ -78,6 +78,8 @@ fun SearchContent(
     onRemoveRecentSearch: (String) -> Unit,
     onTypeFilterChange: (String) -> Unit,
 ) {
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -103,6 +105,14 @@ fun SearchContent(
                             cursorColor = NetflixRed,
                         ),
                         singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Search
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                            onSearch = {
+                                keyboardController?.hide()
+                            }
+                        ),
                         shape = RoundedCornerShape(8.dp),
                     )
                 },
@@ -383,14 +393,27 @@ fun SearchMovieCard(
                         )
                     }
                 } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
+                        Icon(
+                            imageVector = com.velox.app.presentation.ui.components.LucideIcons.Film,
+                            contentDescription = null,
+                            tint = NetflixLightGray,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = item.title.take(2).uppercase(),
+                            text = item.title,
                             color = NetflixLightGray,
-                            fontSize = 24.sp,
+                            fontSize = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
@@ -455,14 +478,27 @@ fun SearchSeriesCard(
                         )
                     }
                 } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
+                        Icon(
+                            imageVector = com.velox.app.presentation.ui.components.LucideIcons.Film,
+                            contentDescription = null,
+                            tint = NetflixLightGray,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = item.title.take(2).uppercase(),
+                            text = item.title,
                             color = NetflixLightGray,
-                            fontSize = 24.sp,
+                            fontSize = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }

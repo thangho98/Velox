@@ -54,11 +54,11 @@ fun MetadataSectionRoute(
     viewModel: MediaSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadMetadata()
     }
-    
+
     MetadataSectionContent(
         viewModel = viewModel,
         uiState = uiState
@@ -74,15 +74,36 @@ internal fun MetadataSectionContent(viewModel: MediaSettingsViewModel, uiState: 
             Text(stringResource(R.string.settings_desc_metadata), color = NetflixLightGray, fontSize = 14.sp)
         }
 
+        // AniList Settings
+        ProviderSettingsCard(
+            name = stringResource(R.string.metadata_provider_anilist_name),
+            description = stringResource(R.string.metadata_provider_anilist_description),
+            apiKey = uiState.anilistSettings?.apiKey ?: "",
+            hasBuiltin = uiState.anilistSettings?.hasBuiltin ?: false,
+            placeholder = stringResource(R.string.metadata_provider_anilist_placeholder),
+            url = "https://anilist.gitbook.io/anilist-apiv2-docs",
+            connectUrl = "https://project-s8tij.vercel.app",
+            inputLabel = stringResource(R.string.metadata_provider_anilist_token_label),
+            supportingText = if (uiState.anilistSettings?.hasBuiltin == true) {
+                stringResource(R.string.metadata_provider_anilist_optional)
+            } else {
+                stringResource(R.string.metadata_provider_anilist_optional_no_builtin)
+            },
+            helperText = stringResource(R.string.metadata_provider_anilist_auth_note),
+            configuredStatusText = stringResource(R.string.metadata_status_custom_token),
+            builtinStatusText = stringResource(R.string.metadata_status_env_token),
+            onSave = { apiKey -> viewModel.updateProviderApiKey("anilist", apiKey) }
+        )
+
         // TMDb Settings
         ProviderSettingsCard(
             name = "The Movie Database (TMDb)",
             description = "Primary metadata provider for movies and TV shows.",
             apiKey = uiState.tmdbSettings?.apiKey ?: "",
             hasBuiltin = uiState.tmdbSettings?.hasBuiltin ?: true,
-            isRequired = false,
             placeholder = "Optional",
             url = "https://www.themoviedb.org/settings/api",
+            inputLabel = stringResource(R.string.metadata_tmdb_api_label),
             onSave = { apiKey -> viewModel.updateProviderApiKey("tmdb", apiKey) }
         )
 
@@ -92,7 +113,6 @@ internal fun MetadataSectionContent(viewModel: MediaSettingsViewModel, uiState: 
             description = "Provides additional ratings and metadata.",
             apiKey = uiState.omdbSettings?.apiKey ?: "",
             hasBuiltin = uiState.omdbSettings?.hasBuiltin ?: false,
-            isRequired = true,
             placeholder = "Required",
             url = "https://www.omdbapi.com/apikey.aspx",
             onSave = { apiKey -> viewModel.updateProviderApiKey("omdb", apiKey) }
@@ -104,7 +124,6 @@ internal fun MetadataSectionContent(viewModel: MediaSettingsViewModel, uiState: 
             description = "Fall-back provider for TV shows and episodes.",
             apiKey = uiState.tvdbSettings?.apiKey ?: "",
             hasBuiltin = uiState.tvdbSettings?.hasBuiltin ?: false,
-            isRequired = true,
             placeholder = "Required",
             url = "https://thetvdb.com/api-information",
             onSave = { apiKey -> viewModel.updateProviderApiKey("tvdb", apiKey) }
@@ -116,7 +135,6 @@ internal fun MetadataSectionContent(viewModel: MediaSettingsViewModel, uiState: 
             description = "Provides high quality artwork, clearlogos, and backgrounds.",
             apiKey = uiState.fanartSettings?.apiKey ?: "",
             hasBuiltin = uiState.fanartSettings?.hasBuiltin ?: true,
-            isRequired = false,
             placeholder = "Optional",
             url = "https://fanart.tv/get-an-api-key/",
             onSave = { apiKey -> viewModel.updateProviderApiKey("fanart", apiKey) }
@@ -152,12 +170,23 @@ internal fun ProviderSettingsCard(
     description: String,
     apiKey: String,
     hasBuiltin: Boolean,
-    isRequired: Boolean,
     placeholder: String,
     url: String,
+    connectUrl: String? = null,
+    inputLabel: String? = null,
+    supportingText: String? = null,
+    helperText: String? = null,
+    configuredStatusText: String? = null,
+    builtinStatusText: String? = null,
     onSave: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardManager = context.getSystemService(android.content.ClipboardManager::class.java)
     var editedApiKey by androidx.compose.runtime.remember(apiKey) { androidx.compose.runtime.mutableStateOf(apiKey) }
+    val statusCustomLabel = configuredStatusText ?: stringResource(R.string.metadata_status_custom_key)
+    val statusBuiltinLabel = builtinStatusText ?: stringResource(R.string.metadata_status_env_key)
+    val inputLabelText = inputLabel ?: stringResource(R.string.metadata_api_key_label)
+    val toggleVisibilityText = stringResource(R.string.metadata_toggle_api_key_visibility)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -165,7 +194,7 @@ internal fun ProviderSettingsCard(
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            val statusText = if (apiKey.isNotEmpty()) "Custom Key" else if (hasBuiltin) "Using Internal" else "Not Configured"
+            val statusText = if (apiKey.isNotEmpty()) statusCustomLabel else if (hasBuiltin) statusBuiltinLabel else stringResource(R.string.metadata_status_not_configured)
             val statusColor = if (apiKey.isNotEmpty()) androidx.compose.ui.graphics.Color(0xFF3B82F6) else if (hasBuiltin) androidx.compose.ui.graphics.Color(0xFF22C55E) else androidx.compose.ui.graphics.Color(0xFF6B7280)
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -186,11 +215,42 @@ internal fun ProviderSettingsCard(
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(description, color = NetflixLightGray, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            TextButton(
+                onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                },
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.action_learn_more),
+                    color = NetflixRed,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
 
             var apiKeyVisible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
-            Text(stringResource(R.string.metadata_v4_token), color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(inputLabelText, color = NetflixLightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            if (!supportingText.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(supportingText, color = NetflixLightGray, fontSize = 11.sp)
+            }
+            if (!helperText.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(helperText, color = NetflixLightGray, fontSize = 11.sp)
+            }
+            if (connectUrl != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                TextButton(
+                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(connectUrl))) },
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    Text("Connect AniList to get your token", color = NetflixRed, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
+            }
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
                 value = editedApiKey,
@@ -199,8 +259,17 @@ internal fun ProviderSettingsCard(
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (apiKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
                 trailingIcon = {
-                    val image = if (apiKeyVisible) LucideIcons.Visibility else LucideIcons.VisibilityOff
-                    IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) { Icon(image, "Toggle API Key visibility") }
+                    Row {
+                        IconButton(onClick = {
+                            val clip = clipboardManager?.primaryClip
+                            val text = clip?.getItemAt(0)?.text?.toString()?.trim()
+                            if (!text.isNullOrEmpty()) editedApiKey = text
+                        }) {
+                            Icon(Icons.Default.ContentPaste, "Paste", tint = Color(0xFF9CA3AF))
+                        }
+                        val image = if (apiKeyVisible) LucideIcons.Visibility else LucideIcons.VisibilityOff
+                        IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) { Icon(image, toggleVisibilityText) }
+                    }
                 },
                 colors = textFieldColors(),
                 shape = RoundedCornerShape(8.dp),
@@ -220,4 +289,3 @@ internal fun ProviderSettingsCard(
         }
     }
 }
-

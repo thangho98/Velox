@@ -1,6 +1,7 @@
 package ffprobe
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -140,8 +141,15 @@ type ChapterTags struct {
 }
 
 // Probe runs ffprobe on the given file and returns parsed metadata.
+// Deprecated: use ProbeWithContext instead for proper timeout cancellation.
 func Probe(path string) (*ProbeResult, error) {
-	cmd := exec.Command(ffmpegbin.FFprobe(),
+	return ProbeWithContext(context.Background(), path)
+}
+
+// ProbeWithContext runs ffprobe with the provided context, enabling timeouts
+// and cancellation for network-backed files.
+func ProbeWithContext(ctx context.Context, path string) (*ProbeResult, error) {
+	cmd := exec.CommandContext(ctx, ffmpegbin.FFprobe(),
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
@@ -281,7 +289,12 @@ var hdrFilenamePattern = regexp.MustCompile(`(?i)(^|[^a-z0-9])(dovi|dv|hdr10\+|h
 // Some WEB-DL/DoVi files omit standard color_transfer metadata, so we also
 // inspect ffprobe side data and finally fall back to conservative filename hints.
 func IsHDRLike(path string) bool {
-	cmd := exec.Command(ffmpegbin.FFprobe(),
+	return IsHDRLikeCtx(context.Background(), path)
+}
+
+// IsHDRLikeCtx is the context-aware version of IsHDRLike.
+func IsHDRLikeCtx(ctx context.Context, path string) bool {
+	cmd := exec.CommandContext(ctx, ffmpegbin.FFprobe(),
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_streams",
@@ -309,7 +322,12 @@ func IsHDRLike(path string) bool {
 // should inject conservative BT.2020/PQ tags before tone mapping so filters
 // like tonemapx can apply correct tone mapping instead of failing at frame 0.
 func NeedsHDRColorMetadataFallback(path string) bool {
-	cmd := exec.Command(ffmpegbin.FFprobe(),
+	return NeedsHDRColorMetadataFallbackCtx(context.Background(), path)
+}
+
+// NeedsHDRColorMetadataFallbackCtx is the context-aware version.
+func NeedsHDRColorMetadataFallbackCtx(ctx context.Context, path string) bool {
+	cmd := exec.CommandContext(ctx, ffmpegbin.FFprobe(),
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_streams",
@@ -491,7 +509,12 @@ func parseTimeBase(timeBase string, ticks int64) float64 {
 
 // GetDVProfile returns the Dolby Vision profile of the primary video stream, or 0 if none.
 func GetDVProfile(path string) int {
-	cmd := exec.Command(ffmpegbin.FFprobe(),
+	return GetDVProfileCtx(context.Background(), path)
+}
+
+// GetDVProfileCtx is the context-aware version of GetDVProfile.
+func GetDVProfileCtx(ctx context.Context, path string) int {
+	cmd := exec.CommandContext(ctx, ffmpegbin.FFprobe(),
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_streams",

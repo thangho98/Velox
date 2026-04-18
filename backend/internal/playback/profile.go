@@ -56,6 +56,9 @@ const (
 
 // SupportsVideoCodec checks if codec is supported
 func (p *DeviceProfile) SupportsVideoCodec(codec string) bool {
+	if codec == "" {
+		return true // Assume supported if unknown (e.g., unprobed cloud media)
+	}
 	for _, c := range p.SupportedVideoCodecs {
 		if c == codec {
 			return true
@@ -66,6 +69,9 @@ func (p *DeviceProfile) SupportsVideoCodec(codec string) bool {
 
 // SupportsAudioCodec checks if codec is supported
 func (p *DeviceProfile) SupportsAudioCodec(codec string) bool {
+	if codec == "" {
+		return true // Assume supported if unknown
+	}
 	for _, c := range p.SupportedAudioCodecs {
 		if c == codec {
 			return true
@@ -76,6 +82,9 @@ func (p *DeviceProfile) SupportsAudioCodec(codec string) bool {
 
 // SupportsContainer checks if container is supported
 func (p *DeviceProfile) SupportsContainer(container string) bool {
+	if container == "" {
+		return true // Assume supported if unknown
+	}
 	for _, c := range p.SupportedContainers {
 		if c == container {
 			return true

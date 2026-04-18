@@ -216,6 +216,30 @@ func All() []Migration {
 			Up:      up035,
 			Down:    down035,
 		},
+		{
+			Version: 36,
+			Name:    "storage_providers",
+			Up:      up036,
+			Down:    down036,
+		},
+		{
+			Version: 37,
+			Name:    "libraries_provider_link",
+			Up:      up037,
+			Down:    down037,
+		},
+		{
+			Version: 38,
+			Name:    "anime_metadata",
+			Up:      up038,
+			Down:    down038,
+		},
+		{
+			Version: 39,
+			Name:    "seed_version_017",
+			Up:      up039,
+			Down:    down039,
+		},
 	}
 }
 

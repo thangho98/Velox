@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/thawng/velox/pkg/crypto"
 )
 
 type Config struct {
@@ -34,11 +36,30 @@ type Config struct {
 
 	// Built-in API keys from env (optional - for open-source distribution)
 	// If set, these act as default keys when user hasn't configured custom keys
+	AniListToken string // VELOX_ANILIST_TOKEN
 	TMDbAPIKey   string // VELOX_TMDB_API_KEY
 	OMDbAPIKey   string // VELOX_OMDB_API_KEY
 	TVDBAPIKey   string // VELOX_TVDB_API_KEY
 	FanartAPIKey string // VELOX_FANART_API_KEY
 	SubdlAPIKey  string // VELOX_SUBDL_API_KEY
+
+	// Cloud storage (Plan W)
+	Cloud CloudConfig
+}
+
+// CloudConfig holds settings for the cloudstorage abstraction layer.
+// Always on; the encryption key self-generates on first boot.
+type CloudConfig struct {
+	// SecretKey is the AES-256 key used to encrypt provider credentials at
+	// rest. Loaded in order: VELOX_CLOUD_SECRET env → {DataDir}/cloud_secret.key
+	// file → freshly generated + persisted. See pkg/crypto.LoadOrGenerateKey.
+	SecretKey []byte
+	// SecretKeyOrigin tells startup logs where the key came from.
+	SecretKeyOrigin string
+
+	// Fshare driver overrides (optional — sensible defaults live in pkg/fshare).
+	FshareAppKey    string // VELOX_FSHARE_APP_KEY
+	FshareUserAgent string // VELOX_FSHARE_USER_AGENT
 }
 
 // LoadDotEnv loads the first .env file found from a small set of common paths.
@@ -63,6 +84,13 @@ func LoadDotEnv() error {
 func Load() *Config {
 	dataDir := envOrDefault("VELOX_DATA_DIR", defaultDataDir())
 
+	cloud, err := loadCloudConfig(dataDir)
+	if err != nil {
+		// Fail fast: if we can neither read nor generate the encryption key,
+		// booting with cloud features half-broken would corrupt provider rows.
+		panic(fmt.Errorf("load cloud config: %w", err))
+	}
+
 	return &Config{
 		Host:              envOrDefault("VELOX_HOST", "0.0.0.0"),
 		Port:              envOrDefault("VELOX_PORT", "8080"),
@@ -83,12 +111,32 @@ func Load() *Config {
 		FileWatcherEnabled: envOrDefaultBool("VELOX_FILE_WATCHER", true),
 
 		// Built-in API keys from env (optional)
+		AniListToken: envOrDefault("VELOX_ANILIST_TOKEN", ""),
 		TMDbAPIKey:   envOrDefault("VELOX_TMDB_API_KEY", ""),
 		OMDbAPIKey:   envOrDefault("VELOX_OMDB_API_KEY", ""),
 		TVDBAPIKey:   envOrDefault("VELOX_TVDB_API_KEY", ""),
 		FanartAPIKey: envOrDefault("VELOX_FANART_API_KEY", ""),
 		SubdlAPIKey:  envOrDefault("VELOX_SUBDL_API_KEY", ""),
+
+		Cloud: cloud,
 	}
+}
+
+// loadCloudConfig loads (or generates) the secret key and builds the
+// CloudConfig. The key is persisted under {dataDir}/cloud_secret.key so it
+// survives restarts without requiring user action.
+func loadCloudConfig(dataDir string) (CloudConfig, error) {
+	keyPath := filepath.Join(dataDir, "cloud_secret.key")
+	key, origin, err := crypto.LoadOrGenerateKey("VELOX_CLOUD_SECRET", keyPath)
+	if err != nil {
+		return CloudConfig{}, err
+	}
+	return CloudConfig{
+		SecretKey:       key,
+		SecretKeyOrigin: origin.String(),
+		FshareAppKey:    envOrDefault("VELOX_FSHARE_APP_KEY", ""),
+		FshareUserAgent: envOrDefault("VELOX_FSHARE_USER_AGENT", ""),
+	}, nil
 }
 
 func (c *Config) Addr() string {

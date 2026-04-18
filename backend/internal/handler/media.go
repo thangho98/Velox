@@ -30,6 +30,7 @@ func (h *MediaHandler) List(w http.ResponseWriter, r *http.Request) {
 		Sort:      r.URL.Query().Get("sort"),
 		Limit:     parseIntQuery(r, "limit", 50),
 		Offset:    parseIntQuery(r, "offset", 0),
+		StartChar: r.URL.Query().Get("start_char"),
 	}
 
 	items, err := h.svc.ListFiltered(r.Context(), filter)
@@ -100,4 +101,20 @@ func (h *MediaHandler) GetVersions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, files)
+}
+
+func (h *MediaHandler) GetAlphabet(w http.ResponseWriter, r *http.Request) {
+	filter := model.MediaListFilter{
+		LibraryID: int64(parseIntQuery(r, "library_id", 0)),
+		MediaType: r.URL.Query().Get("type"),
+		Genre:     r.URL.Query().Get("genre"),
+		Year:      r.URL.Query().Get("year"),
+	}
+
+	alphabet, err := h.svc.GetAlphabet(r.Context(), filter)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, alphabet)
 }

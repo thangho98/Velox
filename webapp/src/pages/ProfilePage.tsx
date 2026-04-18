@@ -168,16 +168,32 @@ function PreferencesTab() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
-        <label className="mb-2 block text-sm font-medium text-gray-400">Subtitle Language</label>
-        <Select
-          value={prefs.subtitle_language}
-          onChange={(e) => setPrefs({ ...prefs, subtitle_language: e.target.value })}
-          className="w-full bg-netflix-gray transition-all focus:border-netflix-red"
-        >
-          <option value="">Auto</option>
-          <option value="vi">Vietnamese</option>
-          <option value="en">English</option>
-        </Select>
+        <label className="mb-2 block text-sm font-medium text-gray-400">Subtitle Languages</label>
+        <div className="flex flex-wrap gap-4 mt-2">
+          {[
+            { id: 'vi', label: 'Vietnamese' },
+            { id: 'en', label: 'English' },
+          ].map((lang) => (
+            <label key={lang.id} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded bg-netflix-gray border-gray-600 text-netflix-red focus:ring-netflix-red"
+                checked={prefs.subtitle_language.split(',').includes(lang.id)}
+                onChange={(e) => {
+                  const langs = prefs.subtitle_language.split(',').filter(Boolean)
+                  if (e.target.checked) {
+                    langs.push(lang.id)
+                  } else {
+                    const idx = langs.indexOf(lang.id)
+                    if (idx > -1) langs.splice(idx, 1)
+                  }
+                  setPrefs({ ...prefs, subtitle_language: Array.from(new Set(langs)).join(',') })
+                }}
+              />
+              <span className="text-gray-300">{lang.label}</span>
+            </label>
+          ))}
+        </div>
       </div>
 
       <div>

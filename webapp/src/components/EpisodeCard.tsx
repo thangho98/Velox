@@ -5,9 +5,20 @@ import {
   useProgress,
   useUpdateProgress,
   useStreamUrl,
+  useAutoDownloadSubtitle,
 } from '@/hooks/stores/useMedia'
 import { usePlayerStore } from '@/stores/player'
-import { LuFilm, LuPlay, LuPencil, LuLink, LuCheck, LuCircle, LuRotateCcw } from 'react-icons/lu'
+import {
+  LuFilm,
+  LuPlay,
+  LuPencil,
+  LuLink,
+  LuCheck,
+  LuCircle,
+  LuRotateCcw,
+  LuDownload,
+  LuLoaderCircle,
+} from 'react-icons/lu'
 import { useToast } from '@/components/Toast'
 import { copyTextToClipboard } from '@/lib/clipboard'
 import { ResponsiveImage } from '@/components/ResponsiveImage'
@@ -43,6 +54,9 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
     onError: () => showToastError(t('actions.copyStreamUrlFailed')),
   })
   const [copied, setCopied] = useState(false)
+  const { mutate: autoDownloadSub, isPending: isDownloadingSub } = useAutoDownloadSubtitle(
+    episode.media_id,
+  )
   const duration = episode.duration || 0
   const showProgressBar =
     !!progress && (progress.position > 0 || progress.completed) && duration > 0
@@ -80,6 +94,22 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
       label: copied ? t('actions.copied') : t('actions.copyStreamUrl'),
       icon: <LuLink size={16} className={copied ? 'text-green-400' : ''} />,
       onClick: () => getStreamUrl(),
+    },
+    {
+      label: t('subtitles.autoDownload', 'Auto-download subtitles'),
+      icon: isDownloadingSub ? (
+        <LuLoaderCircle size={16} className="animate-spin" />
+      ) : (
+        <LuDownload size={16} />
+      ),
+      onClick: () => {
+        showToastSuccess('Searching and downloading subtitles...')
+        autoDownloadSub(undefined, {
+          onSuccess: () => showToastSuccess('Subtitles downloaded successfully!'),
+          onError: () => showToastError('Could not find subtitle matches.'),
+        })
+      },
+      disabled: isDownloadingSub,
     },
     {
       label: t('actions.editMetadata'),

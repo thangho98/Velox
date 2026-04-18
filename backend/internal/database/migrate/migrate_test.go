@@ -498,6 +498,78 @@ func TestUp_Skipped021WithManualColumns(t *testing.T) {
 	}
 }
 
+func TestUp038_ColumnsAbsent(t *testing.T) {
+	db := openTestDB(t)
+	setupMediaSeriesTables(t, db)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err := up038(tx); err != nil {
+		tx.Rollback()
+		t.Fatalf("up038 with no existing columns: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	for _, tc := range []struct{ table, col string }{
+		{"media", "anilist_id"},
+		{"media", "romaji_title"},
+		{"media", "studio"},
+		{"series", "anilist_id"},
+		{"series", "romaji_title"},
+		{"series", "studio"},
+	} {
+		if !hasColumn(t, db, tc.table, tc.col) {
+			t.Errorf("column %s.%s missing after up038", tc.table, tc.col)
+		}
+	}
+}
+
+func TestUp038_ColumnsPresent(t *testing.T) {
+	db := openTestDB(t)
+	setupMediaSeriesTables(t, db)
+
+	_, err := db.Exec(`
+		ALTER TABLE media ADD COLUMN anilist_id INTEGER DEFAULT NULL;
+		ALTER TABLE media ADD COLUMN romaji_title TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media ADD COLUMN studio TEXT NOT NULL DEFAULT '';
+		ALTER TABLE series ADD COLUMN anilist_id INTEGER DEFAULT NULL;
+		ALTER TABLE series ADD COLUMN romaji_title TEXT NOT NULL DEFAULT '';
+		ALTER TABLE series ADD COLUMN studio TEXT NOT NULL DEFAULT '';
+	`)
+	if err != nil {
+		t.Fatalf("manual column add: %v", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err := up038(tx); err != nil {
+		tx.Rollback()
+		t.Fatalf("up038 with all columns already present: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	for _, tc := range []struct{ table, col string }{
+		{"media", "anilist_id"},
+		{"media", "romaji_title"},
+		{"media", "studio"},
+		{"series", "anilist_id"},
+		{"series", "romaji_title"},
+		{"series", "studio"},
+	} {
+		if !hasColumn(t, db, tc.table, tc.col) {
+			t.Errorf("column %s.%s unexpectedly missing after idempotent up038", tc.table, tc.col)
+		}
+	}
+}
+
 func TestRealMigrations_FreshDB(t *testing.T) {
 	db := openTestDB(t)
 	runner := New(db, All())
@@ -521,16 +593,34 @@ func TestRealMigrations_FreshDB(t *testing.T) {
 		}
 	}
 
+	for _, tc := range []struct{ table, col string }{
+		{"media", "anilist_id"},
+		{"media", "romaji_title"},
+		{"media", "studio"},
+		{"series", "anilist_id"},
+		{"series", "romaji_title"},
+		{"series", "studio"},
+	} {
+		if !hasColumn(t, db, tc.table, tc.col) {
+			t.Errorf("column %s.%s not found after real migration", tc.table, tc.col)
+		}
+	}
+
 	// Verify we can insert and query
 	_, err := db.Exec("INSERT INTO libraries (name, path) VALUES ('Movies', '/movies')")
 	if err != nil {
 		t.Fatalf("insert library: %v", err)
 	}
 
+	_, err = db.Exec("INSERT INTO libraries (name, path, type) VALUES ('Anime', '/anime', 'anime')")
+	if err != nil {
+		t.Fatalf("insert anime library: %v", err)
+	}
+
 	var count int
 	db.QueryRow("SELECT COUNT(*) FROM libraries").Scan(&count)
-	if count != 1 {
-		t.Errorf("expected 1 library, got %d", count)
+	if count != 2 {
+		t.Errorf("expected 2 libraries, got %d", count)
 	}
 }
 

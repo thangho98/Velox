@@ -3,11 +3,15 @@ export {
   // Media query
   mediaKeys,
   useMediaList,
+  useInfiniteMediaList,
+  useMediaAlphabet,
   useMedia,
   useMediaWithFiles,
   // Series
   seriesKeys,
   useSeriesList,
+  useInfiniteSeriesList,
+  useSeriesAlphabet,
   useSeriesDetail,
   useSeriesSearch,
   useSeasons,
@@ -25,6 +29,8 @@ export {
   useProgress,
   useUpdateProgress,
   useFavorites,
+  useInfiniteFavorites,
+  useFavoritesAlphabet,
   useToggleFavorite,
   useRecentlyWatched,
   // Continue watching
@@ -37,9 +43,11 @@ export {
   subtitleSearchKeys,
   useSubtitleSearch,
   useDownloadSubtitle,
+  useAutoDownloadSubtitle,
   useTranslateSubtitle,
   // Metadata ops
   useRefreshMetadata,
+  useCloudProbe,
   useEditMediaMetadata,
   useEditSeriesMetadata,
   useUploadMediaImage,

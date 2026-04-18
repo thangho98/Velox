@@ -123,6 +123,19 @@ func (h *MetadataHandler) BulkRefreshRatings(w http.ResponseWriter, r *http.Requ
 	respondJSON(w, http.StatusOK, map[string]int{"updated": updated})
 }
 
+// ForceBulkRefreshMetadata unconditionally re-matches all unlocked media and fetches OMDb ratings.
+// POST /api/admin/metadata/force-refresh
+func (h *MetadataHandler) ForceBulkRefreshMetadata(w http.ResponseWriter, r *http.Request) {
+	log.Println("Starting force bulk metadata refresh (Complete TMDb rematch + OMDb ratings)...")
+	updated, err := h.metadataSvc.ForceBulkRefreshAllMetadata(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	log.Printf("Force bulk metadata refresh complete: %d items updated", updated)
+	respondJSON(w, http.StatusOK, map[string]int{"updated": updated})
+}
+
 // EditMediaMetadata partially updates metadata for a media item.
 // PATCH /api/media/{id}/metadata
 func (h *MetadataHandler) EditMediaMetadata(w http.ResponseWriter, r *http.Request) {

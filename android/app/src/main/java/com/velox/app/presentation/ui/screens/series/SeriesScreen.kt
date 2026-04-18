@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -72,6 +73,9 @@ fun SeriesScreen(
         onRefresh = viewModel::refresh,
         onGenreChange = viewModel::setGenre,
         onYearChange = viewModel::setYear,
+        onStartCharChange = viewModel::setStartChar,
+        onLoadMore = viewModel::loadMore,
+        onSearch = viewModel::search,
     )
 }
 
@@ -89,6 +93,9 @@ fun SeriesContent(
     onRefresh: () -> Unit,
     onGenreChange: (String?) -> Unit,
     onYearChange: (String?) -> Unit,
+    onStartCharChange: (String?) -> Unit,
+    onLoadMore: () -> Unit,
+    onSearch: () -> Unit,
 ) {
     // Filter bottom sheet states
     var showGenreSheet by remember { mutableStateOf(false) }
@@ -104,32 +111,25 @@ fun SeriesContent(
         (currentYear downTo 1970).map { it.toString() }
     }
 
-    // Grid state for A-Z scroll tracking
-    val gridState = rememberLazyGridState()
-    val gridScope = rememberCoroutineScope()
-    var activeLetter by remember { mutableStateOf<Char?>(null) }
-
     // Group series by first letter for A-Z index
-    val groupedSeries = remember(uiState.series) {
-        uiState.series.groupBy { series ->
-            val firstChar = (series.title ?: "Unknown").firstOrNull()?.uppercaseChar() ?: '#'
-            if (firstChar in 'A'..'Z') firstChar else '#'
-        }
-    }
-
-    // Calculate active letter based on scroll position
-    LaunchedEffect(gridState.firstVisibleItemIndex) {
-        if (uiState.sortBy == "az") {
-            val visibleIndex = gridState.firstVisibleItemIndex
-            if (visibleIndex < uiState.series.size && visibleIndex >= 0) {
-                val series = uiState.series.getOrNull(visibleIndex)
-                series?.let {
-                    val firstChar = (it.title ?: "Unknown").firstOrNull()?.uppercaseChar() ?: '#'
-                    activeLetter = if (firstChar in 'A'..'Z') firstChar else '#'
-                }
+    val activeLetters = remember(uiState.alphabetCounts, uiState.series, uiState.sortBy) {
+        val currentLetters = mutableSetOf<String>()
+        if (uiState.sortBy == "az" && uiState.alphabetCounts.isNotEmpty()) {
+            uiState.alphabetCounts.filter { it.count > 0 }.forEach { currentLetters.add(it.letter) }
+        } else if (uiState.sortBy == "az") {
+            uiState.series.forEach { series ->
+                val firstChar = (series.title ?: "Unknown").firstOrNull()?.uppercaseChar() ?: '#'
+                currentLetters.add(if (firstChar in 'A'..'Z') firstChar.toString() else "#")
             }
         }
+        currentLetters
     }
+
+    // Grid state for A-Z scroll tracking
+    val gridState = rememberLazyGridState()
+    val activeLetter = uiState.startChar ?: "All"
+
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
     Scaffold(
         topBar = {
@@ -166,6 +166,24 @@ fun SeriesContent(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     placeholder = { Text("Search series...", color = NetflixLightGray) },
                     leadingIcon = { Icon(LucideIcons.Search, contentDescription = "Search", tint = NetflixLightGray) },
+                    trailingIcon = {
+                        if (uiState.searchQuery.isNotEmpty()) {
+                            IconButton(onClick = {
+                                onSearchQueryChange("")
+                            }) {
+                                Icon(LucideIcons.Close, contentDescription = "Clear", tint = NetflixLightGray)
+                            }
+                        }
+                    },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Search
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSearch = {
+                            onSearch()
+                            keyboardController?.hide()
+                        }
+                    ),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = NetflixWhite,
                         unfocusedTextColor = NetflixWhite,
@@ -289,20 +307,32 @@ fun SeriesContent(
                         )
                     }
                 } else {
-                    // Series grid
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 100.dp),
-                        state = gridState,
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            end = if (uiState.sortBy == "az") 48.dp else 16.dp, // Extra padding for A-Z sidebar
-                            top = 8.dp,
-                            bottom = 80.dp,
-                        ),
+                    PullToRefreshBox(
+                        isRefreshing = uiState.isLoading,
+                        onRefresh = onRefresh,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        // Series grid
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 100.dp),
+                            state = gridState,
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = if (uiState.sortBy == "az") 48.dp else 16.dp, // Extra padding for A-Z sidebar
+                                top = 8.dp,
+                                bottom = 80.dp,
+                            ),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         itemsIndexed(uiState.series, key = { _, series -> series.id }) { index, series ->
+                            // Trigger pagination when reaching near the end
+                            if (index >= uiState.series.size - 40 && !uiState.isLoadingMore && !uiState.hasReachedMax) {
+                                LaunchedEffect(uiState.series.size) {
+                                    onLoadMore()
+                                }
+                            }
+
                             SeriesCard(
                                 item = series,
                                 onClick = { onSeriesClick(series.id) },
@@ -312,57 +342,63 @@ fun SeriesContent(
                                 },
                             )
                         }
+
+                        if (uiState.isLoadingMore) {
+                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(24.dp))
+                                }
+                            }
+                        }
+                        }
+
                     }
                 }
             }
 
             // A-Z Sidebar (only when sort = az)
-            if (uiState.sortBy == "az" && uiState.series.isNotEmpty()) {
-                val activeLetters = remember(uiState.series) {
-                    ALPHABET.filter { letter ->
-                        groupedSeries.containsKey(letter)
-                    }
-                }
-
+            if (uiState.sortBy == "az" && (uiState.series.isNotEmpty() || uiState.alphabetCounts.isNotEmpty())) {
                 Column(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = 8.dp)
-                        .verticalScroll(rememberScrollState(), enabled = false),
+                        .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    activeLetters.forEach { letter ->
-                        val isActive = activeLetter == letter
-                        Text(
-                            text = letter.toString(),
-                            color = if (isActive) NetflixRed else NetflixLightGray.copy(alpha = 0.6f),
-                            fontSize = 12.sp,
-                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                            modifier = Modifier
-                                .width(32.dp)
-                                .height(24.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(
-                                    if (isActive) NetflixRed.copy(alpha = 0.2f)
-                                    else NetflixBlack.copy(alpha = 0.5f)
-                                )
-                                .clickable {
-                                    activeLetter = letter
-                                    // Find first series with this letter
-                                    val firstIndex = uiState.series.indexOfFirst { s ->
-                                        val firstChar = (s.title ?: "Unknown").firstOrNull()?.uppercaseChar() ?: '#'
-                                        val seriesLetter = if (firstChar in 'A'..'Z') firstChar else '#'
-                                        seriesLetter == letter
-                                    }
-                                    if (firstIndex >= 0) {
-                                        // Scroll to position
-                                        gridScope.launch {
-                                            gridState.scrollToItem(firstIndex)
+                    ALPHABET.forEach { char ->
+                        val letter = char.toString()
+                        val isActive = activeLetters.contains(letter)
+                        val isSelected = (activeLetter == letter) || (activeLetter == "All" && activeLetters.isEmpty() && letter == "#") // Basic selected handling
+
+                        if (isActive || activeLetter == letter) {
+                            Text(
+                                text = letter,
+                                color = if (activeLetter == letter) NetflixRed else NetflixLightGray.copy(alpha = 0.6f),
+                                fontSize = 12.sp,
+                                fontWeight = if (activeLetter == letter) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier
+                                    .width(32.dp)
+                                    .height(24.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(
+                                        if (activeLetter == letter) NetflixRed.copy(alpha = 0.2f)
+                                        else NetflixBlack.copy(alpha = 0.5f)
+                                    )
+                                    .clickable {
+                                        if (activeLetter == letter && activeLetter != "All") {
+                                            onStartCharChange(null) // reset to All
+                                        } else {
+                                            onStartCharChange(letter)
                                         }
-                                    }
-                                },
-                            textAlign = TextAlign.Center,
-                        )
+                                    },
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
                 }
             }
@@ -448,14 +484,27 @@ fun SeriesCard(
                         )
                     }
                 } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
+                        Icon(
+                            imageVector = com.velox.app.presentation.ui.components.LucideIcons.Film,
+                            contentDescription = null,
+                            tint = NetflixLightGray,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = item.title.take(2).uppercase(),
+                            text = item.title,
                             color = NetflixLightGray,
-                            fontSize = 24.sp,
+                            fontSize = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
                         )
                     }
                 }
@@ -524,6 +573,9 @@ fun SeriesScreenPreview() {
             onRefresh = {},
             onGenreChange = {},
             onYearChange = {},
+            onLoadMore = {},
+            onStartCharChange = {},
+            onSearch = {},
         )
     }
 }

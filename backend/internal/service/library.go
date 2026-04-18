@@ -5,18 +5,23 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/thawng/velox/internal/cloudstorage"
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/scanner"
 )
 
 type LibraryService struct {
-	repo            *repository.LibraryRepo
-	scanJobRepo     *repository.ScanJobRepo
-	pipeline        *scanner.Pipeline
-	notificationSvc *NotificationService
-	pretranscodeSvc *PretranscodeService
-	imagemetaSvc    libraryImagemetaCoordinator
+	repo                *repository.LibraryRepo
+	scanJobRepo         *repository.ScanJobRepo
+	pipeline            *scanner.Pipeline
+	notificationSvc     *NotificationService
+	pretranscodeSvc     *PretranscodeService
+	imagemetaSvc        libraryImagemetaCoordinator
+	cloudRegistry       *cloudstorage.Registry
+	storageProviderRepo *repository.StorageProviderRepo
+	cloudScanner        *scanner.Scanner
+	cloudSecret         []byte
 }
 
 // libraryImagemetaCoordinator is the subset of imagemeta.Service the library
@@ -42,7 +47,19 @@ func (s *LibraryService) SetPretranscodeService(svc *PretranscodeService) {
 // SetImagemetaService wires the blurhash/dimensions service so post-scan hooks
 // can backfill missing image metadata for the library.
 func (s *LibraryService) SetImagemetaService(svc libraryImagemetaCoordinator) {
+	if isNilInterface(svc) {
+		s.imagemetaSvc = nil
+		return
+	}
 	s.imagemetaSvc = svc
+}
+
+// SetCloud wires the cloud storage dependencies for cloud library scanning.
+func (s *LibraryService) SetCloud(registry *cloudstorage.Registry, spRepo *repository.StorageProviderRepo, cloudScanner *scanner.Scanner, secret []byte) {
+	s.cloudRegistry = registry
+	s.storageProviderRepo = spRepo
+	s.cloudScanner = cloudScanner
+	s.cloudSecret = secret
 }
 
 func (s *LibraryService) List(ctx context.Context) ([]model.Library, error) {
@@ -51,6 +68,13 @@ func (s *LibraryService) List(ctx context.Context) ([]model.Library, error) {
 
 func (s *LibraryService) Create(ctx context.Context, name, libType string, paths []string) (*model.Library, error) {
 	return s.repo.Create(ctx, name, libType, paths)
+}
+
+// CreateCloud creates a library backed by a cloud storage provider. The caller
+// is responsible for validating the URL shape against the provider before
+// persisting — the repo layer trusts its inputs.
+func (s *LibraryService) CreateCloud(ctx context.Context, name, libType string, storageProviderID int64, sourceURL string) (*model.Library, error) {
+	return s.repo.CreateCloud(ctx, name, libType, storageProviderID, sourceURL)
 }
 
 func (s *LibraryService) Delete(ctx context.Context, id int64) error {
@@ -67,34 +91,99 @@ func (s *LibraryService) Scan(ctx context.Context, id int64, force bool) (*model
 
 	go func() {
 		bgCtx := context.Background()
-		runErr := s.pipeline.RunJob(bgCtx, job, force)
-		if runErr != nil {
-			log.Printf("scan library %d job %d: %v", id, job.ID, runErr)
+
+		lib, err := s.repo.GetByID(bgCtx, id)
+		if err != nil {
+			log.Printf("scan library %d: fetch failed: %v", id, err)
+			s.scanJobRepo.Fail(bgCtx, job.ID, "Failed to fetch library")
+			return
 		}
-		// RunJob populates job.TotalFiles, job.NewFiles, job.Errors after completion
-		if s.notificationSvc != nil {
-			libName := fmt.Sprintf("Library #%d", id)
-			if lib, err := s.repo.GetByID(bgCtx, id); err == nil {
-				libName = lib.Name
+
+		if lib.IsCloudLibrary() {
+			s.runCloudScan(bgCtx, lib, job, force)
+		} else {
+			runErr := s.pipeline.RunJob(bgCtx, job, force)
+			if runErr != nil {
+				log.Printf("scan library %d job %d: %v", id, job.ID, runErr)
 			}
+		}
+
+		// Notify after completion
+		if s.notificationSvc != nil {
+			libName := lib.Name
 			if err := s.notificationSvc.NotifyScanComplete(bgCtx, nil, id, libName, job.TotalFiles, job.NewFiles, job.Errors); err != nil {
 				log.Printf("scan notify library %d: %v", id, err)
 			}
 		}
-		// Enqueue audio-remux for any new non-AAC files discovered by scan
-		if s.pretranscodeSvc != nil {
+
+		// Enqueue audio-remux for any new non-AAC files discovered by scan (only relevant for local)
+		if !lib.IsCloudLibrary() && s.pretranscodeSvc != nil {
 			s.pretranscodeSvc.EnqueueAudioRemux(bgCtx)
 		}
+
 		// Backfill blurhash / dimensions for any image paths this library owns.
-		// Incremental scan only picks up paths without a computed row (Compute
-		// is idempotent). Force scan invalidates existing rows first so every
-		// image is recomputed from scratch.
 		if s.imagemetaSvc != nil {
 			go s.backfillLibraryImages(context.Background(), id, force)
 		}
 	}()
 
 	return job, nil
+}
+
+func (s *LibraryService) runCloudScan(ctx context.Context, lib *model.Library, job *model.ScanJob, force bool) {
+	if s.cloudRegistry == nil || s.cloudScanner == nil || s.storageProviderRepo == nil {
+		_ = s.scanJobRepo.Fail(ctx, job.ID, "Cloud storage features are not fully configured")
+		return
+	}
+
+	if err := s.scanJobRepo.Start(ctx, job.ID); err != nil {
+		log.Printf("scan library %d: start job failed: %v", lib.ID, err)
+		return
+	}
+
+	provRow, err := s.storageProviderRepo.GetByID(ctx, *lib.StorageProviderID)
+	if err != nil {
+		_ = s.scanJobRepo.Fail(ctx, job.ID, fmt.Sprintf("fetch provider: %v", err))
+		return
+	}
+
+	driver, err := s.cloudRegistry.Get(provRow.ProviderType)
+	if err != nil {
+		_ = s.scanJobRepo.Fail(ctx, job.ID, fmt.Sprintf("get provider driver: %v", err))
+		return
+	}
+
+	creds, err := cloudstorage.DecryptCredentials(s.cloudSecret, provRow.CredentialsEncrypted)
+	if err != nil {
+		_ = s.scanJobRepo.Fail(ctx, job.ID, fmt.Sprintf("decrypt credentials: %v", err))
+		return
+	}
+
+	provider, err := driver.NewProvider(creds)
+	if err != nil {
+		_ = s.scanJobRepo.Fail(ctx, job.ID, fmt.Sprintf("instantiate provider: %v", err))
+		return
+	}
+
+	var sourceURL string
+	if lib.SourceURL != nil {
+		sourceURL = *lib.SourceURL
+	}
+	folderID, err := provider.ParseFolderURL(sourceURL)
+	if err != nil {
+		_ = s.scanJobRepo.Fail(ctx, job.ID, fmt.Sprintf("parse folder URL: %v", err))
+		return
+	}
+
+	totalFiles, newFiles, errCount, err := s.cloudScanner.ScanCloudLibrary(ctx, lib.ID, provider, folderID, force)
+	if err != nil {
+		_ = s.scanJobRepo.Fail(ctx, job.ID, err.Error())
+		return
+	}
+
+	if err := s.scanJobRepo.Complete(ctx, job.ID, totalFiles, newFiles, errCount, ""); err != nil {
+		log.Printf("scan library %d: completing job failed: %v", lib.ID, err)
+	}
 }
 
 // backfillLibraryImages enumerates every image path owned by a library and

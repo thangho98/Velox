@@ -10,6 +10,9 @@ type Media struct {
 	TmdbID          *int64       `json:"tmdb_id,omitempty"`
 	ImdbID          *string      `json:"imdb_id,omitempty"`
 	TvdbID          *int64       `json:"tvdb_id,omitempty"`
+	AnilistID       *int64       `json:"anilist_id,omitempty"`
+	RomajiTitle     string       `json:"romaji_title"`
+	Studio          string       `json:"studio"`
 	Overview        string       `json:"overview"`
 	Tagline         string       `json:"tagline"`
 	ReleaseDate     string       `json:"release_date"` // YYYY-MM-DD
@@ -112,6 +115,12 @@ type MediaListItem struct {
 	Completed *bool    `json:"completed,omitempty"`
 }
 
+// AlphabetCount represents the number of items for a specific starting letter
+type AlphabetCount struct {
+	Letter string `json:"letter"`
+	Count  int    `json:"count"`
+}
+
 // MediaListFilter represents filter parameters for media list queries
 type MediaListFilter struct {
 	UserID    int64 // populated from auth context for progress join
@@ -123,4 +132,5 @@ type MediaListFilter struct {
 	Sort      string // "newest" | "oldest" | "rating" | "title"
 	Limit     int
 	Offset    int
+	StartChar string // "A", "B", "#", etc.
 }

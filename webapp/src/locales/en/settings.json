@@ -23,7 +23,7 @@
     },
     "metadata": {
       "title": "Metadata",
-      "description": "Configure metadata providers for movies and TV shows"
+      "description": "Configure metadata providers for anime, movies, and TV shows"
     },
     "subtitles": {
       "title": "Subtitles",
@@ -44,6 +44,10 @@
     "libraries": {
       "title": "Libraries",
       "description": "Manage media libraries"
+    },
+    "storage": {
+      "title": "Cloud Storage",
+      "description": "Manage cloud storage providers and accounts"
     },
     "users": {
       "title": "Users",
@@ -178,6 +182,21 @@
     }
   },
   "providers": {
+    "anilist": {
+      "name": "AniList",
+      "description": "AniList powers anime matching, titles, studios, and show-level metadata for anime libraries.",
+      "token": "Optional Bearer Token",
+      "authNote": "OAuth is only needed for account-specific AniList features. Anime metadata fetching works with public GraphQL access by default.",
+      "hasBuiltin": "A built-in AniList token is configured by the server administrator — override below only if you want to use your own.",
+      "noBuiltin": "AniList public data works without a token. Add one below only if you need a private or higher-trust token.",
+      "optional": "Optional. Leave blank to use the env token or public AniList access.",
+      "optionalNoBuiltin": "Optional. Leave blank to use public AniList access.",
+      "placeholder": "Leave blank to use public AniList access",
+      "status": {
+        "customToken": "Custom Token",
+        "envToken": "Env Token"
+      }
+    },
     "tmdb": {
       "name": "TMDb (The Movie Database)",
       "description": "TMDb provides posters, backdrops, plot summaries, cast, and genres for your media.",
@@ -254,6 +273,11 @@
         "gemini": "Gemini Compatible",
         "anthropic": "Anthropic Compatible"
       }
+    },
+    "refresh": {
+      "title": "Manage Metadata",
+      "description": "Scan missing metadata for unresolved movies, or force a complete refresh of all metadata from TMDB/OMDb. This process may take a long time.",
+      "confirmForce": "Are you sure you want to FORCE REFRESH ALL metadata? This will override previously matched movies (except manually locked ones)."
     }
   },
   "actions": {
@@ -261,7 +285,9 @@
     "saving": "Saving...",
     "saved": "Saved",
     "getFreeKey": "Get free key →",
-    "refreshAllMetadata": "Refresh All Metadata",
+    "learnMore": "Learn more →",
+    "refreshMissingMetadata": "Scan Missing Metadata & Ratings",
+    "refreshAllMetadata": "Force Rescan All (Overwrite)",
     "refreshing": "Refreshing...",
     "delete": "Delete",
     "cancel": "Cancel",

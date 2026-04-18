@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.1.7 [2026-04-18]
+### Added
+- Backend: Cloud subtitle extraction — `ProbeAndUpdateCloudMetadata` now persists embedded subtitles (was audio tracks only). Cloud files get full ffprobe data (codec, resolution, audio tracks, subtitles) during scan.
+- Backend: `POST /api/media/{id}/cloud-probe` admin endpoint for on-demand cloud file probing.
+- Backend: `cloud-media-probe` scheduled task (6h interval) — backfills unprobed cloud files with metadata sequentially to avoid FShare rate limiting.
+- Backend: Metadata fallback — when TMDb movie search fails, automatically tries TV series search. Matches BBC documentaries and similar content that only exist as TV series on TMDb.
+- Backend: `ListUnprobedCloud` repository method for querying cloud files missing video codec data.
+- Backend: `hdr_resolve.go` — cloud-aware HDR detection using persisted DB fields instead of re-probing with ffprobe.
+- Backend: `ffprobe` context-aware variants (`IsHDRLikeCtx`, `NeedsHDRColorMetadataFallbackCtx`, `GetDVProfileCtx`) for proper timeout/cancellation on network-backed files.
+- Webapp: "Extract cloud subtitles" button in movie detail ActionMenu (admin only, cloud media only).
+- Webapp: AniList Connect link + clipboard paste button in Settings → Metadata.
+- Android: "Extract cloud subtitles" button in movie detail ActionMenu (admin only, cloud media only).
+- Android: AniList Connect link + clipboard paste button in Settings → Metadata provider cards.
+- Dockerfile: Added `sqlite3` CLI for production DB inspection.
+
+### Fixed
+- Backend: File verifier no longer marks cloud files (`fshare://...`) as missing — `fileExists()` skips `os.Stat` for cloud paths.
+- Backend: Pretranscode worker skips cloud files early instead of spamming ffprobe HDR probe failures.
+- Backend: `SubtitleService.ServeContent` and `TranslateSubtitle` now resolve cloud paths to HTTP URLs before calling FFmpeg.
+- Backend: Cloud probe audio/subtitle persistence wrapped in transaction to prevent intermediate empty state.
+- Backend: `ParseCloudPath("fshare://")` returns `ok=false` for empty native IDs.
+- Backend: Scheduled task pagination uses offset-0 strategy to avoid skipping files after successful probes.
+- Backend: Centralized cloud path detection through `scanner.IsCloudPath()` across all services.
+- Android: Fullscreen rotation fix — unwrap `ContextWrapper` chain to find Activity, use `SENSOR_LANDSCAPE` + force-portrait-then-release for reliable orientation toggle.
+
+### Security
+- Cloud resolver injected into `SubtitleService` — embedded subtitle extraction from cloud files no longer leaks raw `fshare://` paths to FFmpeg.
+
+## [2026-04-17]
+### Added
+- Backend: Plan W — Cloud Storage Integration. New `internal/cloudstorage` package introduces a driver-based abstraction (`Provider`, `Driver`, `PasswordAuthDriver`, `OAuthDriver`) so future Google Drive / OneDrive support plugs in without touching scanner or stream handler.
+- Backend: Fshare driver (`internal/cloudstorage/drivers/fshare`) wrapping `pkg/fshare` with URL parsing (`/folder/<linkcode>`, `/file/<linkcode>`), typed error mapping, and account-info → AccountInfo translation.
+- Backend: Migration 036 `storage_providers` table (1 row = 1 cloud account, shared across libraries) with AES-256-GCM encrypted credentials.
+- Backend: Migration 037 extends `libraries` with `storage_provider_id` + `source_url` columns (null = local filesystem, zero regression).
+- Backend: `pkg/crypto` AES-256-GCM helper for at-rest encryption with `LoadOrGenerateKey` — self-generates `{DataDir}/cloud_secret.key` on first boot (0600 perms). `VELOX_CLOUD_SECRET` env overrides for users who prefer external secret management. Cloud feature is always on (no flag).
+- Backend: `CloudWalker` scanner (provider-agnostic BFS) writing `media_files.path = {provider_type}://{native_id}`.
+- Backend: Stream URL handler (`/api/stream/{id}/url`) dispatches by library — cloud libraries return direct CDN URL + `provider_type` + `direct_cdn:true`; local libraries keep the existing `api_key` flow.
+- Backend: Storage provider admin API — `GET /api/admin/cloud/drivers`, `GET|POST /api/admin/cloud/providers`, `DELETE|POST-refresh|POST-validate-url` on `{id}`.
+- Backend: `ProviderRefreshService` scheduled every 5 min (fshare TTL ~30 min). Polymorphic by auth flow: password-auth re-logs in, OAuth refreshes token.
+- Webapp: `Settings → Storage` new section to add/refresh/delete cloud storage providers (fshare today, future drivers from driver registry).
+- Webapp: `Settings → Libraries` source picker — local filesystem vs cloud storage with folder URL paste.
+- Android: Updated `StreamUrlResponse` DTO with `provider_type` + `direct_cdn`. New `CloudUrlRefreshInterceptor` reactively refreshes expired fshare CDN URLs on 403/404 (max 2 retries per media).
+
+### Security
+- Stored fshare passwords encrypted at rest with AES-256-GCM. Key is auto-generated on first boot into `{DataDir}/cloud_secret.key` (0600 perms) unless `VELOX_CLOUD_SECRET` is explicitly set.
+
 ## [2026-04-16]
 ### Added
 - Android App: Implement zero-restart dynamic Locale switching (i18n). Switching languages directly overrides Compose's `ConfigurationContext` while keeping `Activity` inheritance intact via an overridden `ContextWrapper`.

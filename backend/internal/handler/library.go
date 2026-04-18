@@ -36,6 +36,10 @@ type createLibraryReq struct {
 	Name  string   `json:"name"`
 	Paths []string `json:"paths"`
 	Type  string   `json:"type"`
+
+	// Cloud-backed library (Plan W). Present together or both nil.
+	StorageProviderID *int64  `json:"storage_provider_id,omitempty"`
+	SourceURL         *string `json:"source_url,omitempty"`
 }
 
 func (h *LibraryHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -48,12 +52,23 @@ func (h *LibraryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+
+	// Cloud library path
+	if req.StorageProviderID != nil && req.SourceURL != nil && *req.SourceURL != "" {
+		lib, err := h.svc.CreateCloud(r.Context(), req.Name, req.Type, *req.StorageProviderID, *req.SourceURL)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusCreated, lib)
+		return
+	}
+
+	// Local library path — existing flow.
 	if len(req.Paths) == 0 {
 		respondError(w, http.StatusBadRequest, "at least one path is required")
 		return
 	}
-
-	// Verify every path exists and is a directory
 	for _, p := range req.Paths {
 		info, err := os.Stat(p)
 		if err != nil || !info.IsDir() {

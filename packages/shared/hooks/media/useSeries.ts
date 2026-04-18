@@ -2,7 +2,7 @@
  * Series, Season, Episode hooks
  */
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import { api } from '../../api'
 import type {
   Season,
@@ -10,6 +10,7 @@ import type {
   Series,
   SeriesListItem,
   SeriesListParams,
+  AlphabetCount
 } from '../../types'
 
 // Season/Episode API Functions
@@ -23,8 +24,18 @@ const seriesApi = {
     if (params.sort) searchParams.append('sort', params.sort)
     if (params.limit) searchParams.append('limit', String(params.limit))
     if (params.offset) searchParams.append('offset', String(params.offset))
+    if (params.start_char) searchParams.append('start_char', params.start_char)
     const query = searchParams.toString()
     return api.get<SeriesListItem[]>(`/series${query ? `?${query}` : ''}`)
+  },
+  alphabet: (params: SeriesListParams = {}) => {
+    const searchParams = new URLSearchParams()
+    if (params.library_id) searchParams.append('library_id', String(params.library_id))
+    if (params.genre) searchParams.append('genre', params.genre)
+    if (params.year) searchParams.append('year', params.year)
+    
+    const query = searchParams.toString()
+    return api.get<AlphabetCount[]>(`/series/alphabet${query ? `?${query}` : ''}`)
   },
   get: (id: number) => api.get<Series>(`/series/${id}`),
   search: (query: string, limit = 20) =>
@@ -39,6 +50,7 @@ const seriesApi = {
 export const seriesKeys = {
   all: ['series'] as const,
   list: (params: SeriesListParams) => [...seriesKeys.all, 'list', params] as const,
+  alphabet: (params: SeriesListParams) => [...seriesKeys.all, 'alphabet', params] as const,
   detail: (id: number) => [...seriesKeys.all, 'detail', id] as const,
   search: (query: string) => [...seriesKeys.all, 'search', query] as const,
   seasons: (seriesId: number) => [...seriesKeys.all, 'seasons', seriesId] as const,
@@ -52,6 +64,34 @@ export function useSeriesList(params: SeriesListParams = {}) {
   return useQuery({
     queryKey: seriesKeys.list(params),
     queryFn: () => seriesApi.list(params),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useSeriesAlphabet(params: SeriesListParams = {}) {
+  const filteredParams = {
+    library_id: params.library_id,
+    genre: params.genre,
+    year: params.year,
+  }
+
+  return useQuery({
+    queryKey: seriesKeys.alphabet(filteredParams),
+    queryFn: () => seriesApi.alphabet(filteredParams),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useInfiniteSeriesList(params: SeriesListParams = {}) {
+  return useInfiniteQuery({
+    queryKey: [...seriesKeys.list(params), 'infinite'],
+    queryFn: ({ pageParam = 0 }) => seriesApi.list({ ...params, offset: pageParam as number, limit: params.limit || 100 }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const limit = params.limit || 100;
+      if (lastPage.length < limit) return undefined;
+      return allPages.length * limit;
+    },
     staleTime: 60 * 1000,
   })
 }

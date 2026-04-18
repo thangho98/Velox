@@ -164,6 +164,33 @@ class MediaDetailViewModel @Inject constructor(
         }
     }
 
+    fun cloudProbe(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val response = veloxApi.cloudProbeMedia(mediaId)
+                if (response.isSuccessful) {
+                    loadMedia()
+                    onResult(true)
+                } else {
+                    onResult(false)
+                }
+            } catch (_: Exception) {
+                onResult(false)
+            }
+        }
+    }
+
+    fun autoDownloadSubtitle(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            mediaRepository.autoDownloadSubtitle(mediaId).onSuccess {
+                onResult(true)
+                loadMedia() // Reload to fetch new subtitle tracks
+            }.onFailure {
+                onResult(false)
+            }
+        }
+    }
+
     fun refresh() {
         loadMedia()
     }

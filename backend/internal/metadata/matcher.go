@@ -109,12 +109,23 @@ func (m *Matcher) MatchMovie(ctx context.Context, parsed nameparser.ParsedMedia,
 		return nil, fmt.Errorf("tmdb search: %w", err)
 	}
 
-	if len(results.Results) == 0 {
-		return &MatchResult{Found: false}, nil
-	}
-
 	// Step 3: Find best match
 	bestMatch := m.findBestMovieMatch(results.Results, parsed)
+
+	// Step 3b: Fallback to unstripped title if no good match was found and titles differ
+	if bestMatch == nil && parsed.UnstrippedTitle != "" && parsed.UnstrippedTitle != parsed.Title {
+		fallbackResults, fallbackErr := m.tmdbClient.SearchMovies(ctx, parsed.UnstrippedTitle, parsed.Year, 1)
+		if fallbackErr == nil && len(fallbackResults.Results) > 0 {
+			// Temporarily use UnstrippedTitle for scoring
+			originalParsed := parsed
+			parsed.Title = parsed.UnstrippedTitle
+			bestMatch = m.findBestMovieMatch(fallbackResults.Results, parsed)
+			if bestMatch == nil {
+				parsed = originalParsed // revert if still no match
+			}
+		}
+	}
+
 	if bestMatch == nil {
 		return &MatchResult{Found: false}, nil
 	}
@@ -170,12 +181,22 @@ func (m *Matcher) MatchTVShow(ctx context.Context, parsed nameparser.ParsedMedia
 		return nil, fmt.Errorf("tmdb search: %w", err)
 	}
 
-	if len(results.Results) == 0 {
-		return &TVMatchResult{MatchResult: MatchResult{Found: false}}, nil
-	}
-
 	// Step 4: Find best series match
 	bestMatch := m.findBestTVMatch(results.Results, parsed)
+
+	// Step 4b: Fallback to unstripped title if no good match was found and titles differ
+	if bestMatch == nil && parsed.UnstrippedTitle != "" && parsed.UnstrippedTitle != parsed.Title {
+		fallbackResults, fallbackErr := m.tmdbClient.SearchTV(ctx, parsed.UnstrippedTitle, 0, 1)
+		if fallbackErr == nil && len(fallbackResults.Results) > 0 {
+			originalParsed := parsed
+			parsed.Title = parsed.UnstrippedTitle
+			bestMatch = m.findBestTVMatch(fallbackResults.Results, parsed)
+			if bestMatch == nil {
+				parsed = originalParsed
+			}
+		}
+	}
+
 	if bestMatch == nil {
 		return &TVMatchResult{MatchResult: MatchResult{Found: false}}, nil
 	}

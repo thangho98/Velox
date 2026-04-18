@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 
 	"github.com/thawng/velox/internal/metadata"
 	"github.com/thawng/velox/internal/model"
@@ -13,6 +15,9 @@ import (
 // IdentifyByTmdbID manually identifies a media item with a specific TMDb ID.
 // Auto-unlocks metadata_locked since the admin explicitly chose to re-match.
 func (s *MetadataService) IdentifyByTmdbID(ctx context.Context, media *model.Media, tmdbID int, mediaType string) error {
+	if s.tmdbClient == nil {
+		return fmt.Errorf("tmdb metadata provider is not configured")
+	}
 	media.MetadataLocked = false
 	if mediaType == "tv" || media.MediaType == "episode" {
 		// Fetch TV details and update
@@ -88,6 +93,10 @@ func (s *MetadataService) IdentifyByTmdbID(ctx context.Context, media *model.Med
 
 // RefreshMetadata re-fetches metadata from TMDb for a media item that already has a tmdb_id.
 func (s *MetadataService) RefreshMetadata(ctx context.Context, media *model.Media) error {
+	if s.isAnimeLibrary(ctx, media.LibraryID) {
+		return s.AutoMatchAndRefresh(ctx, media)
+	}
+
 	if media.TmdbID == nil {
 		return nil
 	}
@@ -125,7 +134,19 @@ func (s *MetadataService) refreshEpisodeMetadata(ctx context.Context, media *mod
 	if err != nil {
 		return fmt.Errorf("no media file found: %w", err)
 	}
-	parsed := nameparser.Parse(primaryFile.FilePath)
+	parseSource := primaryFile.FilePath
+	if strings.Contains(primaryFile.FilePath, "://") {
+		if u, err := url.Parse(primaryFile.FilePath); err == nil {
+			if name := u.Query().Get("name"); name != "" {
+				parseSource = name
+			} else {
+				parseSource = media.Title
+			}
+		} else {
+			parseSource = media.Title
+		}
+	}
+	parsed := nameparser.ParseWithParents(parseSource)
 
 	// Re-match using the correct series TMDb ID
 	result, err := s.matcher.MatchTVEpisodeBySeriesID(ctx, int(*series.TmdbID), parsed, primaryFile.FilePath)
@@ -179,16 +200,39 @@ func (s *MetadataService) AutoMatchAndRefresh(ctx context.Context, media *model.
 		return fmt.Errorf("no media file found: %w", err)
 	}
 
-	parsed := nameparser.Parse(primaryFile.FilePath)
+	parseSource := primaryFile.FilePath
+	// For VFS protocols (like Fshare) where the path is an internal opaque ID (e.g. fshare://1234),
+	// parsing the path yields nothing. The original unparsed filename is preserved in media.Title
+	// during the initial cloud import, so we use it as the fallback for nameparser.
+	if strings.Contains(primaryFile.FilePath, "://") {
+		if u, err := url.Parse(primaryFile.FilePath); err == nil {
+			if name := u.Query().Get("name"); name != "" {
+				parseSource = name
+			} else {
+				parseSource = media.Title
+			}
+		} else {
+			parseSource = media.Title
+		}
+	}
+
+	parsed := nameparser.ParseWithParents(parseSource)
+
+	if s.isAnimeLibrary(ctx, media.LibraryID) {
+		return s.MatchAndPersistAnime(ctx, media, parsed, primaryFile.FilePath, media.LibraryID, true)
+	}
 
 	if media.MediaType == "episode" {
+		// Pass the original file path to matcher so video-specific checks or subtitle scanning checks work,
+		// but the parsed info correctly comes from the original title.
 		return s.MatchAndPersistEpisode(ctx, media, parsed, primaryFile.FilePath, media.LibraryID, true)
 	}
 	return s.MatchAndPersistMovie(ctx, media, parsed, primaryFile.FilePath, true)
 }
 
 // BulkRefreshAllMetadata auto-matches all unmatched media against TMDb,
-// then fetches OMDb ratings for everything with an IMDb ID.
+// and then fetches OMDb ratings for everything with an IMDb ID.
+// It DOES NOT re-scan TMDB for already matched items.
 // Returns the number of items updated.
 func (s *MetadataService) BulkRefreshAllMetadata(ctx context.Context) (int, error) {
 	items, err := s.mediaRepo.List(ctx, 0, "", 0, 0)
@@ -200,15 +244,21 @@ func (s *MetadataService) BulkRefreshAllMetadata(ctx context.Context) (int, erro
 	for i := range items {
 		m := &items[i]
 
-		// Step 1: Auto-match unmatched media against TMDb.
-		// MatchAndPersistMovie mutates *m in-place, so no re-read needed.
+		// Skip manually locked items
+		if m.MetadataLocked {
+			continue
+		}
+
+		var didUpdate bool
+
+		// Step 1: Auto-match unmatched media.
 		if m.TmdbID == nil {
 			if err := s.AutoMatchAndRefresh(ctx, m); err != nil {
 				log.Printf("Auto-match failed for media %d (%s): %v", m.ID, m.Title, err)
 				continue
 			}
 			if m.TmdbID != nil {
-				updated++
+				didUpdate = true
 			}
 		}
 
@@ -219,8 +269,55 @@ func (s *MetadataService) BulkRefreshAllMetadata(ctx context.Context) (int, erro
 			prevMeta := m.MetacriticScore
 			s.enrichOMDbRatings(ctx, m)
 			if m.IMDbRating != prevIMDb || m.RTScore != prevRT || m.MetacriticScore != prevMeta {
-				updated++
+				didUpdate = true
 			}
+		}
+
+		if didUpdate {
+			updated++
+		}
+	}
+	return updated, nil
+}
+
+// ForceBulkRefreshAllMetadata unconditionally runs AutoMatchAndRefresh on ALL
+// unlocked media to completely reset matches, fix badly matched TMDB IDs,
+// and updates their OMDb ratings.
+// Returns the number of items updated.
+func (s *MetadataService) ForceBulkRefreshAllMetadata(ctx context.Context) (int, error) {
+	items, err := s.mediaRepo.List(ctx, 0, "", 0, 0)
+	if err != nil {
+		return 0, fmt.Errorf("listing all media: %w", err)
+	}
+
+	updated := 0
+	for i := range items {
+		m := &items[i]
+
+		if m.MetadataLocked {
+			continue
+		}
+
+		var didUpdate bool
+
+		// Force complete re-match from file path
+		if err := s.AutoMatchAndRefresh(ctx, m); err != nil {
+			log.Printf("Force auto-match failed for media %d (%s): %v", m.ID, m.Title, err)
+			continue
+		}
+
+		// If it has TMDB, count update OR if we grabbed OMDB
+		if m.TmdbID != nil {
+			didUpdate = true
+		}
+
+		// Update OMDB ratings
+		if s.omdbClient != nil && m.ImdbID != nil && *m.ImdbID != "" {
+			s.enrichOMDbRatings(ctx, m)
+		}
+
+		if didUpdate {
+			updated++
 		}
 	}
 	return updated, nil

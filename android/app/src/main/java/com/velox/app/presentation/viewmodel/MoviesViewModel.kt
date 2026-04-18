@@ -21,8 +21,14 @@ data class MoviesUiState(
     val selectedYear: String? = null,
     val selectedRating: Float? = null,
     val sortBy: String = "newest",
+    val startChar: String? = null,
+    val alphabetCounts: List<com.velox.app.domain.model.AlphabetCount> = emptyList(),
     val searchQuery: String = "",
     val error: String? = null,
+    val isLoadingMore: Boolean = false,
+    val hasReachedMax: Boolean = false,
+    val offset: Int = 0,
+    val limit: Int = 100,
 )
 
 @HiltViewModel
@@ -36,6 +42,7 @@ class MoviesViewModel @Inject constructor(
     init {
         loadGenres()
         loadMovies()
+        loadAlphabet()
     }
 
     private fun loadGenres() {
@@ -50,7 +57,7 @@ class MoviesViewModel @Inject constructor(
 
     fun loadMovies() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, offset = 0, hasReachedMax = false) }
 
             mediaRepository.getMediaList(
                 type = "movie",
@@ -59,9 +66,18 @@ class MoviesViewModel @Inject constructor(
                 minRating = _uiState.value.selectedRating,
                 sort = _uiState.value.sortBy,
                 search = _uiState.value.searchQuery.takeIf { it.isNotBlank() },
-                limit = 100,
+                limit = _uiState.value.limit,
+                offset = 0,
+                startChar = _uiState.value.startChar,
             ).onSuccess { movies ->
-                _uiState.update { it.copy(isLoading = false, movies = movies) }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        movies = movies,
+                        offset = movies.size,
+                        hasReachedMax = movies.size < it.limit
+                    )
+                }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(isLoading = false, error = error.message)
@@ -70,8 +86,58 @@ class MoviesViewModel @Inject constructor(
         }
     }
 
+    private fun loadAlphabet() {
+        viewModelScope.launch {
+            mediaRepository.getMediaAlphabet(
+                type = "movie",
+                genre = _uiState.value.selectedGenre,
+                year = _uiState.value.selectedYear,
+            ).onSuccess { counts ->
+                _uiState.update { it.copy(alphabetCounts = counts) }
+            }
+        }
+    }
+
+    fun loadMore() {
+        val state = _uiState.value
+        if (state.isLoading || state.isLoadingMore || state.hasReachedMax) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingMore = true) }
+
+            mediaRepository.getMediaList(
+                type = "movie",
+                genre = state.selectedGenre,
+                year = state.selectedYear,
+                minRating = state.selectedRating,
+                sort = state.sortBy,
+                search = state.searchQuery.takeIf { it.isNotBlank() },
+                limit = state.limit,
+                offset = state.offset,
+                startChar = state.startChar,
+            ).onSuccess { newMovies ->
+                _uiState.update {
+                    it.copy(
+                        isLoadingMore = false,
+                        movies = it.movies + newMovies,
+                        offset = it.offset + newMovies.size,
+                        hasReachedMax = newMovies.size < it.limit
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(isLoadingMore = false, error = error.message)
+                }
+            }
+        }
+    }
+
     fun setSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
+        // If the query is cleared, reset the list by reloading
+        if (query.isBlank()) {
+            loadMovies()
+        }
     }
 
     fun search() {
@@ -79,12 +145,14 @@ class MoviesViewModel @Inject constructor(
     }
 
     fun setGenre(genre: String?) {
-        _uiState.update { it.copy(selectedGenre = genre) }
+        _uiState.update { it.copy(selectedGenre = genre, startChar = null) }
+        loadAlphabet()
         loadMovies()
     }
 
     fun setYear(year: String?) {
-        _uiState.update { it.copy(selectedYear = year) }
+        _uiState.update { it.copy(selectedYear = year, startChar = null) }
+        loadAlphabet()
         loadMovies()
     }
 
@@ -94,7 +162,12 @@ class MoviesViewModel @Inject constructor(
     }
 
     fun setSortBy(sort: String) {
-        _uiState.update { it.copy(sortBy = sort) }
+        _uiState.update { it.copy(sortBy = sort, startChar = null) }
+        loadMovies()
+    }
+
+    fun setStartChar(char: String?) {
+        _uiState.update { it.copy(startChar = char) }
         loadMovies()
     }
 
@@ -105,8 +178,10 @@ class MoviesViewModel @Inject constructor(
                 selectedYear = null,
                 selectedRating = null,
                 searchQuery = "",
+                startChar = null,
             )
         }
+        loadAlphabet()
         loadMovies()
     }
 

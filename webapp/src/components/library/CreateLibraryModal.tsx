@@ -87,7 +87,8 @@ export function CreateLibraryModal({ onClose }: CreateLibraryModalProps) {
               className="w-full bg-netflix-gray transition-all focus:border-netflix-red"
             >
               <option value="movies">Movies</option>
-              <option value="tv">TV Shows</option>
+              <option value="tvshows">TV Shows</option>
+              <option value="anime">Anime</option>
               <option value="mixed">Mixed</option>
             </Select>
           </div>

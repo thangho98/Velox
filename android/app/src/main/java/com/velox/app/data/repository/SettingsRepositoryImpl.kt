@@ -227,6 +227,12 @@ class SettingsRepositoryImpl @Inject constructor(
     override suspend fun updateAutoSubSettings(request: UpdateAutoSubRequest,): retrofit2.Response<DataWrapper<AutoSubSettingsDto>> {
         return api.getApi().updateAutoSubSettings(request)
     }
+    override suspend fun getAutoTranslateSettings(): retrofit2.Response<DataWrapper<AutoTranslateSettingsDto>> {
+        return api.getApi().getAutoTranslateSettings()
+    }
+    override suspend fun updateAutoTranslateSettings(request: UpdateAutoTranslateRequest,): retrofit2.Response<DataWrapper<AutoTranslateSettingsDto>> {
+        return api.getApi().updateAutoTranslateSettings(request)
+    }
     override suspend fun getPlaybackSettings(): retrofit2.Response<DataWrapper<PlaybackSettingsDto>> {
         return api.getApi().getPlaybackSettings()
     }
@@ -400,8 +406,9 @@ class SettingsRepositoryImpl @Inject constructor(
             val openSubs = try { api.getApi().getOpenSubsSettings().body()?.data } catch (_: Exception) { null }
             val aiTranslation = try { api.getApi().getAITranslationSettings().body()?.data } catch (_: Exception) { null }
             val autoSub = try { api.getApi().getAutoSubSettings().body()?.data } catch (_: Exception) { null }
+            val autoTranslate = try { api.getApi().getAutoTranslateSettings().body()?.data } catch (_: Exception) { null }
             com.velox.app.domain.model.DataResult.success(
-                com.velox.app.domain.repository.SubtitleSettingsBundle(provider, openSubs, aiTranslation, autoSub)
+                com.velox.app.domain.repository.SubtitleSettingsBundle(provider, openSubs, aiTranslation, autoSub, autoTranslate)
             )
         } catch (e: Exception) {
             com.velox.app.domain.model.DataResult.unknown(e)
@@ -444,6 +451,12 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun fetchAutoSubSettings() =
         safeApiCall({ api.getApi().getAutoSubSettings() }) { it }
+
+    override suspend fun fetchAutoTranslateSettings() =
+        safeApiCall({ api.getApi().getAutoTranslateSettings() }) { it }
+
+    override suspend fun updateAutoTranslateSettingsSafe(request: UpdateAutoTranslateRequest) =
+        safeApiCall({ api.getApi().updateAutoTranslateSettings(request) }) { it }
 
     // ── Pretranscode Actions ──
 

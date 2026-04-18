@@ -2,6 +2,7 @@ package com.velox.app.data.repository
 
 import com.velox.app.data.api.VeloxApi
 import com.velox.app.data.api.VeloxApiProvider
+import com.velox.app.data.model.AutoDownloadSubtitleRequest
 import com.velox.app.data.model.SubtitleDownloadRequest
 import com.velox.app.data.model.TranslateSubtitleRequest
 import com.velox.app.data.model.UpdateProgressRequest
@@ -40,6 +41,7 @@ class MediaRepositoryImpl @Inject constructor(
         libraryId: Int?,
         limit: Int,
         offset: Int,
+        startChar: String?,
     ): Result<List<MediaItem>> {
         return try {
             val response = api.getMediaList(
@@ -52,6 +54,7 @@ class MediaRepositoryImpl @Inject constructor(
                 libraryId = libraryId,
                 limit = limit,
                 offset = offset,
+                startChar = startChar,
             )
             if (response.isSuccessful) {
                 val items = response.body()?.data?.map { dto ->
@@ -74,6 +77,32 @@ class MediaRepositoryImpl @Inject constructor(
                 Result.success(items)
             } else {
                 Result.failure(Exception("Failed to fetch media list"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getMediaAlphabet(
+        type: String?,
+        genre: String?,
+        year: String?,
+        libraryId: Int?
+    ): Result<List<AlphabetCount>> {
+        return try {
+            val response = api.getMediaAlphabet(
+                type = type,
+                genre = genre,
+                year = year,
+                libraryId = libraryId,
+            )
+            if (response.isSuccessful) {
+                val items = response.body()?.data?.map { dto ->
+                    AlphabetCount(letter = dto.letter, count = dto.count)
+                } ?: emptyList()
+                Result.success(items)
+            } else {
+                Result.failure(Exception("Failed to fetch media alphabet"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -157,6 +186,7 @@ class MediaRepositoryImpl @Inject constructor(
         libraryId: Int?,
         limit: Int,
         offset: Int,
+        startChar: String?,
     ): Result<List<SeriesItem>> {
         return try {
             val response = api.getSeriesList(
@@ -167,6 +197,7 @@ class MediaRepositoryImpl @Inject constructor(
                 libraryId = libraryId,
                 limit = limit,
                 offset = offset,
+                startChar = startChar,
             )
             if (response.isSuccessful) {
                 val items = response.body()?.data?.map { dto ->
@@ -187,6 +218,30 @@ class MediaRepositoryImpl @Inject constructor(
                 Result.success(items)
             } else {
                 Result.failure(Exception("Failed to fetch series list"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getSeriesAlphabet(
+        genre: String?,
+        year: String?,
+        libraryId: Int?
+    ): Result<List<AlphabetCount>> {
+        return try {
+            val response = api.getSeriesAlphabet(
+                genre = genre,
+                year = year,
+                libraryId = libraryId,
+            )
+            if (response.isSuccessful) {
+                val items = response.body()?.data?.map { dto ->
+                    AlphabetCount(letter = dto.letter, count = dto.count)
+                } ?: emptyList()
+                Result.success(items)
+            } else {
+                Result.failure(Exception("Failed to fetch series alphabet"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -845,6 +900,19 @@ class MediaRepositoryImpl @Inject constructor(
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Failed to download subtitle"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun autoDownloadSubtitle(mediaId: Int): Result<Unit> {
+        return try {
+            val response = api.autoDownloadSubtitle(mediaId)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to auto download subtitle"))
             }
         } catch (e: Exception) {
             Result.failure(e)

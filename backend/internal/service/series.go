@@ -32,6 +32,10 @@ func (s *SeriesService) ListFiltered(ctx context.Context, filter model.SeriesLis
 	return s.seriesRepo.ListFiltered(ctx, filter)
 }
 
+func (s *SeriesService) GetAlphabet(ctx context.Context, filter model.SeriesListFilter) ([]model.AlphabetCount, error) {
+	return s.seriesRepo.GetAlphabet(ctx, filter)
+}
+
 func (s *SeriesService) Get(ctx context.Context, id int64) (*model.Series, error) {
 	series, err := s.seriesRepo.GetByID(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {

@@ -184,8 +184,9 @@ func (h *ProfileHandler) ListFavorites(w http.ResponseWriter, r *http.Request) {
 
 	limit := parseIntQuery(r, "limit", 50)
 	offset := parseIntQuery(r, "offset", 0)
+	startChar := r.URL.Query().Get("start_char")
 
-	favorites, err := h.profileSvc.ListFavorites(r.Context(), userID, limit, offset)
+	favorites, err := h.profileSvc.ListFavorites(r.Context(), userID, limit, offset, startChar)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -196,6 +197,23 @@ func (h *ProfileHandler) ListFavorites(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, favorites)
+}
+
+// GetFavoritesAlphabet returns alphabet counts for favorites
+func (h *ProfileHandler) GetFavoritesAlphabet(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	counts, err := h.profileSvc.GetFavoritesAlphabet(r.Context(), userID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, counts)
 }
 
 // ToggleFavorite toggles favorite status

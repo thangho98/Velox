@@ -80,7 +80,7 @@
     <string name="settings_title_sessions">Active Sessions</string>
     <string name="settings_desc_sessions">Manage devices signed into your account</string>
     <string name="settings_title_metadata">Metadata</string>
-    <string name="settings_desc_metadata">Configure metadata providers for movies and TV shows</string>
+    <string name="settings_desc_metadata">Configure metadata providers for movies, TV shows, and anime</string>
     <string name="settings_title_subtitles">Subtitles</string>
     <string name="settings_title_tasks">Scheduled Tasks</string>
     <string name="settings_desc_tasks">Background tasks and maintenance jobs</string>
@@ -95,6 +95,7 @@
     <string name="action_revoke">Revoke</string>
     <string name="action_refresh_metadata">Refresh Metadata</string>
     <string name="action_save">Save</string>
+    <string name="action_learn_more">Learn more</string>
     
     <!-- User Form -->
     <string name="user_display_name">Display Name</string>
@@ -210,9 +211,28 @@
     <string name="sessions_empty">No active sessions</string>
     
     <string name="metadata_v4_token">API / v4 Token</string>
+    <string name="metadata_api_key_label">API Key</string>
+    <string name="metadata_tmdb_api_label">API Key / v4 Token</string>
+    <string name="metadata_provider_anilist_name">AniList</string>
+    <string name="metadata_provider_anilist_description">AniList powers anime matching, title variants, studios, and show-level metadata for anime libraries.</string>
+    <string name="metadata_provider_anilist_token_label">Access Token</string>
+    <string name="metadata_provider_anilist_optional">Optional. Leave blank to use the env token or public AniList access.</string>
+    <string name="metadata_provider_anilist_optional_no_builtin">Optional. Leave blank to use public AniList access.</string>
+    <string name="metadata_provider_anilist_placeholder">Leave blank to use public AniList access</string>
+    <string name="metadata_provider_anilist_auth_note">OAuth is only needed for account-specific AniList features. Anime metadata fetching works with public GraphQL access by default.</string>
+    <string name="metadata_status_custom_key">Custom Key</string>
+    <string name="metadata_status_env_key">Env Key</string>
+    <string name="metadata_status_custom_token">Custom Token</string>
+    <string name="metadata_status_env_token">Env Token</string>
+    <string name="metadata_status_not_configured">Not Configured</string>
+    <string name="metadata_toggle_api_key_visibility">Toggle API key visibility</string>
     <string name="metadata_refresh_all">Refresh all metadata</string>
     <string name="metadata_bulk_fetch">Bulk fetch missing metadata and update ratings for all media.</string>
 
     <string name="dialog_title_language_changed">Language Applied</string>
     <string name="dialog_desc_language_changed">You have changed the application language. To ensure all texts and components are fully translated, a full app restart may be required.</string>
+    <string name="status_enabled">Enabled</string>
+    <string name="status_disabled">Disabled</string>
+    <string name="subtitles_auto_translate">Auto-Translate</string>
+    <string name="subtitles_auto_translate_desc">Automatically translate missing subtitle languages while streaming or downloading if AI Translation is enabled.</string>
 </resources>

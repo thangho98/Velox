@@ -99,10 +99,17 @@ data class QualityOptionDto(
 @Serializable
 data class StreamUrlResponse(
     @SerialName("direct_url") val directUrl: String,
-    @SerialName("hls_url") val hlsUrl: String,
-    @SerialName("stream_session_id") val streamSessionId: String,
-    @SerialName("api_key") val apiKey: String,
+    // Cloud-backed media streams straight from the provider CDN: hls_url,
+    // stream_session_id, and api_key are empty/absent in that case. Defaults
+    // keep older backend responses deserializable.
+    @SerialName("hls_url") val hlsUrl: String = "",
+    @SerialName("stream_session_id") val streamSessionId: String = "",
+    @SerialName("api_key") val apiKey: String = "",
     @SerialName("expires_in") val expiresIn: Int,
+    // Plan W: distinguishes local Velox URLs from cloud CDN URLs so the
+    // OkHttp interceptor knows when to reactively refresh on 403/404.
+    @SerialName("provider_type") val providerType: String = "local",
+    @SerialName("direct_cdn") val directCdn: Boolean = false,
 )
 
 // Profile / Progress

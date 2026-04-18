@@ -14,6 +14,7 @@ import (
 
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/pkg/ffmpegbin"
 	subtitlepkg "github.com/thawng/velox/pkg/subtitle"
 	"github.com/thawng/velox/pkg/translate"
@@ -28,6 +29,8 @@ type SubtitleService struct {
 	genreRepo     *repository.GenreRepo
 	settingsRepo  *repository.AppSettingsRepo
 	subtitleCache string
+
+	cloudResolver func(context.Context, int64, *model.MediaFile) (string, error)
 }
 
 func NewSubtitleService(
@@ -54,6 +57,19 @@ func (s *SubtitleService) SetSettingsRepo(settingsRepo *repository.AppSettingsRe
 // SetCacheDir configures the subtitle extraction/translation cache directory.
 func (s *SubtitleService) SetCacheDir(subtitleCache string) {
 	s.subtitleCache = subtitleCache
+}
+
+// SetCloudResolver injects a function that translates cloud native paths into HTTP URLs.
+func (s *SubtitleService) SetCloudResolver(resolver func(context.Context, int64, *model.MediaFile) (string, error)) {
+	s.cloudResolver = resolver
+}
+
+// resolveFilePath returns the effective file path for FFmpeg, resolving cloud paths to HTTP URLs.
+func (s *SubtitleService) resolveFilePath(ctx context.Context, mf *model.MediaFile) (string, error) {
+	if s.cloudResolver == nil || !scanner.IsCloudPath(mf.FilePath) {
+		return mf.FilePath, nil
+	}
+	return s.cloudResolver(ctx, mf.MediaID, mf)
 }
 
 // ListByMediaFile returns all subtitles for a media file
@@ -156,8 +172,13 @@ func (s *SubtitleService) ServeContent(ctx context.Context, subtitleID int64) ([
 			return nil, fmt.Errorf("looking up media file: %w", err)
 		}
 
+		inputPath, err := s.resolveFilePath(ctx, mf)
+		if err != nil {
+			return nil, fmt.Errorf("resolving cloud path for subtitle extraction: %w", err)
+		}
+
 		cacheDir := filepath.Join(s.subtitleCache, fmt.Sprintf("%d", sub.MediaFileID))
-		vttPath, err := subtitlepkg.ExtractSubtitle(mf.FilePath, sub.StreamIndex, cacheDir)
+		vttPath, err := subtitlepkg.ExtractSubtitle(inputPath, sub.StreamIndex, cacheDir)
 		if err != nil {
 			return nil, fmt.Errorf("extracting subtitle: %w", err)
 		}
@@ -253,14 +274,17 @@ func (s *SubtitleService) TranslateSubtitle(
 		if err != nil {
 			return nil, fmt.Errorf("getting media file for extraction: %w", err)
 		}
+		inputPath, err := s.resolveFilePath(ctx, mf)
+		if err != nil {
+			return nil, fmt.Errorf("resolving cloud path for subtitle translation: %w", err)
+		}
 		extractDir := filepath.Join(subtitleDir, strconv.FormatInt(source.MediaFileID, 10))
 		if err := os.MkdirAll(extractDir, 0755); err != nil {
 			return nil, fmt.Errorf("creating extract dir: %w", err)
 		}
 		extractPath := filepath.Join(extractDir, fmt.Sprintf("extracted_%d.srt", source.StreamIndex))
-		// Extract via jellyfin-ffmpeg as SRT (not VTT, since our translator expects SRT)
 		cmd := exec.Command(ffmpegbin.FFmpeg(), "-y",
-			"-i", mf.FilePath,
+			"-i", inputPath,
 			"-map", fmt.Sprintf("0:%d", source.StreamIndex),
 			"-c:s", "srt",
 			extractPath,

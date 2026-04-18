@@ -76,7 +76,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     nginx \
     tzdata \
     gosu \
-    tini
+    tini \
+    sqlite3
 
 # Install jellyfin-ffmpeg7 directly from Jellyfin's official repository
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

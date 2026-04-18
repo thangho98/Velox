@@ -1,5 +1,6 @@
 import { useTranslation } from '@/hooks/useTranslation'
 import { useState } from 'react'
+import { Select } from '@/components/ui/Select'
 import {
   LuPlus,
   LuRefreshCw,
@@ -17,6 +18,7 @@ import {
   useDeleteLibrary,
   useScanLibrary,
 } from '@/hooks/stores/useMedia'
+import { useStorageProviders } from '@/hooks/stores/useAdmin'
 import { DirectoryPicker } from '@/components/DirectoryPicker'
 import { SectionHeader, Spinner, Modal, Field, ErrorMsg, inputClass } from './shared'
 
@@ -28,28 +30,47 @@ const LIBRARY_TYPES = [
     description: 'Series & episodes',
     icon: <LuTv size={20} />,
   },
+  {
+    value: 'anime',
+    label: 'Anime',
+    description: 'AniList-powered anime',
+    icon: <LuTv size={20} />,
+  },
   { value: 'mixed', label: 'Mixed', description: 'Movies & TV', icon: <LuList size={20} /> },
 ]
 
 const TYPE_ICON_BG: Record<string, string> = {
   movies: 'bg-blue-500/20 text-blue-400',
   tvshows: 'bg-purple-500/20 text-purple-400',
+  anime: 'bg-amber-500/20 text-amber-400',
   mixed: 'bg-green-500/20 text-green-400',
 }
 
 const TYPE_COLORS: Record<string, string> = {
   movies: 'bg-blue-500/20 text-blue-400 border-blue-500',
   tvshows: 'bg-purple-500/20 text-purple-400 border-purple-500',
+  anime: 'bg-amber-500/20 text-amber-400 border-amber-500',
   mixed: 'bg-green-500/20 text-green-400 border-green-500',
 }
+
+type SourceKind = 'local' | 'cloud'
 
 interface LibraryFormData {
   name: string
   paths: string[]
   type: string
+  source: SourceKind
+  storageProviderID?: number
+  sourceURL: string
 }
 
-const DEFAULT_LIB_FORM: LibraryFormData = { name: '', paths: [''], type: 'movies' }
+const DEFAULT_LIB_FORM: LibraryFormData = {
+  name: '',
+  paths: [''],
+  type: 'movies',
+  source: 'local',
+  sourceURL: '',
+}
 
 export function LibrariesSection() {
   const { t } = useTranslation('settings')
@@ -58,6 +79,7 @@ export function LibrariesSection() {
   const { mutate: createLibrary, isPending: isCreating } = useCreateLibrary()
   const { mutate: deleteLibrary } = useDeleteLibrary()
   const { mutate: scanLibrary } = useScanLibrary()
+  const { data: providers } = useStorageProviders()
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [dirPickerIndex, setDirPickerIndex] = useState<number | null>(null)
@@ -72,6 +94,34 @@ export function LibrariesSection() {
       setFormError('Library name is required')
       return
     }
+
+    if (formData.source === 'cloud') {
+      if (!formData.storageProviderID) {
+        setFormError('Select a storage provider')
+        return
+      }
+      if (!formData.sourceURL.trim()) {
+        setFormError('Folder URL is required')
+        return
+      }
+      createLibrary(
+        {
+          name: formData.name.trim(),
+          type: formData.type,
+          storage_provider_id: formData.storageProviderID,
+          source_url: formData.sourceURL.trim(),
+        },
+        {
+          onSuccess: () => {
+            setShowAddModal(false)
+            setFormData(DEFAULT_LIB_FORM)
+          },
+          onError: (err: Error) => setFormError(err.message || 'Failed to create library'),
+        },
+      )
+      return
+    }
+
     const validPaths = formData.paths.map((p) => p.trim()).filter(Boolean)
     if (validPaths.length === 0) {
       setFormError('At least one folder path is required')
@@ -266,47 +316,123 @@ export function LibrariesSection() {
                 })}
               </div>
             </Field>
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-400">Folders</label>
+            <Field label="Source">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={addPath}
-                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-white"
+                  onClick={() => setFormData({ ...formData, source: 'local' })}
+                  className={`rounded border-2 px-3 py-2 text-sm ${
+                    formData.source === 'local'
+                      ? 'border-netflix-red bg-netflix-red/10 text-white'
+                      : 'border-white/10 bg-netflix-gray text-gray-400 hover:border-white/20'
+                  }`}
                 >
-                  <LuPlus size={14} /> Add folder
+                  📁 Local Filesystem
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, source: 'cloud' })}
+                  disabled={!providers || providers.length === 0}
+                  className={`rounded border-2 px-3 py-2 text-sm disabled:opacity-40 ${
+                    formData.source === 'cloud'
+                      ? 'border-netflix-red bg-netflix-red/10 text-white'
+                      : 'border-white/10 bg-netflix-gray text-gray-400 hover:border-white/20'
+                  }`}
+                  title={
+                    !providers || providers.length === 0
+                      ? 'Add a storage provider in Settings → Storage first'
+                      : undefined
+                  }
+                >
+                  ☁️ Cloud Storage
                 </button>
               </div>
-              <div className="space-y-2">
-                {formData.paths.map((p, idx) => (
-                  <div key={idx} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={p}
-                      onChange={(e) => setPath(idx, e.target.value)}
-                      placeholder="/media/movies"
-                      className="min-w-0 flex-1 rounded bg-netflix-gray px-4 py-2.5 font-mono text-sm text-white outline-none ring-1 ring-transparent focus:ring-netflix-red"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setDirPickerIndex(idx)}
-                      className="shrink-0 rounded bg-netflix-gray px-3 py-2.5 text-gray-300 hover:bg-gray-600 hover:text-white"
-                    >
-                      <LuFolder size={16} />
-                    </button>
-                    {formData.paths.length > 1 && (
+            </Field>
+
+            {formData.source === 'local' ? (
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-400">Folders</label>
+                  <button
+                    type="button"
+                    onClick={addPath}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-white"
+                  >
+                    <LuPlus size={14} /> Add folder
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {formData.paths.map((p, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={p}
+                        onChange={(e) => setPath(idx, e.target.value)}
+                        placeholder="/media/movies"
+                        className="min-w-0 flex-1 rounded bg-netflix-gray px-4 py-2.5 font-mono text-sm text-white outline-none ring-1 ring-transparent focus:ring-netflix-red"
+                      />
                       <button
                         type="button"
-                        onClick={() => removePath(idx)}
-                        className="shrink-0 rounded bg-netflix-gray px-3 py-2.5 text-gray-500 hover:bg-red-600/20 hover:text-red-400"
+                        onClick={() => setDirPickerIndex(idx)}
+                        className="shrink-0 rounded bg-netflix-gray px-3 py-2.5 text-gray-300 hover:bg-gray-600 hover:text-white"
                       >
-                        <LuX size={16} />
+                        <LuFolder size={16} />
                       </button>
-                    )}
-                  </div>
-                ))}
+                      {formData.paths.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removePath(idx)}
+                          className="shrink-0 rounded bg-netflix-gray px-3 py-2.5 text-gray-500 hover:bg-red-600/20 hover:text-red-400"
+                        >
+                          <LuX size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <Field label="Storage provider">
+                  <Select
+                    value={formData.storageProviderID ?? ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        storageProviderID: Number(e.target.value) || undefined,
+                      })
+                    }
+                    className="w-full"
+                    required
+                  >
+                    <option value="">Choose provider…</option>
+                    {providers?.map((p) => (
+                      <option
+                        key={p.id}
+                        value={p.id}
+                        disabled={p.health === 'expired' || p.health === 'error'}
+                      >
+                        {p.display_name} · {p.account_email}
+                        {p.health !== 'healthy' ? ` (${p.health})` : ''}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Folder URL">
+                  <input
+                    type="url"
+                    value={formData.sourceURL}
+                    onChange={(e) => setFormData({ ...formData, sourceURL: e.target.value })}
+                    placeholder="https://www.fshare.vn/folder/XZWCPAZV3J71"
+                    className={inputClass}
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Paste a fshare folder URL from your browser.
+                  </p>
+                </Field>
+              </>
+            )}
             <div className="flex gap-3 pt-2">
               <button
                 type="button"

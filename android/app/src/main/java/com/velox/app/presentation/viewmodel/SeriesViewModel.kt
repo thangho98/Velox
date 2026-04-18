@@ -19,8 +19,14 @@ data class SeriesUiState(
     val selectedGenre: String? = null,
     val selectedYear: String? = null,
     val sortBy: String = "newest",
+    val startChar: String? = null,
+    val alphabetCounts: List<com.velox.app.domain.model.AlphabetCount> = emptyList(),
     val searchQuery: String = "",
     val error: String? = null,
+    val isLoadingMore: Boolean = false,
+    val hasReachedMax: Boolean = false,
+    val offset: Int = 0,
+    val limit: Int = 100,
 )
 
 @HiltViewModel
@@ -34,6 +40,7 @@ class SeriesViewModel @Inject constructor(
     init {
         loadGenres()
         loadSeries()
+        loadAlphabet()
     }
 
     private fun loadGenres() {
@@ -48,16 +55,25 @@ class SeriesViewModel @Inject constructor(
 
     fun loadSeries() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, offset = 0, hasReachedMax = false) }
 
             mediaRepository.getSeriesList(
                 genre = _uiState.value.selectedGenre,
                 year = _uiState.value.selectedYear,
                 sort = _uiState.value.sortBy,
                 search = _uiState.value.searchQuery.takeIf { it.isNotBlank() },
-                limit = 100,
+                limit = _uiState.value.limit,
+                offset = 0,
+                startChar = _uiState.value.startChar,
             ).onSuccess { items ->
-                _uiState.update { it.copy(isLoading = false, series = items) }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        series = items,
+                        offset = items.size,
+                        hasReachedMax = items.size < it.limit
+                    )
+                }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(isLoading = false, error = error.message)
@@ -66,8 +82,55 @@ class SeriesViewModel @Inject constructor(
         }
     }
 
+    private fun loadAlphabet() {
+        viewModelScope.launch {
+            mediaRepository.getSeriesAlphabet(
+                genre = _uiState.value.selectedGenre,
+                year = _uiState.value.selectedYear,
+            ).onSuccess { counts ->
+                _uiState.update { it.copy(alphabetCounts = counts) }
+            }
+        }
+    }
+
+    fun loadMore() {
+        val state = _uiState.value
+        if (state.isLoading || state.isLoadingMore || state.hasReachedMax) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingMore = true) }
+
+            mediaRepository.getSeriesList(
+                genre = state.selectedGenre,
+                year = state.selectedYear,
+                sort = state.sortBy,
+                search = state.searchQuery.takeIf { it.isNotBlank() },
+                limit = state.limit,
+                offset = state.offset,
+                startChar = state.startChar,
+            ).onSuccess { newItems ->
+                _uiState.update {
+                    it.copy(
+                        isLoadingMore = false,
+                        series = it.series + newItems,
+                        offset = it.offset + newItems.size,
+                        hasReachedMax = newItems.size < it.limit
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(isLoadingMore = false, error = error.message)
+                }
+            }
+        }
+    }
+
     fun setSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
+        // If the query is cleared, reset the list by reloading
+        if (query.isBlank()) {
+            loadSeries()
+        }
     }
 
     fun search() {
@@ -75,17 +138,24 @@ class SeriesViewModel @Inject constructor(
     }
 
     fun setGenre(genre: String?) {
-        _uiState.update { it.copy(selectedGenre = genre) }
+        _uiState.update { it.copy(selectedGenre = genre, startChar = null) }
+        loadAlphabet()
         loadSeries()
     }
 
     fun setYear(year: String?) {
-        _uiState.update { it.copy(selectedYear = year) }
+        _uiState.update { it.copy(selectedYear = year, startChar = null) }
+        loadAlphabet()
         loadSeries()
     }
 
     fun setSortBy(sort: String) {
-        _uiState.update { it.copy(sortBy = sort) }
+        _uiState.update { it.copy(sortBy = sort, startChar = null) }
+        loadSeries()
+    }
+
+    fun setStartChar(char: String?) {
+        _uiState.update { it.copy(startChar = char) }
         loadSeries()
     }
 
@@ -95,8 +165,10 @@ class SeriesViewModel @Inject constructor(
                 selectedGenre = null,
                 selectedYear = null,
                 searchQuery = "",
+                startChar = null,
             )
         }
+        loadAlphabet()
         loadSeries()
     }
 

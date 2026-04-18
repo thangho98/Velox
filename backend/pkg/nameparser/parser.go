@@ -9,16 +9,17 @@ import (
 
 // ParsedMedia represents the result of parsing a filename
 type ParsedMedia struct {
-	Title        string `json:"title"`
-	EpisodeTitle string `json:"episode_title,omitempty"` // Episode name (part after SxxExx)
-	Year         int    `json:"year"`
-	Season       int    `json:"season"`      // -1 if not a series
-	Episode      int    `json:"episode"`     // -1 if not a series
-	EndEpisode   int    `json:"end_episode"` // For multi-episode files, -1 otherwise
-	MediaType    string `json:"media_type"`  // "movie" | "episode"
-	Quality      string `json:"quality"`     // "1080p", "4K", etc.
-	Codec        string `json:"codec"`       // "x264", "x265", "HEVC"
-	ReleaseGroup string `json:"release_group"`
+	Title           string `json:"title"`
+	UnstrippedTitle string `json:"unstripped_title,omitempty"` // The title without number prefix stripping
+	EpisodeTitle    string `json:"episode_title,omitempty"`    // Episode name (part after SxxExx)
+	Year            int    `json:"year"`
+	Season          int    `json:"season"`      // -1 if not a series
+	Episode         int    `json:"episode"`     // -1 if not a series
+	EndEpisode      int    `json:"end_episode"` // For multi-episode files, -1 otherwise
+	MediaType       string `json:"media_type"`  // "movie" | "episode"
+	Quality         string `json:"quality"`     // "1080p", "4K", etc.
+	Codec           string `json:"codec"`       // "x264", "x265", "HEVC"
+	ReleaseGroup    string `json:"release_group"`
 }
 
 var (
@@ -27,6 +28,7 @@ var (
 	seasonEpisodePattern2 = regexp.MustCompile(`(\d{1,2})[xX](\d{1,4})(?:[-]?(\d{1,4}))?`)
 	seasonOnlyPattern     = regexp.MustCompile(`[Ss]eason\s*(\d{1,2})`)
 	episodeOnlyPattern    = regexp.MustCompile(`[Ee]pisode\s*(\d{1,4})`)
+	animeEpisodePattern   = regexp.MustCompile(`\s+-\s+(?:[Tt]ập\s*|[Ee]p(?:isode)?\s*)?(\d{1,4})(?:\s|\[|\(|$)`)
 
 	// Year pattern — matches (2000) or standalone 2000
 	yearPattern       = regexp.MustCompile(`\(?(19\d{2}|20\d{2})\)?`)
@@ -38,8 +40,10 @@ var (
 	// Codec patterns
 	codecPattern = regexp.MustCompile(`(?i)\b(x264|x265|HEVC|AVC|h\.?264|h\.?265|VP9|AV1|MPEG[24])\b`)
 
-	// Release group pattern (usually at end in brackets/parens)
-	releaseGroupPattern = regexp.MustCompile(`[-\s]*[\[\(]([^\]\)]+)[\]\)]$`)
+	// Release group pattern (usually at end in brackets/parens, or prefix for anime)
+	releaseGroupPattern       = regexp.MustCompile(`[-\s]*[\[\(]([^\]\)]+)[\]\)]$`)
+	releaseGroupPrefixPattern = regexp.MustCompile(`^\[([^\]]+)\]\s*`)
+	subtitleTagPattern        = regexp.MustCompile(`(?i)\b(vietsub|sub\s*viet|sub\s*eng|thuyết\s*minh|thuyet\s*minh|lồng\s*tiếng|long\s*tieng)\b`)
 
 	// Junk words — source/encoding tags commonly found in release filenames
 	junkPattern = regexp.MustCompile(`(?i)\b(AMZN|NF|DSNP|HMAX|ATVP|PCOK|PMTP|WEB[-.]?DL|WEBRip|BluRay|BDRip|BRRip|HDRip|DVDRip|REMUX|PROPER|REPACK|INTERNAL|DTS|DDP?5\.?1|AAC|EAC3|AC3|FLAC|ATMOS|10bit|8bit|HDR|HDR10|DV|DoVi|SDR|Hybrid)\b`)
@@ -56,6 +60,12 @@ var (
 	// Leading parenthesized/bracketed tags that are not part of the title
 	// e.g. "(Sub Viet)", "[Vietsub]", "(Sub Eng)", "(Thuyết Minh)", "(Lồng Tiếng)"
 	leadingTagPattern = regexp.MustCompile(`^(?:[\(\[][^\)\]]*[\)\]]\s*)+`)
+
+	// Leading number pattern for collections (e.g. "01 - The Matrix", "01. The Fast and The Furious")
+	// Safely matches:
+	// 1) Zero-padded prefixes like "01 ", "02. ", "03 - "
+	// 2) Non-zero-padded but explicitly punctuated like "1. ", "2 - ", "123. "
+	leadingNumberPattern = regexp.MustCompile(`^(?:0\d{1,2}\s*[-.]*\s+|\d{1,3}\s*[-.]+\s+)`)
 )
 
 // Parse extracts metadata from a filename
@@ -68,9 +78,10 @@ func Parse(filename string) ParsedMedia {
 		MediaType:  "movie",
 	}
 
-	// Get basename without extension
+	// Get basename and strip common media extensions safely
 	base := filepath.Base(filename)
-	base = strings.TrimSuffix(base, filepath.Ext(base))
+	extPattern := regexp.MustCompile(`(?i)\.(mp4|mkv|avi|mov|wmv|flv|webm|xvid|divx|rmvb|m4v|iso|ts|m2ts|vob)$`)
+	base = extPattern.ReplaceAllString(base, "")
 
 	// Extract quality and codec from the full string first (before release group removal)
 	if match := qualityPattern.FindStringSubmatch(base); match != nil {
@@ -83,25 +94,42 @@ func Parse(filename string) ParsedMedia {
 		result.Codec = strings.ToUpper(strings.ReplaceAll(match[1], ".", ""))
 	}
 
-	// Try to extract release group (from end, in parens/brackets)
+	// Try prefix group (Anime style) first, like "[SubsPlease] Title.mkv"
+	if match := releaseGroupPrefixPattern.FindStringSubmatch(base); match != nil {
+		group := match[1]
+		if subtitleTagPattern.MatchString(group) {
+			base = releaseGroupPrefixPattern.ReplaceAllString(base, "")
+		} else if !qualityPattern.MatchString(group) && !codecPattern.MatchString(group) && !junkPattern.MatchString(group) {
+			result.ReleaseGroup = group
+			base = releaseGroupPrefixPattern.ReplaceAllString(base, "")
+		}
+	}
+
+	// Try extracting release group (typically at the end)
 	if match := releaseGroupPattern.FindStringSubmatch(base); match != nil {
 		group := match[1]
-		// If the "release group" contains quality/codec/junk, it's not a real group name —
-		// extract just the last word as group, or skip if it's all junk
-		if qualityPattern.MatchString(group) || codecPattern.MatchString(group) || junkPattern.MatchString(group) {
-			// Try to find a clean group name (last non-junk word)
-			words := strings.Fields(group)
-			for i := len(words) - 1; i >= 0; i-- {
-				w := words[i]
-				if !qualityPattern.MatchString(w) && !codecPattern.MatchString(w) && !junkPattern.MatchString(w) {
-					result.ReleaseGroup = w
-					break
-				}
-			}
+
+		// Prevent treating a 4-digit year as a release group (e.g. "300 (2006)")
+		if yearStrictPattern.MatchString(group) && len(strings.TrimSpace(group)) == 4 {
+			// Leave it in base so year extraction can find it
 		} else {
-			result.ReleaseGroup = group
+			// If the "release group" contains quality/codec/junk, it's not a real group name —
+			// extract just the last word as group, or skip if it's all junk
+			if qualityPattern.MatchString(group) || codecPattern.MatchString(group) || junkPattern.MatchString(group) {
+				// Try to find a clean group name (last non-junk word)
+				words := strings.Fields(group)
+				for i := len(words) - 1; i >= 0; i-- {
+					w := words[i]
+					if !qualityPattern.MatchString(w) && !codecPattern.MatchString(w) && !junkPattern.MatchString(w) {
+						result.ReleaseGroup = w
+						break
+					}
+				}
+			} else {
+				result.ReleaseGroup = group
+			}
+			base = releaseGroupPattern.ReplaceAllString(base, "")
 		}
-		base = releaseGroupPattern.ReplaceAllString(base, "")
 	}
 
 	// Look for season/episode patterns — split into before (series title) and after (episode title + junk)
@@ -130,12 +158,21 @@ func Parse(filename string) ParsedMedia {
 		if match[3] != "" {
 			result.EndEpisode, _ = strconv.Atoi(match[3])
 		}
+	} else if loc := animeEpisodePattern.FindStringIndex(base); loc != nil {
+		sePattern = animeEpisodePattern
+		beforeSE = base[:loc[0]]
+		afterSE = base[loc[1]:]
+		match := animeEpisodePattern.FindStringSubmatch(base)
+		result.MediaType = "episode"
+		result.Season = 1 // Anime absolute format implies Season 1 usually
+		result.Episode, _ = strconv.Atoi(match[1])
 	}
 	_ = sePattern
 
 	if result.MediaType == "episode" {
-		// Series title = part before SxxExx
-		result.Title = cleanSeriesTitle(beforeSE)
+		// Series title
+		result.Title = cleanSeriesTitle(beforeSE, true)
+		result.UnstrippedTitle = cleanSeriesTitle(beforeSE, false)
 
 		// Episode title = part after SxxExx, before quality/codec junk
 		result.EpisodeTitle = extractEpisodeTitle(afterSE)
@@ -151,7 +188,8 @@ func Parse(filename string) ParsedMedia {
 		}
 
 		// For movies, title is everything before year or quality/codec markers
-		result.Title = cleanMovieTitle(base, result.Year)
+		result.Title = cleanMovieTitle(base, result.Year, true)
+		result.UnstrippedTitle = cleanMovieTitle(base, result.Year, false)
 	}
 
 	return result
@@ -178,12 +216,17 @@ func ParseWithParents(filePath string) ParsedMedia {
 
 // cleanSeriesTitle extracts a clean series name from the part before SxxExx.
 // E.g. "Malcolm in the Middle (2000) - " → "Malcolm in the Middle"
-func cleanSeriesTitle(s string) string {
+func cleanSeriesTitle(s string, stripNumberPrefix bool) string {
 	// Replace file separators (dots, underscores) with spaces
 	s = separatorPattern.ReplaceAllString(s, " ")
 
 	// Strip leading parenthesized/bracketed tags: (Sub Viet), [Vietsub], etc.
 	s = leadingTagPattern.ReplaceAllString(s, "")
+
+	if stripNumberPrefix {
+		// Strip leading collection/sequencing numbers
+		s = leadingNumberPattern.ReplaceAllString(s, "")
+	}
 
 	// Remove year with optional parens: (2000) or 2000
 	s = yearPattern.ReplaceAllString(s, "")
@@ -228,11 +271,16 @@ func extractEpisodeTitle(s string) string {
 }
 
 // cleanMovieTitle extracts movie title, cutting before year or quality markers.
-func cleanMovieTitle(base string, year int) string {
+func cleanMovieTitle(base string, year int, stripNumberPrefix bool) string {
 	s := separatorPattern.ReplaceAllString(base, " ")
 
 	// Strip leading parenthesized/bracketed tags: (Sub Viet), [Vietsub], etc.
 	s = leadingTagPattern.ReplaceAllString(s, "")
+
+	if stripNumberPrefix {
+		// Strip leading collection/sequencing numbers
+		s = leadingNumberPattern.ReplaceAllString(s, "")
+	}
 
 	// Cut at year position if found
 	if year > 0 {

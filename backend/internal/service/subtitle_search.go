@@ -25,6 +25,7 @@ type SubtitleSearchService struct {
 	mfRepo          *repository.MediaFileRepo
 	subtitleRepo    *repository.SubtitleRepo
 	settingsRepo    *repository.AppSettingsRepo
+	prefsRepo       *repository.UserPreferencesRepo
 	episodeRepo     *repository.EpisodeRepo
 	seasonRepo      *repository.SeasonRepo
 	seriesRepo      *repository.SeriesRepo
@@ -39,6 +40,7 @@ func NewSubtitleSearchService(
 	mfRepo *repository.MediaFileRepo,
 	subtitleRepo *repository.SubtitleRepo,
 	settingsRepo *repository.AppSettingsRepo,
+	prefsRepo *repository.UserPreferencesRepo,
 	episodeRepo *repository.EpisodeRepo,
 	seasonRepo *repository.SeasonRepo,
 	seriesRepo *repository.SeriesRepo,
@@ -49,6 +51,7 @@ func NewSubtitleSearchService(
 		mfRepo:       mfRepo,
 		subtitleRepo: subtitleRepo,
 		settingsRepo: settingsRepo,
+		prefsRepo:    prefsRepo,
 		episodeRepo:  episodeRepo,
 		seasonRepo:   seasonRepo,
 		seriesRepo:   seriesRepo,
@@ -358,4 +361,75 @@ func (s *SubtitleSearchService) Download(ctx context.Context, mediaID int64, pro
 	}
 
 	return sub, nil
+}
+
+// AutoDownloadBestMatch searches for subtitles matching the given language and
+// downloads the highest-ranked result for an explicit user request.
+func (s *SubtitleSearchService) AutoDownloadBestMatch(ctx context.Context, mediaID int64, language string) (*model.Subtitle, error) {
+	// First search for available subtitles
+	results, err := s.Search(ctx, mediaID, language)
+	if err != nil {
+		return nil, fmt.Errorf("searching subtitles: %w", err)
+	}
+
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no %s subtitles found for media %d", language, mediaID)
+	}
+
+	// Results are already ranked, so taking the first one yields the best match
+	bestMatch := results[0]
+
+	// Download the best match
+	sub, err := s.Download(ctx, mediaID, bestMatch.Provider, bestMatch.ExternalID, language)
+	if err != nil {
+		return nil, fmt.Errorf("downloading best subtitle (provider: %s, external_id: %s): %w", bestMatch.Provider, bestMatch.ExternalID, err)
+	}
+
+	return sub, nil
+}
+
+// AutoDownloadForLanguages searches and downloads the best match for each requested language.
+func (s *SubtitleSearchService) AutoDownloadForLanguages(ctx context.Context, mediaID int64, languages []string) ([]*model.Subtitle, error) {
+	var downloaded []*model.Subtitle
+	var firstErr error
+
+	for _, lang := range languages {
+		lang = strings.TrimSpace(lang)
+		if lang == "" {
+			continue
+		}
+		sub, err := s.AutoDownloadBestMatch(ctx, mediaID, lang)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			log.Printf("failed to auto download %s for media %d: %v", lang, mediaID, err)
+		} else {
+			downloaded = append(downloaded, sub)
+		}
+	}
+
+	if len(downloaded) == 0 && firstErr != nil {
+		return nil, firstErr
+	}
+
+	return downloaded, nil
+}
+
+// AutoDownloadForUser uses the user's configured subtitle preferences to download subtitles.
+func (s *SubtitleSearchService) AutoDownloadForUser(ctx context.Context, mediaID int64, userID int64) ([]*model.Subtitle, error) {
+	prefs, err := s.prefsRepo.Get(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("getting preferences: %w", err)
+	}
+
+	var langs []string
+	if prefs.SubtitleLanguage != "" {
+		langs = strings.Split(prefs.SubtitleLanguage, ",")
+	}
+	if len(langs) == 0 {
+		langs = []string{"vi", "en"} // Default to common if nothing configured
+	}
+
+	return s.AutoDownloadForLanguages(ctx, mediaID, langs)
 }

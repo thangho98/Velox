@@ -25,6 +25,11 @@ interface TMDbSettings {
   has_builtin: boolean
 }
 
+interface AniListSettings {
+  api_key: string
+  has_builtin: boolean
+}
+
 interface OMDbSettings {
   api_key: string
   has_builtin: boolean
@@ -41,6 +46,11 @@ interface FanartSettings {
 }
 
 // --- Hooks (factory-generated) ---
+
+export const [useAniListSettings, useUpdateAniListSettings] = createSettingsHooks<
+  AniListSettings,
+  { api_key: string }
+>('anilist')
 
 export const [useTMDbSettings, useUpdateTMDbSettings] = createSettingsHooks<
   TMDbSettings,
@@ -72,5 +82,11 @@ export const [useOpenSubsSettings, useUpdateOpenSubsSettings] = createSettingsHo
 export function useBulkRefreshRatings() {
   return useMutation({
     mutationFn: () => api.post<{ updated: number }>('/admin/metadata/refresh-ratings', {}),
+  })
+}
+
+export function useBulkForceRefreshMetadata() {
+  return useMutation({
+    mutationFn: () => api.post<{ updated: number }>('/admin/metadata/force-refresh', {}),
   })
 }

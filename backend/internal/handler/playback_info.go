@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"slices"
@@ -14,7 +15,6 @@ import (
 	"github.com/thawng/velox/internal/auth"
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/playback"
-	"github.com/thawng/velox/pkg/ffprobe"
 )
 
 // GetPlaybackInfo returns playback decision for a media item
@@ -60,6 +60,13 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 				primaryFile = f
 				break
 			}
+		}
+	}
+
+	// Dynamic on-the-fly metadata probing for un-indexed cloud media
+	if primaryFile.VideoCodec == "" || primaryFile.AudioCodec == "" {
+		if err := h.streamSvc.ProbeAndUpdateCloudMetadata(ctx, &primaryFile); err != nil {
+			log.Printf("Failed to probe cloud media on-the-fly for media %d: %v", mediaID, err)
 		}
 	}
 
@@ -173,8 +180,8 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		Bitrate:            primaryFile.Bitrate / 1000, // Convert to kbps
 		HasSubtitles:       hasSubtitles,
 		SubType:            subType,
-		IsHDR:              ffprobe.IsHDRLike(primaryFile.FilePath),
-		NeedsServerTonemap: ffprobe.NeedsHDRColorMetadataFallback(primaryFile.FilePath),
+		IsHDR:              resolveIsHDR(&primaryFile),
+		NeedsServerTonemap: resolveNeedsTonemap(&primaryFile),
 	}
 
 	// Make playback decision

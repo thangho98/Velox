@@ -328,6 +328,7 @@ export default function WatchPage() {
 
   const { data: nextEpisodeProgress } = useProgress(nextEpisodeMediaId ?? 0)
   const [showWatchedWarning, setShowWatchedWarning] = useState(false)
+  const [showRemainingTime, setShowRemainingTime] = useState(true)
 
   useEffect(() => {
     if (!isEpisode || seasonId <= 0) {
@@ -2422,9 +2423,16 @@ export default function WatchPage() {
                   </div>
                 </div>
 
-                {/* Right: remaining */}
-                <span className="text-xs tabular-nums text-white/50 sm:text-sm">
-                  {duration > 0 ? `-${formatTime(remainingTime)}` : wallClock}
+                {/* Right: remaining/total */}
+                <span
+                  className="text-xs tabular-nums text-white/50 sm:text-sm cursor-pointer select-none hover:text-white/80 transition-colors"
+                  onClick={() => setShowRemainingTime(!showRemainingTime)}
+                >
+                  {duration > 0
+                    ? showRemainingTime
+                      ? `-${formatTime(remainingTime)}`
+                      : formatTime(duration)
+                    : wallClock}
                 </span>
               </div>
 

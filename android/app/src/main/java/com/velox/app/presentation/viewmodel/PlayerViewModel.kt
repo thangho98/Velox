@@ -170,6 +170,9 @@ data class AudioTrackUi(
     val index: Int,
     val label: String,
     val language: String,
+    val codec: String,
+    val channels: Int,
+    val isDefault: Boolean,
 )
 
 data class SubtitleTrackUi(
@@ -421,7 +424,7 @@ class PlayerViewModel @Inject constructor(
                             videoWidth = info.width ?: state.videoWidth,
                             videoHeight = info.height ?: state.videoHeight,
                             audioTracks = info.audioTracks.mapIndexed { index, track ->
-                                AudioTrackUi(index, track.label, track.language)
+                                AudioTrackUi(index, track.label, track.language, track.codec, track.channels, track.isDefault)
                             },
                             subtitleTracks = listOf(
                                 SubtitleTrackUi(-1, -1, "Off", "", null),

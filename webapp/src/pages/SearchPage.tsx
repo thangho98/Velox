@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useSearch } from '@/hooks/stores/useMedia'
 import { MediaCard } from '@/components/MediaCard'
-import { LuSearch, LuFilm, LuTv } from 'react-icons/lu'
+import { LuSearch, LuFilm, LuTv, LuX } from 'react-icons/lu'
 
 export default function SearchPage() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get('q') || ''
   const [typeFilter, setTypeFilter] = useState(searchParams.get('type') || '')
 
@@ -21,10 +21,23 @@ export default function SearchPage() {
       {/* Header + Type Filter */}
       <div className="space-y-4">
         {query && (
-          <p className="text-gray-400">
-            Found {totalCount} {totalCount === 1 ? 'result' : 'results'} for &quot;
-            <span className="text-white">{query}</span>&quot;
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-gray-400">
+              Found {totalCount} {totalCount === 1 ? 'result' : 'results'} for &quot;
+              <span className="text-white">{query}</span>&quot;
+            </p>
+            <button
+              onClick={() => {
+                const newParams = new URLSearchParams(searchParams)
+                newParams.delete('q')
+                setSearchParams(newParams)
+              }}
+              className="ml-2 flex items-center justify-center rounded-full bg-gray-800 p-1 hover:bg-[#e50914] hover:text-white text-gray-400 transition-colors"
+              title="Clear search"
+            >
+              <LuX size={14} />
+            </button>
+          </div>
         )}
 
         <div className="flex flex-wrap gap-3">

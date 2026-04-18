@@ -80,7 +80,7 @@
     <string name="settings_title_sessions">Phiên đăng nhập</string>
     <string name="settings_desc_sessions">Quản lý thiết bị đã đăng nhập</string>
     <string name="settings_title_metadata">Metadata</string>
-    <string name="settings_desc_metadata">Cấu hình metadata cho phim lẻ và phim bộ</string>
+    <string name="settings_desc_metadata">Cấu hình metadata cho phim lẻ, phim bộ và anime</string>
     <string name="settings_title_subtitles">Phụ đề</string>
     <string name="settings_title_tasks">Tác vụ</string>
     <string name="settings_desc_tasks">Tác vụ nền và bảo trì</string>
@@ -95,6 +95,7 @@
     <string name="action_revoke">Thu hồi</string>
     <string name="action_refresh_metadata">Làm mới Metadata</string>
     <string name="action_save">Lưu</string>
+    <string name="action_learn_more">Tìm hiểu thêm</string>
     
     <!-- User Form -->
     <string name="user_display_name">Tên hiển thị</string>
@@ -210,6 +211,21 @@
     <string name="sessions_empty">Rỗng</string>
     
     <string name="metadata_v4_token">Token API v4</string>
+    <string name="metadata_api_key_label">API Key</string>
+    <string name="metadata_tmdb_api_label">API Key / Token v4</string>
+    <string name="metadata_provider_anilist_name">AniList</string>
+    <string name="metadata_provider_anilist_description">AniList cung cấp matching anime, title variants, studio và metadata cấp series cho thư viện anime.</string>
+    <string name="metadata_provider_anilist_token_label">Access Token</string>
+    <string name="metadata_provider_anilist_optional">Tùy chọn. Để trống để dùng token từ env hoặc truy cập AniList public.</string>
+    <string name="metadata_provider_anilist_optional_no_builtin">Tùy chọn. Để trống để dùng AniList public.</string>
+    <string name="metadata_provider_anilist_placeholder">Để trống để dùng AniList public</string>
+    <string name="metadata_provider_anilist_auth_note">OAuth chỉ cần khi dùng tính năng gắn với tài khoản AniList. Lấy metadata anime mặc định vẫn dùng public GraphQL được.</string>
+    <string name="metadata_status_custom_key">Key riêng</string>
+    <string name="metadata_status_env_key">Key từ env</string>
+    <string name="metadata_status_custom_token">Token riêng</string>
+    <string name="metadata_status_env_token">Token từ env</string>
+    <string name="metadata_status_not_configured">Chưa cấu hình</string>
+    <string name="metadata_toggle_api_key_visibility">Ẩn hoặc hiện API key</string>
     <string name="metadata_refresh_all">Làm mới dữ liệu Metadata</string>
     <string name="metadata_bulk_fetch">Tải lại hàng loạt thông tin phim và số điểm đánh giá.</string>
 

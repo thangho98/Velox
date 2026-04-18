@@ -20,7 +20,6 @@ import (
 	"github.com/thawng/velox/internal/playback"
 	"github.com/thawng/velox/internal/service"
 	"github.com/thawng/velox/internal/transcoder"
-	"github.com/thawng/velox/pkg/ffprobe"
 )
 
 type StreamHandler struct {
@@ -100,8 +99,8 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 		Height:             mf.Height,
 		Duration:           int(mf.Duration),
 		Bitrate:            mf.Bitrate / 1000,
-		IsHDR:              ffprobe.IsHDRLike(mf.FilePath),
-		NeedsServerTonemap: ffprobe.NeedsHDRColorMetadataFallback(mf.FilePath),
+		IsHDR:              resolveIsHDR(mf),
+		NeedsServerTonemap: resolveNeedsTonemap(mf),
 	}
 
 	decision := playback.PlaybackDecision{Method: explicitPlaybackMethod(r.URL.Query().Get("pm"))}
@@ -132,7 +131,7 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 			track, trackErr := h.svc.GetAudioTrackForMediaFile(r.Context(), mf.ID, trackID)
 			if trackErr == nil {
 				w.Header().Set("Content-Type", "video/mp4")
-				if err := h.svc.RemuxSelectedAudioToWriter(mf.FilePath, track.StreamIndex, w); err != nil {
+				if err := h.svc.RemuxSelectedAudioToWriter(r.Context(), id, mf, track.StreamIndex, w); err != nil {
 					log.Printf("stream: selected-audio remux failed for media %d track %d (%s): %v", id, trackID, mf.FilePath, err)
 				}
 				return
@@ -168,7 +167,19 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 
 	switch decision.Method {
 	case playback.MethodDirectPlay:
-		f, err := os.Open(mf.FilePath)
+		resolvedPath, err := h.svc.ResolveFilePath(r.Context(), id, mf)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "cannot resolve media path")
+			return
+		}
+
+		// If it's a cloud path, redirect the client directly to the CDN!
+		if strings.HasPrefix(resolvedPath, "http://") || strings.HasPrefix(resolvedPath, "https://") {
+			http.Redirect(w, r, resolvedPath, http.StatusTemporaryRedirect)
+			return
+		}
+
+		f, err := os.Open(resolvedPath)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "cannot open file")
 			return
@@ -180,14 +191,14 @@ func (h *StreamHandler) DirectPlay(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, "cannot stat file")
 			return
 		}
-		// ServeContent handles Range headers, Content-Type, ETag, etc.
+		w.Header().Set("Cache-Control", "no-store")
 		http.ServeContent(w, r, stat.Name(), stat.ModTime(), f)
 
 	case playback.MethodDirectStream:
 		// Remux to fragmented MP4 — no codec change, only container repack.
 		// Range requests are not supported on a live pipe.
 		w.Header().Set("Content-Type", "video/mp4")
-		if err := h.svc.RemuxToWriter(mf.FilePath, w); err != nil {
+		if err := h.svc.RemuxToWriter(r.Context(), id, mf, w); err != nil {
 			// Headers already sent; cannot write an error response.
 			log.Printf("stream: directstream remux failed for media %d (%s): %v", id, mf.FilePath, err)
 			return
@@ -261,7 +272,14 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dvProfile := mf.DVProfile
-	sess, err := h.mgr.GetOrCreate(r.Context(), key, mf.FilePath, mf.Duration, audioTracks, dvProfile)
+	resolvedPath, err := h.svc.ResolveFilePath(r.Context(), id, mf)
+	if err != nil {
+		h.log.Error("Failed to resolve cloud URL for transcode", "err", err)
+		respondError(w, http.StatusInternalServerError, "cannot resolve media path")
+		return
+	}
+
+	sess, err := h.mgr.GetOrCreate(r.Context(), key, resolvedPath, mf.Duration, audioTracks, dvProfile)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "cannot create session")
 		return
@@ -354,7 +372,14 @@ func (h *StreamHandler) serveV2HLSMedia(w http.ResponseWriter, r *http.Request) 
 	audioTracks = pickAudioTracks(audioTracks, r.URL.Query().Get("at"))
 
 	dvProfile := mf.DVProfile
-	sess, err := h.mgr.GetOrCreate(r.Context(), key, mf.FilePath, mf.Duration, audioTracks, dvProfile)
+	resolvedPath, err := h.svc.ResolveFilePath(r.Context(), key.MediaID, mf)
+	if err != nil {
+		h.log.Error("Failed to resolve cloud URL for transcode", "err", err)
+		respondError(w, http.StatusInternalServerError, "cannot resolve media path")
+		return true
+	}
+
+	sess, err := h.mgr.GetOrCreate(r.Context(), key, resolvedPath, mf.Duration, audioTracks, dvProfile)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "cannot retrieve session")
 		return true

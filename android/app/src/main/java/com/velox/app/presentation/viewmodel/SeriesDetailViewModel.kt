@@ -132,4 +132,16 @@ class SeriesDetailViewModel @Inject constructor(
     fun refresh() {
         loadSeries()
     }
+
+    fun autoDownloadSubtitle(mediaId: Int, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            mediaRepository.autoDownloadSubtitle(mediaId)
+                .onSuccess {
+                    onResult(true)
+                }
+                .onFailure {
+                    onResult(false)
+                }
+        }
+    }
 }

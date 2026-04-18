@@ -54,11 +54,11 @@ fun ProfileSectionRoute(
     viewModel: UserProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadProfileData()
     }
-    
+
     ProfileSectionContent(
         viewModel = viewModel,
         uiState = uiState
@@ -147,11 +147,11 @@ fun PreferencesSectionRoute(
     viewModel: UserProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.loadProfileData()
     }
-    
+
     PreferencesSectionContent(
         viewModel = viewModel,
         uiState = uiState
@@ -167,12 +167,33 @@ internal fun PreferencesSectionContent(viewModel: UserProfileViewModel, uiState:
         Text(stringResource(R.string.settings_title_preferences), color = NetflixWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text(stringResource(R.string.settings_desc_preferences), color = NetflixLightGray, fontSize = 14.sp)
 
-        SettingsDropdown(
-            label = "Subtitle Language",
-            value = uiState.preferences.subtitleLanguage ?: "",
-            options = listOf("" to "Auto", "vi" to "Tiếng Việt", "en" to "English"),
-            onValueChange = { viewModel.updatePreference("subtitleLanguage", it) },
-        )
+        val currentSubs = (uiState.preferences.subtitleLanguage ?: "").split(",").filter { it.isNotBlank() }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Subtitle Languages", color = NetflixWhite, fontSize = 16.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                listOf("vi" to "Tiếng Việt", "en" to "English").forEach { (code, name) ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable {
+                            val newSubs = currentSubs.toMutableSet()
+                            if (currentSubs.contains(code)) newSubs.remove(code) else newSubs.add(code)
+                            viewModel.updatePreference("subtitleLanguage", newSubs.joinToString(","))
+                        }
+                    ) {
+                        androidx.compose.material3.Checkbox(
+                            checked = currentSubs.contains(code),
+                            onCheckedChange = { checked ->
+                                val newSubs = currentSubs.toMutableSet()
+                                if (checked) newSubs.add(code) else newSubs.remove(code)
+                                viewModel.updatePreference("subtitleLanguage", newSubs.joinToString(","))
+                            },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = NetflixRed)
+                        )
+                        Text(name, color = NetflixLightGray, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
 
         SettingsDropdown(
             label = "Audio Language",
@@ -261,7 +282,7 @@ fun SecuritySectionRoute(
     viewModel: UserProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     SecuritySectionContent(
         viewModel = viewModel,
         uiState = uiState

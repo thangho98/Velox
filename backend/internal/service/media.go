@@ -48,6 +48,10 @@ func (s *MediaService) ListFiltered(ctx context.Context, filter model.MediaListF
 	return s.repo.ListFiltered(ctx, filter)
 }
 
+func (s *MediaService) GetAlphabet(ctx context.Context, filter model.MediaListFilter) ([]model.AlphabetCount, error) {
+	return s.repo.GetAlphabet(ctx, filter)
+}
+
 func (s *MediaService) Get(ctx context.Context, id int64) (*model.Media, error) {
 	media, err := s.repo.GetByID(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {

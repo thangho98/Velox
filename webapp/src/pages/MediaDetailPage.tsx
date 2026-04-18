@@ -7,12 +7,14 @@ import {
   useUpdateProgress,
   useDismissProgress,
   useRefreshMetadata,
+  useAutoDownloadSubtitle,
   useSubtitles,
   useEditMediaMetadata,
   useUploadMediaImage,
   useMediaGenres,
   useMediaCredits,
   useStreamUrl,
+  useCloudProbe,
 } from '@/hooks/stores/useMedia'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
@@ -27,7 +29,11 @@ import {
   LuPencil,
   LuLock,
   LuLink,
+  LuDownload,
+  LuLoaderCircle,
+  LuScanSearch,
 } from 'react-icons/lu'
+
 import { ActionMenu } from '@/components/ActionMenu'
 import type { ActionMenuItem } from '@/components/ActionMenu'
 import { useToast } from '@/components/Toast'
@@ -50,6 +56,8 @@ export default function MediaDetailPage() {
   const { mutate: updateProgress } = useUpdateProgress()
   const { mutate: dismissProgress } = useDismissProgress()
   const { mutate: refreshMetadata, isPending: isRefreshing } = useRefreshMetadata(mediaId)
+  const { mutate: cloudProbe, isPending: isProbing } = useCloudProbe(mediaId)
+  const { mutate: autoDownloadSub, isPending: isDownloadingSub } = useAutoDownloadSubtitle(mediaId)
   const { mutate: editMetadata, isPending: isSaving } = useEditMediaMetadata(mediaId)
   const { mutate: uploadImage, isPending: isUploadingImage } = useUploadMediaImage(mediaId)
   const { data: mediaGenres = [] } = useMediaGenres(mediaId)
@@ -97,6 +105,8 @@ export default function MediaDetailPage() {
   }
 
   const primaryFile = media.files.find((f) => f.is_primary) || media.files[0]
+  const isCloudMedia =
+    primaryFile?.file_path?.includes('://') && !primaryFile.file_path.startsWith('http')
   const duration = primaryFile?.duration || media.media.duration || 0
   const progressPercent =
     progress && duration > 0 ? Math.min(100, (progress.position / duration) * 100) : 0
@@ -324,6 +334,22 @@ export default function MediaDetailPage() {
                         onClick: () => getStreamUrl(),
                       },
                       {
+                        label: t('subtitles.autoDownload', 'Auto-download subtitles'),
+                        icon: isDownloadingSub ? (
+                          <LuLoaderCircle size={16} className="animate-spin" />
+                        ) : (
+                          <LuDownload size={16} />
+                        ),
+                        onClick: () => {
+                          showToastSuccess('Searching and downloading subtitles...')
+                          autoDownloadSub(undefined, {
+                            onSuccess: () => showToastSuccess('Subtitles downloaded successfully!'),
+                            onError: () => showToastError('Could not find subtitle matches.'),
+                          })
+                        },
+                        disabled: isDownloadingSub,
+                      },
+                      {
                         label: 'Edit metadata',
                         icon: <LuPencil size={16} />,
                         onClick: () => setShowEditor(true),
@@ -339,6 +365,28 @@ export default function MediaDetailPage() {
                         disabled: isRefreshing,
                         adminOnly: true,
                       },
+                      ...(isCloudMedia
+                        ? [
+                            {
+                              label: 'Extract cloud subtitles',
+                              icon: isProbing ? (
+                                <LuLoaderCircle size={16} className="animate-spin" />
+                              ) : (
+                                <LuScanSearch size={16} />
+                              ),
+                              onClick: () => {
+                                showToastSuccess('Probing cloud file for subtitles...')
+                                cloudProbe(undefined, {
+                                  onSuccess: () =>
+                                    showToastSuccess('Cloud probe complete — subtitles extracted!'),
+                                  onError: () => showToastError('Failed to probe cloud file.'),
+                                })
+                              },
+                              disabled: isProbing,
+                              adminOnly: true,
+                            },
+                          ]
+                        : []),
                     ] satisfies ActionMenuItem[]
                   }
                 />

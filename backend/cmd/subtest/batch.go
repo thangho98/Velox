@@ -37,9 +37,10 @@ func batchAutoDownload(dbPath, subtitleDir string, langs []string, dryRun bool, 
 	episodeRepo := repository.NewEpisodeRepo(db)
 	seasonRepo := repository.NewSeasonRepo(db)
 	seriesRepo := repository.NewSeriesRepo(db)
+	userPrefsRepo := repository.NewUserPreferencesRepo(db)
 
 	svc := service.NewSubtitleSearchService(
-		mediaRepo, mfRepo, subtitleRepo, appSettingsRepo,
+		mediaRepo, mfRepo, subtitleRepo, appSettingsRepo, userPrefsRepo,
 		episodeRepo, seasonRepo, seriesRepo, subtitleDir,
 	)
 

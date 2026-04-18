@@ -26,7 +26,7 @@ func (r *MediaRepo) WithTx(tx *sql.Tx) *MediaRepo {
 
 // mediaColumns is the shared column list for media queries.
 const mediaColumns = `id, library_id, media_type, title, sort_title,
-	tmdb_id, imdb_id, tvdb_id, overview, tagline, release_date, rating,
+	tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio, overview, tagline, release_date, rating,
 	imdb_rating, rt_score, metacritic_score,
 	poster_path, backdrop_path, logo_path, thumb_path, metadata_locked, created_at, updated_at`
 
@@ -35,7 +35,7 @@ func scanMedia(scanner interface{ Scan(...any) error }) (*model.Media, error) {
 	var m model.Media
 	var locked int
 	err := scanner.Scan(&m.ID, &m.LibraryID, &m.MediaType, &m.Title, &m.SortTitle,
-		&m.TmdbID, &m.ImdbID, &m.TvdbID, &m.Overview, &m.Tagline, &m.ReleaseDate, &m.Rating,
+		&m.TmdbID, &m.ImdbID, &m.TvdbID, &m.AnilistID, &m.RomajiTitle, &m.Studio, &m.Overview, &m.Tagline, &m.ReleaseDate, &m.Rating,
 		&m.IMDbRating, &m.RTScore, &m.MetacriticScore,
 		&m.PosterPath, &m.BackdropPath, &m.LogoPath, &m.ThumbPath, &locked, &m.CreatedAt, &m.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -51,10 +51,10 @@ func scanMedia(scanner interface{ Scan(...any) error }) (*model.Media, error) {
 // Create inserts a new media item
 func (r *MediaRepo) Create(ctx context.Context, m *model.Media) error {
 	query := `INSERT INTO media
-		(library_id, media_type, title, sort_title, tmdb_id, imdb_id, tvdb_id,
+		(library_id, media_type, title, sort_title, tmdb_id, imdb_id, tvdb_id, anilist_id, romaji_title, studio,
 		 overview, tagline, release_date, rating, imdb_rating, rt_score, metacritic_score,
 		 poster_path, backdrop_path, logo_path, thumb_path, metadata_locked)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, created_at, updated_at`
 
 	locked := 0
@@ -63,7 +63,7 @@ func (r *MediaRepo) Create(ctx context.Context, m *model.Media) error {
 	}
 
 	row := r.db.QueryRowContext(ctx, query,
-		m.LibraryID, m.MediaType, m.Title, m.SortTitle, m.TmdbID, m.ImdbID, m.TvdbID,
+		m.LibraryID, m.MediaType, m.Title, m.SortTitle, m.TmdbID, m.ImdbID, m.TvdbID, m.AnilistID, m.RomajiTitle, m.Studio,
 		m.Overview, m.Tagline, m.ReleaseDate, m.Rating, m.IMDbRating, m.RTScore, m.MetacriticScore,
 		m.PosterPath, m.BackdropPath, m.LogoPath, m.ThumbPath, locked)
 
@@ -105,14 +105,14 @@ func (r *MediaRepo) Update(ctx context.Context, m *model.Media) error {
 		locked = 1
 	}
 	res, err := r.db.ExecContext(ctx, `UPDATE media SET
-		media_type = ?, title = ?, sort_title = ?, tmdb_id = ?, imdb_id = ?, tvdb_id = ?,
+		media_type = ?, title = ?, sort_title = ?, tmdb_id = ?, imdb_id = ?, tvdb_id = ?, anilist_id = ?, romaji_title = ?, studio = ?,
 		overview = ?, tagline = ?, release_date = ?, rating = ?,
 		imdb_rating = ?, rt_score = ?, metacritic_score = ?,
 		poster_path = ?, backdrop_path = ?, logo_path = ?, thumb_path = ?,
 		metadata_locked = ?,
 		updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
-		m.MediaType, m.Title, m.SortTitle, m.TmdbID, m.ImdbID, m.TvdbID,
+		m.MediaType, m.Title, m.SortTitle, m.TmdbID, m.ImdbID, m.TvdbID, m.AnilistID, m.RomajiTitle, m.Studio,
 		m.Overview, m.Tagline, m.ReleaseDate, m.Rating,
 		m.IMDbRating, m.RTScore, m.MetacriticScore,
 		m.PosterPath, m.BackdropPath, m.LogoPath, m.ThumbPath,

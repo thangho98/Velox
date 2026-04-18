@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +17,9 @@ import (
 	"github.com/thawng/velox/internal/logger"
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/transcoder"
+	"github.com/thawng/velox/pkg/ffprobe"
 )
 
 // hlsCacheEntry caches PrepareHLS results so subsequent playlist polls
@@ -27,8 +30,10 @@ type hlsCacheEntry struct {
 }
 
 type StreamService struct {
+	db              *sql.DB
 	mediaFileRepo   *repository.MediaFileRepo
 	audioTrackRepo  *repository.AudioTrackRepo
+	subtitleRepo    *repository.SubtitleRepo
 	transcoder      *transcoder.Transcoder
 	notificationSvc *NotificationService
 	pretranscodeSvc *PretranscodeService
@@ -38,6 +43,8 @@ type StreamService struct {
 	// Avoids 2 DB queries per playlist poll (~150-250ms savings on NAS HDD).
 	hlsCache   map[string]*hlsCacheEntry
 	hlsCacheMu sync.RWMutex
+
+	cloudResolver func(context.Context, int64, *model.MediaFile) (string, error)
 }
 
 func NewStreamService(mediaFileRepo *repository.MediaFileRepo, audioTrackRepo *repository.AudioTrackRepo, transcoder *transcoder.Transcoder) *StreamService {
@@ -58,6 +65,29 @@ func (s *StreamService) SetNotificationService(svc *NotificationService) {
 // SetPretranscodeService sets the optional pre-transcode service for pre-encoded file lookup.
 func (s *StreamService) SetPretranscodeService(svc *PretranscodeService) {
 	s.pretranscodeSvc = svc
+}
+
+// SetDB injects the database handle for transactional operations.
+func (s *StreamService) SetDB(db *sql.DB) {
+	s.db = db
+}
+
+// SetSubtitleRepo injects the subtitle repository for cloud probe subtitle persistence.
+func (s *StreamService) SetSubtitleRepo(repo *repository.SubtitleRepo) {
+	s.subtitleRepo = repo
+}
+
+// SetCloudResolver injects a function that translates cloud native paths into HTTP URLs.
+func (s *StreamService) SetCloudResolver(resolver func(context.Context, int64, *model.MediaFile) (string, error)) {
+	s.cloudResolver = resolver
+}
+
+// ResolveFilePath converts mf.FilePath to a playable HTTP URL if it is a cloud path.
+func (s *StreamService) ResolveFilePath(ctx context.Context, mediaID int64, mf *model.MediaFile) (string, error) {
+	if s.cloudResolver == nil || !scanner.IsCloudPath(mf.FilePath) {
+		return mf.FilePath, nil
+	}
+	return s.cloudResolver(ctx, mediaID, mf)
 }
 
 // FindPretranscode looks up a ready pre-transcode file for a media file.
@@ -183,13 +213,18 @@ func (s *StreamService) PrepareHLS(ctx context.Context, mediaID int64, streamSes
 		"audio_tracks", len(audioTracks),
 		"duration", mf.Duration,
 	)
+	resolvedPath, resErr := s.ResolveFilePath(ctx, mediaID, mf)
+	if resErr != nil {
+		return "", resErr
+	}
+
 	transcodeStart := time.Now()
 	if len(audioTracks) > 1 {
-		if err := s.transcoder.GenerateHLSWithAudio(mediaID, streamSessionID, mf.FilePath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
+		if err := s.transcoder.GenerateHLSWithAudio(mediaID, streamSessionID, resolvedPath, audioTracks, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
 			return "", err
 		}
 	} else {
-		if err := s.transcoder.GenerateHLS(mediaID, streamSessionID, mf.FilePath, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
+		if err := s.transcoder.GenerateHLS(mediaID, streamSessionID, resolvedPath, mf.ID, subtitleStreamIndex, videoCopy, startOffset, maxHeight); err != nil {
 			return "", err
 		}
 	}
@@ -272,6 +307,165 @@ func (s *StreamService) GetPrimaryFile(ctx context.Context, mediaID, fileID int6
 	return mf, err
 }
 
+// ProbeAndUpdateCloudMetadata fetches and saves missing metadata for cloud media on the fly.
+func (s *StreamService) ProbeAndUpdateCloudMetadata(ctx context.Context, mf *model.MediaFile) error {
+	resolvedPath, err := s.ResolveFilePath(ctx, mf.MediaID, mf)
+	if err != nil {
+		return fmt.Errorf("failed to resolve path for probe: %w", err)
+	}
+	if resolvedPath == "" {
+		return fmt.Errorf("resolved empty path for media file %d", mf.ID)
+	}
+
+	s.log.Info("Probing un-indexed cloud media on the fly", "media_file_id", mf.ID)
+
+	probeResult, err := ffprobe.Probe(resolvedPath)
+	if err != nil {
+		return fmt.Errorf("ffprobe failed: %w", err)
+	}
+
+	mf.VideoCodec = probeResult.VideoCodec
+	mf.VideoProfile = probeResult.VideoProfile
+	mf.VideoLevel = probeResult.VideoLevel
+	mf.VideoFPS = probeResult.VideoFPS
+	mf.AudioCodec = probeResult.AudioCodec
+	mf.Container = probeResult.Container
+	// Some fast probe might not get width/height exactly right if relying on format only,
+	// but ffprobe usually extracts it from streams.
+	if probeResult.Width > 0 && probeResult.Height > 0 {
+		mf.Width = probeResult.Width
+		mf.Height = probeResult.Height
+	}
+	if probeResult.Duration > 0 {
+		mf.Duration = probeResult.Duration
+	}
+	mf.Bitrate = int(probeResult.Bitrate)
+	mf.IsHDR = probeResult.IsHDR
+	mf.DVProfile = probeResult.DVProfile
+	mf.ColorTransfer = probeResult.ColorTransfer
+	mf.ColorPrimaries = probeResult.ColorPrimaries
+
+	if err := s.mediaFileRepo.Update(ctx, mf); err != nil {
+		return fmt.Errorf("failed to update media file: %w", err)
+	}
+
+	// Persist audio tracks and subtitles atomically when db is available.
+	if s.db != nil {
+		if err := s.persistProbedTracks(ctx, mf.ID, probeResult); err != nil {
+			s.log.Warn("cloud probe: persist tracks", "media_file_id", mf.ID, "error", err)
+		}
+	} else {
+		// Fallback: no transaction (background scan context without db handle)
+		s.persistProbedTracksNoTx(ctx, mf.ID, probeResult)
+	}
+
+	return nil
+}
+
+// persistProbedTracks deletes and recreates audio tracks + subtitles inside a transaction.
+func (s *StreamService) persistProbedTracks(ctx context.Context, mediaFileID int64, probe *ffprobe.ProbeResult) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	audioRepo := s.audioTrackRepo.WithTx(tx)
+	if err := audioRepo.DeleteByMediaFileID(ctx, mediaFileID); err != nil {
+		return fmt.Errorf("delete audio tracks: %w", err)
+	}
+	for _, t := range probe.AudioTracks {
+		track := &model.AudioTrack{
+			MediaFileID:   mediaFileID,
+			StreamIndex:   t.StreamIndex,
+			Language:      t.Language,
+			Codec:         t.Codec,
+			Channels:      t.Channels,
+			ChannelLayout: t.ChannelLayout,
+			Bitrate:       int(t.Bitrate),
+			SampleRate:    int(t.SampleRate),
+			Title:         t.Title,
+			IsDefault:     t.IsDefault,
+		}
+		if err := audioRepo.Create(ctx, track); err != nil {
+			return fmt.Errorf("create audio track %d: %w", t.StreamIndex, err)
+		}
+	}
+
+	if s.subtitleRepo != nil && len(probe.Subtitles) > 0 {
+		subRepo := s.subtitleRepo.WithTx(tx)
+		if err := subRepo.DeleteByMediaFileID(ctx, mediaFileID); err != nil {
+			return fmt.Errorf("delete subtitles: %w", err)
+		}
+		for _, sub := range probe.Subtitles {
+			subtitle := &model.Subtitle{
+				MediaFileID: mediaFileID,
+				Language:    sub.Language,
+				Codec:       sub.Codec,
+				Title:       sub.Title,
+				IsEmbedded:  true,
+				StreamIndex: sub.StreamIndex,
+				IsForced:    sub.IsForced,
+				IsDefault:   sub.IsDefault,
+				IsSDH:       sub.IsSDH,
+			}
+			if err := subRepo.Create(ctx, subtitle); err != nil {
+				return fmt.Errorf("create subtitle %d: %w", sub.StreamIndex, err)
+			}
+		}
+		s.log.Info("Persisted cloud embedded subtitles", "media_file_id", mediaFileID, "count", len(probe.Subtitles))
+	}
+
+	return tx.Commit()
+}
+
+// persistProbedTracksNoTx is the non-transactional fallback (used by scanner where db may not be injected).
+func (s *StreamService) persistProbedTracksNoTx(ctx context.Context, mediaFileID int64, probe *ffprobe.ProbeResult) {
+	if err := s.audioTrackRepo.DeleteByMediaFileID(ctx, mediaFileID); err != nil {
+		s.log.Warn("cloud probe: delete audio tracks", "media_file_id", mediaFileID, "error", err)
+	}
+	for _, t := range probe.AudioTracks {
+		track := &model.AudioTrack{
+			MediaFileID:   mediaFileID,
+			StreamIndex:   t.StreamIndex,
+			Language:      t.Language,
+			Codec:         t.Codec,
+			Channels:      t.Channels,
+			ChannelLayout: t.ChannelLayout,
+			Bitrate:       int(t.Bitrate),
+			SampleRate:    int(t.SampleRate),
+			Title:         t.Title,
+			IsDefault:     t.IsDefault,
+		}
+		if err := s.audioTrackRepo.Create(ctx, track); err != nil {
+			s.log.Warn("cloud probe: create audio track", "media_file_id", mediaFileID, "stream", t.StreamIndex, "error", err)
+		}
+	}
+
+	if s.subtitleRepo != nil && len(probe.Subtitles) > 0 {
+		if err := s.subtitleRepo.DeleteByMediaFileID(ctx, mediaFileID); err != nil {
+			s.log.Warn("cloud probe: delete subtitles", "media_file_id", mediaFileID, "error", err)
+		}
+		for _, sub := range probe.Subtitles {
+			subtitle := &model.Subtitle{
+				MediaFileID: mediaFileID,
+				Language:    sub.Language,
+				Codec:       sub.Codec,
+				Title:       sub.Title,
+				IsEmbedded:  true,
+				StreamIndex: sub.StreamIndex,
+				IsForced:    sub.IsForced,
+				IsDefault:   sub.IsDefault,
+				IsSDH:       sub.IsSDH,
+			}
+			if err := s.subtitleRepo.Create(ctx, subtitle); err != nil {
+				s.log.Warn("cloud probe: create subtitle", "media_file_id", mediaFileID, "stream", sub.StreamIndex, "error", err)
+			}
+		}
+		s.log.Info("Persisted cloud embedded subtitles", "media_file_id", mediaFileID, "count", len(probe.Subtitles))
+	}
+}
+
 // GetAudioTrackForMediaFile returns an audio track if it belongs to the given media file.
 func (s *StreamService) GetAudioTrackForMediaFile(ctx context.Context, mediaFileID, trackID int64) (*model.AudioTrack, error) {
 	track, err := s.audioTrackRepo.GetByID(ctx, trackID)
@@ -300,7 +494,11 @@ func (s *StreamService) PrepareABRHLS(ctx context.Context, mediaID, fileID int64
 	if err != nil {
 		return "", err
 	}
-	if err := s.transcoder.GenerateABRHLS(mediaID, mf.FilePath, mf.Height, mf.ID); err != nil {
+	resolvedPath, err := s.ResolveFilePath(ctx, mediaID, mf)
+	if err != nil {
+		return "", err
+	}
+	if err := s.transcoder.GenerateABRHLS(mediaID, resolvedPath, mf.Height, mf.ID); err != nil {
 		return "", err
 	}
 	return s.transcoder.ABRMasterPath(mediaID, mf.ID), nil
@@ -316,7 +514,16 @@ func (s *StreamService) ABRCached(mediaID, fileID int64) bool {
 // userID and mediaTitle are used to notify the requesting user when done.
 func (s *StreamService) StartABRBackground(userID, mediaID, fileID int64, inputPath, mediaTitle string, sourceHeight int) {
 	go func() {
-		err := s.transcoder.GenerateABRHLS(mediaID, inputPath, sourceHeight, fileID)
+		ctx := context.Background()
+		resolvedPath := inputPath
+
+		if mf, err := s.mediaFileRepo.GetByID(ctx, fileID); err == nil {
+			if path, idxErr := s.ResolveFilePath(ctx, mediaID, mf); idxErr == nil {
+				resolvedPath = path
+			}
+		}
+
+		err := s.transcoder.GenerateABRHLS(mediaID, resolvedPath, sourceHeight, fileID)
 		if err != nil {
 			log.Printf("stream: background ABR generation for media %d file %d: %v", mediaID, fileID, err)
 		}
@@ -329,11 +536,19 @@ func (s *StreamService) StartABRBackground(userID, mediaID, fileID int64, inputP
 
 // RemuxToWriter remuxes the file to fragmented MP4 and writes to w.
 // Used for DirectStream: container-only remux, no codec transcoding.
-func (s *StreamService) RemuxToWriter(inputPath string, w io.Writer) error {
-	return s.transcoder.RemuxToWriter(inputPath, w)
+func (s *StreamService) RemuxToWriter(ctx context.Context, mediaID int64, mf *model.MediaFile, w io.Writer) error {
+	resolvedPath, err := s.ResolveFilePath(ctx, mediaID, mf)
+	if err != nil {
+		return err
+	}
+	return s.transcoder.RemuxToWriter(resolvedPath, w)
 }
 
 // RemuxSelectedAudioToWriter remuxes the file while selecting a specific audio stream.
-func (s *StreamService) RemuxSelectedAudioToWriter(inputPath string, audioStreamIndex int, w io.Writer) error {
-	return s.transcoder.RemuxSelectedAudioToWriter(inputPath, audioStreamIndex, w)
+func (s *StreamService) RemuxSelectedAudioToWriter(ctx context.Context, mediaID int64, mf *model.MediaFile, audioStreamIndex int, w io.Writer) error {
+	resolvedPath, err := s.ResolveFilePath(ctx, mediaID, mf)
+	if err != nil {
+		return err
+	}
+	return s.transcoder.RemuxSelectedAudioToWriter(resolvedPath, audioStreamIndex, w)
 }

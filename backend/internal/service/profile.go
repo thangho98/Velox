@@ -81,8 +81,14 @@ func (s *ProfileService) ListFavorites(
 	ctx context.Context,
 	userID int64,
 	limit, offset int,
+	startChar string,
 ) ([]*model.UserData, error) {
-	return s.userDataSvc.ListFavorites(ctx, userID, limit, offset)
+	return s.userDataSvc.ListFavorites(ctx, userID, limit, offset, startChar)
+}
+
+// GetFavoritesAlphabet returns alphabet counts for user's favorite items.
+func (s *ProfileService) GetFavoritesAlphabet(ctx context.Context, userID int64) ([]*model.AlphabetCount, error) {
+	return s.userDataSvc.GetFavoritesAlphabet(ctx, userID)
 }
 
 // ToggleFavorite toggles favorite status.

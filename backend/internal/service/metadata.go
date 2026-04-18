@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"github.com/thawng/velox/internal/metadata"
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
+	"github.com/thawng/velox/pkg/anilist"
 	"github.com/thawng/velox/pkg/fanart"
 	"github.com/thawng/velox/pkg/nameparser"
 	"github.com/thawng/velox/pkg/omdb"
@@ -20,11 +22,13 @@ import (
 // MetadataService orchestrates metadata matching and persistence.
 type MetadataService struct {
 	tmdbClient      *tmdb.Client
+	anilistClient   *anilist.Client
 	omdbClient      *omdb.Client
 	tvdbClient      *thetvdb.Client
 	fanartClient    *fanart.Client
 	tvmazeClient    *tvmaze.Client
 	matcher         *metadata.Matcher
+	libraryRepo     *repository.LibraryRepo
 	mediaRepo       *repository.MediaRepo
 	mediaFileRepo   *repository.MediaFileRepo
 	seriesRepo      *repository.SeriesRepo
@@ -49,6 +53,10 @@ type imagemetaProcessor interface {
 
 // SetImageMetaService sets the optional image meta service.
 func (s *MetadataService) SetImageMetaService(svc imagemetaProcessor) {
+	if isNilInterface(svc) {
+		s.imagemetaSvc = nil
+		return
+	}
 	s.imagemetaSvc = svc
 }
 
@@ -98,9 +106,10 @@ func (s *MetadataService) SetTVmazeClient(client *tvmaze.Client) {
 }
 
 // NewMetadataService creates a new metadata service.
-// Returns nil if tmdbClient is nil (no API key configured).
 func NewMetadataService(
 	tmdbClient *tmdb.Client,
+	anilistClient *anilist.Client,
+	libraryRepo *repository.LibraryRepo,
 	mediaRepo *repository.MediaRepo,
 	mediaFileRepo *repository.MediaFileRepo,
 	seriesRepo *repository.SeriesRepo,
@@ -109,12 +118,15 @@ func NewMetadataService(
 	genreRepo *repository.GenreRepo,
 	personRepo *repository.PersonRepo,
 ) *MetadataService {
-	if tmdbClient == nil {
-		return nil
+	var matcher *metadata.Matcher
+	if tmdbClient != nil {
+		matcher = metadata.NewMatcher(tmdbClient)
 	}
 	return &MetadataService{
 		tmdbClient:    tmdbClient,
-		matcher:       metadata.NewMatcher(tmdbClient),
+		anilistClient: anilistClient,
+		matcher:       matcher,
+		libraryRepo:   libraryRepo,
 		mediaRepo:     mediaRepo,
 		mediaFileRepo: mediaFileRepo,
 		seriesRepo:    seriesRepo,
@@ -129,6 +141,9 @@ func NewMetadataService(
 // Skips if media already has a tmdb_id (unless force is true).
 // Skips if metadata is locked (admin manual edit protected from rescan override).
 func (s *MetadataService) MatchAndPersistMovie(ctx context.Context, media *model.Media, parsed nameparser.ParsedMedia, filePath string, force bool) error {
+	if s.matcher == nil || s.tmdbClient == nil {
+		return nil
+	}
 	if !force && media.MetadataLocked {
 		return nil // Respect manual edits
 	}
@@ -140,8 +155,12 @@ func (s *MetadataService) MatchAndPersistMovie(ctx context.Context, media *model
 	if err != nil {
 		return err
 	}
+
+	// Fallback: if no movie match, try TV series search.
+	// BBC documentaries and similar content often live in movie libraries
+	// but only match as TV series on TMDb (e.g. "Frozen Planet", "Africa").
 	if !result.Found {
-		return nil
+		return s.fallbackMatchAsTVSeries(ctx, media, parsed, filePath)
 	}
 
 	// Update media with TMDb metadata
@@ -177,9 +196,58 @@ func (s *MetadataService) MatchAndPersistMovie(ctx context.Context, media *model
 	return nil
 }
 
+// fallbackMatchAsTVSeries tries TMDb TV search when movie search fails.
+// Applies series-level metadata (poster, overview, genres) to the media item
+// so it's not left blank. Common for BBC documentaries in movie libraries.
+func (s *MetadataService) fallbackMatchAsTVSeries(ctx context.Context, media *model.Media, parsed nameparser.ParsedMedia, filePath string) error {
+	tvResult, err := s.matcher.MatchTVShow(ctx, parsed, filePath)
+	if err != nil || !tvResult.Found {
+		return nil
+	}
+
+	log.Printf("metadata: movie fallback → TV series match for %q → %q (tmdb:%d)", media.Title, tvResult.SeriesTitle, tvResult.SeriesID)
+
+	seriesTitle := tvResult.SeriesTitle
+	if seriesTitle == "" {
+		seriesTitle = tvResult.Title
+	}
+	overview := tvResult.SeriesOverview
+	if overview == "" {
+		overview = tvResult.Overview
+	}
+	poster := tvResult.SeriesPoster
+	if poster == "" {
+		poster = tvResult.PosterPath
+	}
+
+	tmdbID := int64(tvResult.SeriesID)
+	media.TmdbID = &tmdbID
+	media.Overview = overview
+	media.PosterPath = model.PosterPath(poster)
+	media.BackdropPath = model.BackdropPath(tvResult.BackdropPath)
+	media.Rating = tvResult.Rating
+	if tvResult.SeriesAirDate != "" {
+		media.ReleaseDate = tvResult.SeriesAirDate
+	}
+	s.enqueueImageForCompute(poster)
+	s.enqueueImageForCompute(tvResult.BackdropPath)
+
+	if err := s.mediaRepo.Update(ctx, media); err != nil {
+		return err
+	}
+
+	s.syncMediaGenres(ctx, media.ID, tvResult.Genres)
+	s.syncMediaCredits(ctx, media.ID, tvResult.Cast, tvResult.Crew)
+
+	return nil
+}
+
 // MatchAndPersistEpisode matches a TV episode against TMDb and saves metadata.
 // Skips if metadata is locked (admin manual edit protected from rescan override).
 func (s *MetadataService) MatchAndPersistEpisode(ctx context.Context, media *model.Media, parsed nameparser.ParsedMedia, filePath string, libraryID int64, force bool) error {
+	if s.matcher == nil || s.tmdbClient == nil {
+		return nil
+	}
 	if !force && media.MetadataLocked {
 		return nil // Respect manual edits
 	}
@@ -273,11 +341,11 @@ func (s *MetadataService) ensureSeries(ctx context.Context, result *metadata.TVM
 
 	if result.SeriesID > 0 {
 		tmdbID := int64(result.SeriesID)
-		existing, err := s.seriesRepo.GetByTmdbID(ctx, tmdbID)
+		existing, err := s.seriesRepo.GetByTmdbID(ctx, libraryID, tmdbID)
 		if err == nil && existing != nil {
 			return existing, false, nil
 		}
-		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		if err != nil && !errors.Is(err, repository.ErrNotFound) && !errors.Is(err, sql.ErrNoRows) {
 			return nil, false, err
 		}
 	}

@@ -8,13 +8,18 @@ export interface Library {
   name: string
   type: string
   paths: string[]
+  storage_provider_id?: number
+  source_url?: string
   created_at: string
 }
 
 export interface CreateLibraryRequest {
   name: string
   type: string
-  paths: string[]
+  paths?: string[]
+  // Cloud-backed library (Plan W). Provide these INSTEAD of paths.
+  storage_provider_id?: number
+  source_url?: string
 }
 
 export interface Media {
@@ -103,6 +108,12 @@ export interface MediaListParams {
   sort?: 'newest' | 'oldest' | 'rating' | 'title'
   limit?: number
   offset?: number
+  start_char?: string
+}
+
+export interface AlphabetCount {
+  letter: string
+  count: number
 }
 
 export interface MetadataEditRequest {

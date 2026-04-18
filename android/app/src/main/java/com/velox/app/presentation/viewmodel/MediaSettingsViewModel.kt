@@ -17,13 +17,14 @@ import javax.inject.Inject
 
 data class MediaSettingsUiState(
     val isLoading: Boolean = false,
-    
+
     // Subtitles
     val openSubsSettings: OpenSubsSettingsDto? = null,
     val subdlSettings: ProviderSettingsDto? = null,
     val deepLSettings: ProviderSettingsDto? = null,
     val aiTranslationSettings: AITranslationSettingsDto? = null,
     val autoSubSettings: AutoSubSettingsDto? = null,
+    val autoTranslateSettings: AutoTranslateSettingsDto? = null,
 
     // Playback
     val adminPlaybackSettings: PlaybackSettingsDto? = null,
@@ -42,6 +43,7 @@ data class MediaSettingsUiState(
     val isRunningDetection: Boolean = false,
 
     // Metadata
+    val anilistSettings: ProviderSettingsDto? = null,
     val tmdbSettings: ProviderSettingsDto? = null,
     val omdbSettings: ProviderSettingsDto? = null,
     val tvdbSettings: ProviderSettingsDto? = null,
@@ -72,6 +74,7 @@ class MediaSettingsViewModel @Inject constructor(
             val deepL = settingsRepository.fetchProviderSettings("deepl").getOrNull()
             val aiTranslation = settingsRepository.fetchAITranslationSettings().getOrNull()
             val autoSub = settingsRepository.fetchAutoSubSettings().getOrNull()
+            val autoTranslate = settingsRepository.fetchAutoTranslateSettings().getOrNull()
 
             _uiState.update { state ->
                 state.copy(
@@ -80,6 +83,7 @@ class MediaSettingsViewModel @Inject constructor(
                     deepLSettings = deepL,
                     aiTranslationSettings = aiTranslation,
                     autoSubSettings = autoSub,
+                    autoTranslateSettings = autoTranslate,
                 )
             }
         }
@@ -143,6 +147,7 @@ class MediaSettingsViewModel @Inject constructor(
 
     fun loadMetadata() {
         viewModelScope.launch {
+            val anilist = settingsRepository.fetchProviderSettings("anilist").getOrNull()
             val tmdb = settingsRepository.fetchProviderSettings("tmdb").getOrNull()
             val omdb = settingsRepository.fetchProviderSettings("omdb").getOrNull()
             val tvdb = settingsRepository.fetchProviderSettings("tvdb").getOrNull()
@@ -150,6 +155,7 @@ class MediaSettingsViewModel @Inject constructor(
 
             _uiState.update { state ->
                 state.copy(
+                    anilistSettings = anilist,
                     tmdbSettings = tmdb,
                     omdbSettings = omdb,
                     tvdbSettings = tvdb,
@@ -185,6 +191,7 @@ class MediaSettingsViewModel @Inject constructor(
                 .onSuccess { settings ->
                     _uiState.update { state ->
                         when (provider) {
+                            "anilist" -> state.copy(anilistSettings = settings)
                             "tmdb" -> state.copy(tmdbSettings = settings)
                             "omdb" -> state.copy(omdbSettings = settings)
                             "tvdb" -> state.copy(tvdbSettings = settings)
@@ -384,5 +391,23 @@ class MediaSettingsViewModel @Inject constructor(
 
     fun clearMessages() {
         _uiState.update { it.copy(error = null, successMessage = null) }
+    }
+
+
+    fun updateAutoTranslateSettings(enabled: Boolean, languages: String) {
+        viewModelScope.launch {
+            settingsRepository.updateAutoTranslateSettingsSafe(com.velox.app.data.model.UpdateAutoTranslateRequest(enabled, languages))
+                .onSuccess { data ->
+                    _uiState.update {
+                        it.copy(
+                            autoTranslateSettings = data,
+                            successMessage = "Auto-translate settings updated",
+                        )
+                    }
+                }
+                .onError { error ->
+                    _uiState.update { it.copy(error = "Update failed: ${error.message}") }
+                }
+        }
     }
 }

@@ -24,6 +24,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,6 +93,7 @@ internal fun PlayerControlsOverlay(
     var showAudioMenu by remember { mutableStateOf(false) }
     var showSpeedMenu by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
+    var showRemainingTime by remember { mutableStateOf(true) }
     val isTranslatingSubtitle by actions.isTranslatingSubtitle.collectAsStateWithLifecycle()
 
     LaunchedEffect(showSubtitleMenu, showSubtitleTranslate, showAudioMenu, showSpeedMenu, showSettingsMenu) {
@@ -218,7 +222,24 @@ internal fun PlayerControlsOverlay(
                                 DropdownMenu(expanded = showAudioMenu, onDismissRequest = { showAudioMenu = false }) {
                                     uiState.audioTracks.forEachIndexed { index, track ->
                                         DropdownMenuItem(
-                                            text = { Text(track.label) },
+                                            text = {
+                                                Text(buildAnnotatedString {
+                                                    append(track.label)
+                                                    if (track.codec.isNotBlank()) {
+                                                        append(" ")
+                                                        withStyle(SpanStyle(color = Color.Gray, fontSize = 12.sp)) {
+                                                            append(track.codec.uppercase())
+                                                            if (track.channels > 0) append(" ${track.channels}ch")
+                                                        }
+                                                    }
+                                                    if (!track.isDefault) {
+                                                        append(" ")
+                                                        withStyle(SpanStyle(color = Color(0xFFFFD700), fontSize = 12.sp)) {
+                                                            append("(HLS)")
+                                                        }
+                                                    }
+                                                })
+                                            },
                                             onClick = { actions.selectAudioTrack(index); showAudioMenu = false },
                                             leadingIcon = { if (index == uiState.selectedAudioTrackIndex) Icon(LucideIcons.Check, null) }
                                         )
@@ -357,8 +378,18 @@ internal fun PlayerControlsOverlay(
 
                         Spacer(modifier = Modifier.weight(1f))
 
-                        val displayRem = if (uiState.effectiveDuration > 0 || !uiState.isLoading) "-${formatTime((uiState.effectiveDuration - uiState.currentPosition).coerceAtLeast(0L))}" else "--:--"
-                        Text(text = displayRem, color = NetflixWhite, fontSize = 14.sp)
+                        val displayEnd = if (uiState.effectiveDuration > 0 || !uiState.isLoading) {
+                            if (showRemainingTime) "-${formatTime((uiState.effectiveDuration - uiState.currentPosition).coerceAtLeast(0L))}"
+                            else formatTime(uiState.effectiveDuration)
+                        } else {
+                            "--:--"
+                        }
+                        Text(
+                            text = displayEnd,
+                            color = NetflixWhite,
+                            fontSize = 14.sp,
+                            modifier = Modifier.clickable { showRemainingTime = !showRemainingTime }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))

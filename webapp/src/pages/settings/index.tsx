@@ -37,6 +37,7 @@ import { WebhooksSection } from './components/WebhooksSection'
 import { CinemaSection } from './components/CinemaSection'
 import { MarkersSection } from './components/MarkersSection'
 import { PretranscodeSection } from './components/PretranscodeSection'
+import { StorageSection } from './components/StorageSection'
 
 // ── Section Definitions ───────────────────────────────────────────────────────
 
@@ -139,6 +140,13 @@ const ALL_SECTIONS: Section[] = [
     adminOnly: true,
   },
   {
+    id: 'storage',
+    labelKey: 'sections.storage.title',
+    icon: <LuHardDrive size={18} />,
+    group: 'Velox Server',
+    adminOnly: true,
+  },
+  {
     id: 'users',
     labelKey: 'sections.users.title',
     icon: <LuUsers size={18} />,
@@ -182,6 +190,7 @@ const SECTION_COMPONENTS: Record<string, React.FC> = {
   markers: MarkersSection,
   general: GeneralSection,
   libraries: LibrariesSection,
+  storage: StorageSection,
   users: UsersSection,
   activity: ActivitySection,
   tasks: TasksSection,

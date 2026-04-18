@@ -101,6 +101,8 @@ fun MediaDetailScreen(
             }
         },
         onRefreshMetadata = { viewModel.refreshMetadata() },
+        onAutoDownloadSubtitle = { onResult -> viewModel.autoDownloadSubtitle(onResult) },
+        onCloudProbe = { onResult -> viewModel.cloudProbe(onResult) },
     )
 }
 
@@ -117,6 +119,8 @@ private fun MediaDetailContent(
     onSubtitleSelect: (String?) -> Unit = {},
     onCopyStreamUrl: () -> Unit = {},
     onRefreshMetadata: () -> Unit = {},
+    onAutoDownloadSubtitle: ((Boolean) -> Unit) -> Unit = {},
+    onCloudProbe: ((Boolean) -> Unit) -> Unit = {},
 ) {
     var currentTrailerIndex by remember { mutableIntStateOf(0) }
     var showTrailer by remember { mutableStateOf(false) }
@@ -301,12 +305,27 @@ private fun MediaDetailContent(
                                 color = NetflixDark,
                                 shadowElevation = 12.dp,
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = com.velox.app.presentation.ui.components.LucideIcons.Film,
+                                        contentDescription = null,
+                                        tint = NetflixLightGray,
+                                        modifier = Modifier.size(if (posterWidth > 200.dp) 72.dp else 48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     Text(
-                                        text = mediaDetail.title.take(2).uppercase(),
+                                        text = mediaDetail.title,
                                         color = NetflixLightGray,
-                                        fontSize = if (posterWidth > 200.dp) 48.sp else 36.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontSize = if (posterWidth > 200.dp) 18.sp else 14.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                     )
                                 }
                             }
@@ -320,6 +339,7 @@ private fun MediaDetailContent(
                             media = mediaDetail,
                             uiState = uiState,
                             primaryFile = primaryFile,
+                            snackbarHostState = snackbarHostState,
                             onPlayClick = onPlayClick,
                             onFavoriteClick = onFavoriteClick,
                             onWatchedClick = onWatchedClick,
@@ -328,6 +348,8 @@ private fun MediaDetailContent(
                             onSubtitleSelect = onSubtitleSelect,
                             onCopyStreamUrl = onCopyStreamUrl,
                             onRefreshMetadata = onRefreshMetadata,
+                            onAutoDownloadSubtitle = onAutoDownloadSubtitle,
+                            onCloudProbe = onCloudProbe,
                         )
                     }
                 }
@@ -341,6 +363,7 @@ private fun MediaDetailInfo(
     media: MediaDetail,
     uiState: MediaDetailUiState,
     primaryFile: MediaFile?,
+    snackbarHostState: SnackbarHostState,
     onPlayClick: () -> Unit,
     onFavoriteClick: () -> Unit,
     onWatchedClick: () -> Unit,
@@ -349,7 +372,13 @@ private fun MediaDetailInfo(
     onSubtitleSelect: (String?) -> Unit = {},
     onCopyStreamUrl: () -> Unit = {},
     onRefreshMetadata: () -> Unit = {},
+    onAutoDownloadSubtitle: ((Boolean) -> Unit) -> Unit = {},
+    onCloudProbe: ((Boolean) -> Unit) -> Unit = {},
 ) {
+    var isDownloadingSubtitle by remember { mutableStateOf(false) }
+    var isProbingCloud by remember { mutableStateOf(false) }
+    val isCloudMedia = primaryFile?.filePath?.contains("://") == true &&
+        primaryFile.filePath.startsWith("http").not()
     val screenWidth = LocalConfiguration.current.screenWidthDp
 
     // Title
@@ -539,6 +568,7 @@ private fun MediaDetailInfo(
         // Action menu
         Box {
             var showActionMenu by remember { mutableStateOf(false) }
+            val coroutineScope = rememberCoroutineScope()
             ActionMenuButton(
                 expanded = showActionMenu,
                 onClick = { showActionMenu = true },
@@ -548,9 +578,54 @@ private fun MediaDetailInfo(
                 onDismiss = { showActionMenu = false },
                 items = buildList {
                     add(ActionMenuItem.StreamUrl(onClick = { showActionMenu = false; onCopyStreamUrl() }))
+                    add(ActionMenuItem.Custom(
+                        label = "Auto-download subtitles",
+                        icon = LucideIcons.Download,
+                        isLoading = isDownloadingSubtitle,
+                        autoDismiss = false,
+                        onClick = {
+                            if (isDownloadingSubtitle) return@Custom
+                            isDownloadingSubtitle = true
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Searching and downloading subtitles...")
+                            }
+                            onAutoDownloadSubtitle { success ->
+                                isDownloadingSubtitle = false
+                                showActionMenu = false
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(if (success) "Subtitles downloaded successfully!" else "Could not find a subtitle match.")
+                                }
+                            }
+                        }
+                    ))
                     if (uiState.isAdmin) {
                         add(ActionMenuItem.Edit(onClick = { showActionMenu = false }))
                         add(ActionMenuItem.RefreshMetadata(onClick = { showActionMenu = false; onRefreshMetadata() }))
+                        if (isCloudMedia) {
+                            add(ActionMenuItem.Custom(
+                                label = "Extract cloud subtitles",
+                                icon = LucideIcons.Subtitles,
+                                isLoading = isProbingCloud,
+                                autoDismiss = false,
+                                onClick = {
+                                    if (isProbingCloud) return@Custom
+                                    isProbingCloud = true
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("Probing cloud file for subtitles...")
+                                    }
+                                    onCloudProbe { success ->
+                                        isProbingCloud = false
+                                        showActionMenu = false
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                if (success) "Cloud probe complete — subtitles extracted!"
+                                                else "Failed to probe cloud file."
+                                            )
+                                        }
+                                    }
+                                }
+                            ))
+                        }
                     }
                 },
             )
@@ -825,11 +900,27 @@ fun SimilarCard(
                     )
                 }
             } else {
-                Box(contentAlignment = Alignment.Center) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = com.velox.app.presentation.ui.components.LucideIcons.Film,
+                        contentDescription = null,
+                        tint = NetflixLightGray,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = item.title.take(2).uppercase(),
+                        text = item.title,
                         color = NetflixLightGray,
-                        fontSize = 24.sp,
+                        fontSize = 12.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
             }

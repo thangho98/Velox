@@ -5,9 +5,11 @@
     "dev": "env-cmd concurrently --names \"backend,webapp\" --prefix-colors \"yellow,cyan\" \"pnpm run dev:backend\" \"pnpm run dev:webapp\"",
     "dev:backend": "cd backend && air",
     "dev:webapp": "cd webapp && pnpm run dev",
+    "dev:anilist-connect": "pnpm --filter @velox/anilist-connect dev",
     "build": "concurrently --names \"backend,webapp\" --prefix-colors \"yellow,cyan\" \"pnpm run build:backend\" \"pnpm run build:webapp\"",
     "build:backend": "cd backend && pnpm run build",
-    "build:webapp": "cd webapp && pnpm run build"
+    "build:webapp": "cd webapp && pnpm run build",
+    "build:anilist-connect": "pnpm --filter @velox/anilist-connect build"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

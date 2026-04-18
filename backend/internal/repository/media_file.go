@@ -201,6 +201,19 @@ func (r *MediaFileRepo) FindByPath(ctx context.Context, path string) (*model.Med
 	return scanMediaFile(row)
 }
 
+// FindCloudFile finds a cloud file by its provider and native ID, ignoring query parameters
+func (r *MediaFileRepo) FindCloudFile(ctx context.Context, provider, nativeID string) (*model.MediaFile, error) {
+	basePath := provider + "://" + nativeID
+	likePath := basePath + "?%"
+	row := r.db.QueryRowContext(ctx, `SELECT id, media_id, file_path, file_size, duration,
+		width, height, video_codec, video_profile, video_level, video_fps,
+		audio_codec, container, bitrate,
+		is_hdr, dv_profile, color_transfer, color_primaries,
+		fingerprint, is_primary, added_at, last_verified_at
+		FROM media_files WHERE file_path = ? OR file_path LIKE ? LIMIT 1`, basePath, likePath)
+	return scanMediaFile(row)
+}
+
 // UpdatePath updates the file path (for rename detection)
 func (r *MediaFileRepo) UpdatePath(ctx context.Context, id int64, newPath string) error {
 	res, err := r.db.ExecContext(ctx, "UPDATE media_files SET file_path = ? WHERE id = ?", newPath, id)
@@ -262,6 +275,33 @@ func (r *MediaFileRepo) ListAllPaginated(ctx context.Context, limit, offset int)
 		FROM media_files ORDER BY id LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("listing all files: %w", err)
+	}
+	defer rows.Close()
+
+	var files []model.MediaFile
+	for rows.Next() {
+		mf, err := scanMediaFile(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning media file: %w", err)
+		}
+		files = append(files, *mf)
+	}
+	return files, rows.Err()
+}
+
+// ListUnprobedCloud returns cloud media files that haven't been probed yet
+// (video_codec is empty, meaning ffprobe hasn't run). Paginated for batch processing.
+func (r *MediaFileRepo) ListUnprobedCloud(ctx context.Context, limit, offset int) ([]model.MediaFile, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, media_id, file_path, file_size, duration,
+		width, height, video_codec, video_profile, video_level, video_fps,
+		audio_codec, container, bitrate,
+		is_hdr, dv_profile, color_transfer, color_primaries,
+		fingerprint, is_primary, added_at, last_verified_at
+		FROM media_files
+		WHERE file_path LIKE '%://%' AND file_path NOT LIKE 'http%' AND video_codec = ''
+		ORDER BY id LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("listing unprobed cloud files: %w", err)
 	}
 	defer rows.Close()
 

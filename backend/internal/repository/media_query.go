@@ -205,6 +205,12 @@ func (r *MediaRepo) ListFiltered(ctx context.Context, f model.MediaListFilter) (
 		args = append(args, f.Year+"%")
 	}
 
+	// StartChar filter
+	if f.StartChar != "" && f.StartChar != "#" {
+		query += " AND UPPER(m.sort_title) >= ?"
+		args = append(args, strings.ToUpper(f.StartChar))
+	}
+
 	query += " GROUP BY m.id"
 
 	// Sort order
@@ -265,6 +271,60 @@ func (r *MediaRepo) ListFiltered(ctx context.Context, f model.MediaListFilter) (
 			item.Completed = &completed.Bool
 		}
 
+		results = append(results, item)
+	}
+	return results, rows.Err()
+}
+
+// GetAlphabet returns the count of media items for each starting letter
+func (r *MediaRepo) GetAlphabet(ctx context.Context, f model.MediaListFilter) ([]model.AlphabetCount, error) {
+	query := `SELECT 
+		(CASE 
+			WHEN UPPER(SUBSTR(m.sort_title, 1, 1)) BETWEEN 'A' AND 'Z' 
+			THEN UPPER(SUBSTR(m.sort_title, 1, 1)) 
+			ELSE '#' END) as letter, 
+		COUNT(DISTINCT m.id) as count 
+		FROM media m
+		LEFT JOIN media_genres mg ON mg.media_id = m.id
+		LEFT JOIN genres g ON g.id = mg.genre_id
+		WHERE 1=1`
+	args := []any{}
+
+	if f.LibraryID > 0 {
+		query += " AND m.library_id = ?"
+		args = append(args, f.LibraryID)
+	}
+	if f.MediaType != "" {
+		query += " AND m.media_type = ?"
+		args = append(args, f.MediaType)
+	}
+	if f.Genre != "" {
+		query += ` AND EXISTS (
+			SELECT 1 FROM media_genres mg2
+			JOIN genres g2 ON g2.id = mg2.genre_id
+			WHERE mg2.media_id = m.id AND g2.name = ?
+		)`
+		args = append(args, f.Genre)
+	}
+	if f.Year != "" {
+		query += " AND m.release_date LIKE ?"
+		args = append(args, f.Year+"%")
+	}
+
+	query += " GROUP BY letter ORDER BY letter"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("getting alphabet: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.AlphabetCount
+	for rows.Next() {
+		var item model.AlphabetCount
+		if err := rows.Scan(&item.Letter, &item.Count); err != nil {
+			return nil, err
+		}
 		results = append(results, item)
 	}
 	return results, rows.Err()

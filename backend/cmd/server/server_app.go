@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/thawng/velox/internal/auth"
+	"github.com/thawng/velox/internal/cloudstorage"
+	fshareDriverPkg "github.com/thawng/velox/internal/cloudstorage/drivers/fshare"
 	"github.com/thawng/velox/internal/config"
 	"github.com/thawng/velox/internal/database"
 	"github.com/thawng/velox/internal/handler"
@@ -25,7 +27,9 @@ import (
 	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/internal/trickplay"
 	"github.com/thawng/velox/internal/websocket"
+	"github.com/thawng/velox/pkg/anilist"
 	"github.com/thawng/velox/pkg/fanart"
+	"github.com/thawng/velox/pkg/ffprobe"
 	"github.com/thawng/velox/pkg/omdb"
 	"github.com/thawng/velox/pkg/thetvdb"
 	"github.com/thawng/velox/pkg/tmdb"
@@ -34,19 +38,20 @@ import (
 )
 
 type serverApp struct {
-	cfg          *config.Config
-	startTime    time.Time
-	db           *sql.DB
-	backgroundDB *sql.DB
-	hwAccel      string
-	tmdbClient   *tmdb.Client
-	trickplayGen *trickplay.Generator
-	jwtManager   *auth.JWTManager
-	apiKeyStore  *auth.APIKeyStore
-	wsHub        *websocket.Hub
-	repos        serverRepos
-	services     serverServices
-	handlers     serverHandlers
+	cfg           *config.Config
+	startTime     time.Time
+	db            *sql.DB
+	backgroundDB  *sql.DB
+	hwAccel       string
+	tmdbClient    *tmdb.Client
+	trickplayGen  *trickplay.Generator
+	jwtManager    *auth.JWTManager
+	apiKeyStore   *auth.APIKeyStore
+	wsHub         *websocket.Hub
+	cloudRegistry *cloudstorage.Registry // nil when cfg.Cloud.Enabled == false
+	repos         serverRepos
+	services      serverServices
+	handlers      serverHandlers
 }
 
 type serverRepos struct {
@@ -76,6 +81,7 @@ type serverRepos struct {
 	appVersion         *repository.AppVersionRepo
 	scheduledTask      *repository.ScheduledTaskRepository
 	imageMetadata      *repository.ImageMetadataRepo
+	storageProvider    *repository.StorageProviderRepo
 }
 
 type serverServices struct {
@@ -111,35 +117,36 @@ type serverServices struct {
 }
 
 type serverHandlers struct {
-	library        *handler.LibraryHandler
-	media          *handler.MediaHandler
-	stream         *handler.StreamHandler
-	streamURL      *handler.StreamURLHandler
-	setup          *handler.SetupHandler
-	auth           *handler.AuthHandler
-	user           *handler.UserHandler
-	profile        *handler.ProfileHandler
-	playback       *handler.PlaybackHandler
-	subtitle       *handler.SubtitleHandler
-	audioTrack     *handler.AudioTrackHandler
-	settings       *handler.SettingsHandler
-	subtitleSearch *handler.SubtitleSearchHandler
-	trickplay      *handler.TrickplayHandler
-	image          *handler.ImageHandler
-	browse         *handler.BrowseHandler
-	catalog        *handler.CatalogHandler
-	series         *handler.SeriesHandler
-	metadata       *handler.MetadataHandler
-	cinema         *handler.CinemaHandler
-	activity       *handler.ActivityHandler
-	admin          *handler.AdminHandler
-	webhook        *handler.WebhookHandler
-	markerAdmin    *handler.MarkerAdminHandler
-	notification   *handler.NotificationHandler
-	pretranscode   *handler.PretranscodeHandler
-	ws             *handler.WebSocketHandler
-	scheduler      *handler.SchedulerHandler
-	appVersion     *handler.AppVersionHandler
+	library         *handler.LibraryHandler
+	media           *handler.MediaHandler
+	stream          *handler.StreamHandler
+	streamURL       *handler.StreamURLHandler
+	setup           *handler.SetupHandler
+	auth            *handler.AuthHandler
+	user            *handler.UserHandler
+	profile         *handler.ProfileHandler
+	playback        *handler.PlaybackHandler
+	subtitle        *handler.SubtitleHandler
+	audioTrack      *handler.AudioTrackHandler
+	settings        *handler.SettingsHandler
+	subtitleSearch  *handler.SubtitleSearchHandler
+	trickplay       *handler.TrickplayHandler
+	image           *handler.ImageHandler
+	browse          *handler.BrowseHandler
+	catalog         *handler.CatalogHandler
+	series          *handler.SeriesHandler
+	metadata        *handler.MetadataHandler
+	cinema          *handler.CinemaHandler
+	activity        *handler.ActivityHandler
+	admin           *handler.AdminHandler
+	webhook         *handler.WebhookHandler
+	markerAdmin     *handler.MarkerAdminHandler
+	notification    *handler.NotificationHandler
+	pretranscode    *handler.PretranscodeHandler
+	ws              *handler.WebSocketHandler
+	scheduler       *handler.SchedulerHandler
+	appVersion      *handler.AppVersionHandler
+	storageProvider *handler.StorageProviderHandler
 }
 
 func newServerApp(cfg *config.Config) (*serverApp, error) {
@@ -167,6 +174,16 @@ func newServerApp(cfg *config.Config) (*serverApp, error) {
 	app.repos = newServerRepos(db)
 	go app.wsHub.Run()
 
+	registry, err := newCloudRegistry(cfg)
+	if err != nil {
+		app.Close()
+		return nil, err
+	}
+	app.cloudRegistry = registry
+	slog.Info("cloud storage ready",
+		"secret_origin", cfg.Cloud.SecretKeyOrigin,
+	)
+
 	// Phase 1 HW Tonemapping Probe
 	if cfg.EnableHwTonemap {
 		playback.ProbeTonemapCapabilitiesAsync()
@@ -192,6 +209,25 @@ func (app *serverApp) Close() {
 	if app.db != nil {
 		_ = app.db.Close()
 	}
+}
+
+// newCloudRegistry builds the cloudstorage driver registry from config.
+// Each enabled driver gets registered here; scanner/stream handler look up
+// drivers by provider_type at request time.
+func newCloudRegistry(cfg *config.Config) (*cloudstorage.Registry, error) {
+	registry := cloudstorage.NewRegistry()
+
+	fshareDriver := fshareDriverPkg.NewDriver(fshareDriverPkg.Config{
+		AppKey:    cfg.Cloud.FshareAppKey,
+		UserAgent: cfg.Cloud.FshareUserAgent,
+	})
+	if err := registry.Register(fshareDriver); err != nil {
+		return nil, err
+	}
+
+	// Future: registry.Register(googledrive.NewDriver(cfg.Cloud.GDrive))
+
+	return registry, nil
 }
 
 func openMigratedDatabase(path string) (*sql.DB, error) {
@@ -245,11 +281,18 @@ func newServerRepos(db *sql.DB) serverRepos {
 		appVersion:         repository.NewAppVersionRepo(db),
 		scheduledTask:      repository.NewScheduledTaskRepository(db),
 		imageMetadata:      repository.NewImageMetadataRepo(db),
+		storageProvider:    repository.NewStorageProviderRepo(db),
 	}
 }
 
 func (app *serverApp) initServices() error {
 	repos := app.repos
+	var trickplayGen interface {
+		GenerateAsync(mediaID int64, inputPath string, durationSec int)
+	}
+	if app.trickplayGen != nil {
+		trickplayGen = app.trickplayGen
+	}
 
 	app.services.pipeline = scanner.NewPipeline(
 		app.db,
@@ -263,12 +306,34 @@ func (app *serverApp) initServices() error {
 		repos.subtitle,
 		repos.audioTrack,
 		repos.marker,
-		app.trickplayGen,
+		trickplayGen,
 	)
+
+	app.services.subtitleSearch = service.NewSubtitleSearchService(
+		repos.media,
+		repos.mediaFile,
+		repos.subtitle,
+		repos.appSettings,
+		repos.prefs,
+		repos.episode,
+		repos.season,
+		repos.series,
+		app.cfg.SubtitleCachePath,
+	)
+	app.services.subtitleSearch.SetBuiltinSubdlKey(app.cfg.SubdlAPIKey)
 
 	app.services.metadata, app.tmdbClient = app.initMetadataService(app.services.pipeline)
 	app.services.transcoder = transcoder.New(app.cfg.TranscodePath, app.hwAccel, app.cfg.MaxTranscodes, app.cfg.EnableHwTonemap)
 	app.services.library = service.NewLibraryService(repos.library, repos.scanJob, app.services.pipeline)
+	if app.cloudRegistry != nil {
+		cloudScanner := scanner.New(app.db, repos.media, repos.mediaFile, repos.library)
+		if app.services.metadata != nil {
+			cloudScanner.SetMetadataMatcher(app.services.metadata)
+		}
+		cloudScanner.SetSubtitleAutoDownloader(app.services.subtitleSearch)
+		cloudScanner.SetCloudProbe(cloudProbeFn, repos.subtitle, repos.audioTrack)
+		app.services.library.SetCloud(app.cloudRegistry, repos.storageProvider, cloudScanner, app.cfg.Cloud.SecretKey)
+	}
 	app.services.media = service.NewMediaService(repos.media, repos.mediaFile)
 	app.services.media.SetEpisodeRepo(repos.episode)
 	app.services.media.SetSeasonRepo(repos.season)
@@ -316,17 +381,6 @@ func (app *serverApp) initServices() error {
 		return err
 	}
 
-	app.services.subtitleSearch = service.NewSubtitleSearchService(
-		repos.media,
-		repos.mediaFile,
-		repos.subtitle,
-		repos.appSettings,
-		repos.episode,
-		repos.season,
-		repos.series,
-		app.cfg.SubtitleCachePath,
-	)
-	app.services.subtitleSearch.SetBuiltinSubdlKey(app.cfg.SubdlAPIKey)
 	app.services.subtitleSearch.SetNotificationService(app.services.notification)
 	app.services.pipeline.SetSubtitleAutoDownloader(app.services.subtitleSearch)
 	app.services.scheduler = service.NewScheduler(repos.scheduledTask)
@@ -389,7 +443,24 @@ func (app *serverApp) initHandlers() {
 	app.handlers.library = handler.NewLibraryHandler(services.library)
 	app.handlers.media = handler.NewMediaHandler(services.media)
 	app.handlers.stream = handler.NewStreamHandler(services.stream, services.streamManager)
-	app.handlers.streamURL = handler.NewStreamURLHandler(app.apiKeyStore, services.stream)
+	streamURLHandler := handler.NewStreamURLHandler(app.apiKeyStore, services.stream)
+	if app.cloudRegistry != nil {
+		streamURLHandler = streamURLHandler.WithCloud(
+			app.repos.library,
+			app.repos.media,
+			app.repos.storageProvider,
+			app.cloudRegistry,
+			app.cfg.Cloud.SecretKey,
+		)
+		cloudResolver := func(ctx context.Context, mediaID int64, mf *model.MediaFile) (string, error) {
+			return handler.ResolveCloudDirectURL(ctx, mediaID, mf, app.repos.library, app.repos.media, app.repos.storageProvider, app.cloudRegistry, app.cfg.Cloud.SecretKey)
+		}
+		services.stream.SetCloudResolver(cloudResolver)
+		services.stream.SetSubtitleRepo(app.repos.subtitle)
+		services.stream.SetDB(app.db)
+		services.subtitle.SetCloudResolver(cloudResolver)
+	}
+	app.handlers.streamURL = streamURLHandler
 	app.handlers.setup = handler.NewSetupHandler(services.setup)
 	app.handlers.auth = handler.NewAuthHandler(services.auth)
 	app.handlers.user = handler.NewUserHandler(services.auth)
@@ -429,6 +500,12 @@ func (app *serverApp) initHandlers() {
 	app.handlers.ws = handler.NewWebSocketHandler(app.wsHub, app.jwtManager, slog.Default())
 	app.handlers.scheduler = handler.NewSchedulerHandler(services.scheduler)
 	app.handlers.appVersion = handler.NewAppVersionHandler(app.repos.appVersion)
+	app.handlers.storageProvider = handler.NewStorageProviderHandler(
+		app.cloudRegistry, // may be nil when cloud disabled
+		app.repos.storageProvider,
+		app.repos.library,
+		app.cfg.Cloud.SecretKey,
+	)
 
 	app.handlers.auth.SetActivityService(services.activity)
 	app.handlers.library.SetActivityService(services.activity)
@@ -438,18 +515,26 @@ func (app *serverApp) initHandlers() {
 func (app *serverApp) initMetadataService(pipeline *scanner.Pipeline) (*service.MetadataService, *tmdb.Client) {
 	ctx := context.Background()
 
+	anilistToken, anilistBuiltin := app.configuredAPIKey(ctx, model.SettingAniListToken, app.cfg.AniListToken)
+	if anilistToken != "" {
+		logAPIKeySource("AniList", anilistBuiltin)
+	}
+	anilistClient := anilist.New(anilistToken)
+
 	tmdbAPIKey, tmdbBuiltin := app.configuredAPIKey(ctx, model.SettingTMDbAPIKey, app.cfg.TMDbAPIKey)
+	var tmdbClient *tmdb.Client
 	if tmdbAPIKey == "" {
-		log.Println("TMDb API key not configured. Metadata enrichment disabled.")
+		log.Println("TMDb API key not configured. Non-anime metadata fallback disabled.")
 		log.Println("Set VELOX_TMDB_API_KEY env var or configure in Settings → Metadata")
-		return nil, nil
+	} else {
+		logAPIKeySource("TMDb", tmdbBuiltin)
+		tmdbClient = tmdb.New(tmdbAPIKey)
 	}
 
-	logAPIKeySource("TMDb", tmdbBuiltin)
-
-	tmdbClient := tmdb.New(tmdbAPIKey)
 	metadataSvc := service.NewMetadataService(
 		tmdbClient,
+		anilistClient,
+		app.repos.library,
 		app.repos.media,
 		app.repos.mediaFile,
 		app.repos.series,
@@ -458,12 +543,11 @@ func (app *serverApp) initMetadataService(pipeline *scanner.Pipeline) (*service.
 		app.repos.genre,
 		app.repos.person,
 	)
-	if metadataSvc == nil {
-		return nil, tmdbClient
-	}
-
 	pipeline.SetMetadataMatcher(metadataSvc)
-	log.Println("TMDb metadata enrichment enabled")
+	log.Println("AniList anime metadata enrichment enabled")
+	if tmdbClient != nil {
+		log.Println("TMDb metadata enrichment enabled")
+	}
 
 	omdbAPIKey, omdbBuiltin := app.configuredAPIKey(ctx, model.SettingOMDbAPIKey, app.cfg.OMDbAPIKey)
 	if omdbAPIKey != "" {
@@ -536,10 +620,21 @@ func resolveHWAccel(mode string) string {
 
 func builtinSettingsPresence(cfg *config.Config) map[string]bool {
 	return map[string]bool{
-		"tmdb":   cfg.TMDbAPIKey != "",
-		"omdb":   cfg.OMDbAPIKey != "",
-		"tvdb":   cfg.TVDBAPIKey != "",
-		"fanart": cfg.FanartAPIKey != "",
-		"subdl":  cfg.SubdlAPIKey != "",
+		"anilist": cfg.AniListToken != "",
+		"tmdb":    cfg.TMDbAPIKey != "",
+		"omdb":    cfg.OMDbAPIKey != "",
+		"tvdb":    cfg.TVDBAPIKey != "",
+		"fanart":  cfg.FanartAPIKey != "",
+		"subdl":   cfg.SubdlAPIKey != "",
 	}
+}
+
+// cloudProbeFn resolves a cloud native ID to an HTTP download URL via the
+// already-authenticated provider, then runs ffprobe on it.
+func cloudProbeFn(ctx context.Context, provider cloudstorage.Provider, nativeID string) (*ffprobe.ProbeResult, error) {
+	downloadURL, err := provider.GetDownloadURL(ctx, nativeID)
+	if err != nil {
+		return nil, fmt.Errorf("get download URL for probe: %w", err)
+	}
+	return ffprobe.ProbeWithContext(ctx, downloadURL)
 }

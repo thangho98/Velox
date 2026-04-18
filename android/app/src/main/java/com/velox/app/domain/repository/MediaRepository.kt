@@ -24,7 +24,15 @@ interface MediaRepository {
         libraryId: Int? = null,
         limit: Int = 50,
         offset: Int = 0,
+        startChar: String? = null,
     ): Result<List<MediaItem>>
+
+    suspend fun getMediaAlphabet(
+        type: String? = null,
+        genre: String? = null,
+        year: String? = null,
+        libraryId: Int? = null,
+    ): Result<List<AlphabetCount>>
 
     suspend fun getMedia(mediaId: Int): Result<MediaDetail>
     suspend fun getSeriesList(
@@ -35,7 +43,14 @@ interface MediaRepository {
         libraryId: Int? = null,
         limit: Int = 50,
         offset: Int = 0,
+        startChar: String? = null,
     ): Result<List<SeriesItem>>
+
+    suspend fun getSeriesAlphabet(
+        genre: String? = null,
+        year: String? = null,
+        libraryId: Int? = null,
+    ): Result<List<AlphabetCount>>
 
     suspend fun getSeries(seriesId: Int): Result<SeriesDetail>
     suspend fun getSeasons(seriesId: Int): Result<List<Season>>
@@ -61,6 +76,7 @@ interface MediaRepository {
     // Subtitles
     suspend fun searchSubtitles(mediaId: Int, lang: String): Result<List<SubtitleSearchResult>>
     suspend fun downloadSubtitle(mediaId: Int, provider: String, externalId: String, language: String): Result<Unit>
+    suspend fun autoDownloadSubtitle(mediaId: Int): Result<Unit>
     suspend fun translateSubtitle(subtitleId: Int, targetLanguage: String): Result<Unit>
     suspend fun getSubtitleContent(fileId: Int, subId: Int): Result<String>
 }

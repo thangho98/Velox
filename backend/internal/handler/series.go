@@ -37,6 +37,7 @@ func (h *SeriesHandler) ListSeries(w http.ResponseWriter, r *http.Request) {
 		Sort:      r.URL.Query().Get("sort"),
 		Limit:     parseIntQuery(r, "limit", 50),
 		Offset:    parseIntQuery(r, "offset", 0),
+		StartChar: r.URL.Query().Get("start_char"),
 	}
 
 	series, err := h.seriesSvc.ListFiltered(r.Context(), filter)
@@ -144,4 +145,22 @@ func (h *SeriesHandler) ListEpisodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, episodes)
+}
+
+// GetAlphabet returns the A-Z grouping count for the series library.
+// GET /api/series/alphabet
+func (h *SeriesHandler) GetAlphabet(w http.ResponseWriter, r *http.Request) {
+	libraryID, _ := parseInt64Query(r.URL.Query().Get("library_id"))
+	filter := model.SeriesListFilter{
+		LibraryID: libraryID,
+		Genre:     r.URL.Query().Get("genre"),
+		Year:      r.URL.Query().Get("year"),
+	}
+
+	alphabet, err := h.seriesSvc.GetAlphabet(r.Context(), filter)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, alphabet)
 }

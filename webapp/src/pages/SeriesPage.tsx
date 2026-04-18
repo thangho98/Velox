@@ -1,20 +1,39 @@
-import { useSeriesList, useGenres } from '@/hooks/stores/useMedia'
+import { useInfiniteSeriesList, useGenres } from '@/hooks/stores/useMedia'
 import { useFilterParams } from '@/hooks/useFilterParams'
+import { useIntersectionObserver } from '@/hooks/useIntersectionObserver'
+import { useEffect } from 'react'
 import { MediaCard } from '@/components/MediaCard'
 import { FilterBar } from '@/components/FilterBar'
 import { AlphaIndex, useAlphaScroll } from '@/components/AlphaIndex'
+import { useSeriesAlphabet } from '@/hooks/stores/useMedia'
 import { LuTv } from 'react-icons/lu'
 import type { SeriesListItem } from '@/types/api'
 
 export default function SeriesPage() {
-  const { filters, setGenre, setYear, setSort, clearFilters, hasActiveFilters } = useFilterParams()
+  const { filters, setGenre, setYear, setSort, setStartChar, clearFilters, hasActiveFilters } =
+    useFilterParams()
 
-  const { data: series, isLoading } = useSeriesList({
-    genre: filters.genre || undefined,
-    year: filters.year || undefined,
-    sort: filters.sort,
-    limit: 500,
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteSeriesList(
+    {
+      genre: filters.genre || undefined,
+      year: filters.year || undefined,
+      sort: filters.sort,
+      start_char: filters.start_char || undefined,
+      limit: 100,
+    },
+  )
+
+  const series = data?.pages.flat() || []
+
+  const { targetRef, isIntersecting } = useIntersectionObserver({
+    rootMargin: '200px',
   })
+
+  useEffect(() => {
+    if (isIntersecting && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage()
+    }
+  }, [isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const { data: genreList } = useGenres('series')
   const genres = genreList?.map((g) => g.name) ?? []
@@ -22,9 +41,27 @@ export default function SeriesPage() {
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: currentYear - 1950 + 1 }, (_, i) => String(currentYear - i))
 
-  const { activeLetters, currentLetter, scrollToLetter, getLetterForTitle } = useAlphaScroll(series)
+  const { currentLetter, getLetterForTitle } = useAlphaScroll(series)
 
-  const showAlphaIndex = filters.sort === 'title' && (series?.length ?? 0) > 0
+  const { data: alphabetCounts } = useSeriesAlphabet({
+    genre: filters.genre || undefined,
+    year: filters.year || undefined,
+  })
+
+  // Determine active letters directly from server response OR current items
+  const activeLetters = new Set<string>()
+  if (filters.sort === 'title' && alphabetCounts) {
+    alphabetCounts.forEach((ac) => {
+      if (ac.count > 0) activeLetters.add(ac.letter)
+    })
+  } else if (filters.sort === 'title') {
+    series.forEach((s) => {
+      activeLetters.add(getLetterForTitle(s.sort_title || s.title))
+    })
+  }
+
+  const showAlphaIndex =
+    (filters.sort === 'title' && (series?.length ?? 0) > 0) || (alphabetCounts?.length ?? 0) > 0
 
   const seenLetters = new Set<string>()
 
@@ -63,7 +100,7 @@ export default function SeriesPage() {
         <AlphaIndex
           activeLetters={activeLetters}
           currentLetter={currentLetter}
-          onSelect={scrollToLetter}
+          onSelect={setStartChar}
         />
       )}
 
@@ -83,12 +120,18 @@ export default function SeriesPage() {
         <div
           className={`grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 ${showAlphaIndex ? 'pr-8' : ''}`}
         >
-          {series?.map((s: SeriesListItem) => {
+          {series?.map((s: SeriesListItem, index) => {
             const letter = getLetterForTitle(s.sort_title || s.title)
             const isFirstOfLetter = showAlphaIndex && !seenLetters.has(letter)
             if (isFirstOfLetter) seenLetters.add(letter)
+
+            const isTarget = index === Math.max(0, series.length - 30)
             return (
-              <div key={s.id} {...(isFirstOfLetter ? { 'data-alpha-letter': letter } : {})}>
+              <div
+                key={s.id}
+                ref={isTarget ? targetRef : undefined}
+                {...(isFirstOfLetter ? { 'data-alpha-letter': letter } : {})}
+              >
                 <MediaCard
                   id={s.id}
                   title={s.title}
@@ -100,6 +143,12 @@ export default function SeriesPage() {
               </div>
             )
           })}
+
+          {hasNextPage && (
+            <div className="col-span-full flex h-24 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#e50914] border-t-transparent" />
+            </div>
+          )}
         </div>
       )}
     </div>

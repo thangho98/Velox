@@ -17,6 +17,9 @@ const (
 // Known setting keys for TMDb integration.
 const (
 	SettingTMDbAPIKey = "tmdb_api_key"
+	// SettingAniListToken is optional because AniList public metadata works
+	// without auth, but private/OAuth-backed access can use a bearer token.
+	SettingAniListToken = "anilist_token"
 )
 
 // Known setting keys for OMDb integration.

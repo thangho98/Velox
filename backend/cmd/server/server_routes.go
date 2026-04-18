@@ -110,6 +110,8 @@ func (app *serverApp) registerAdminUserRoutes(mux *http.ServeMux) {
 func (app *serverApp) registerAdminSettingsRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/admin/settings/opensubtitles", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.GetOpenSubtitles)))
 	mux.Handle("PUT /api/admin/settings/opensubtitles", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.UpdateOpenSubtitles)))
+	mux.Handle("GET /api/admin/settings/anilist", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.GetAniList)))
+	mux.Handle("PUT /api/admin/settings/anilist", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.UpdateAniList)))
 	mux.Handle("GET /api/admin/settings/tmdb", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.GetTMDb)))
 	mux.Handle("PUT /api/admin/settings/tmdb", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.UpdateTMDb)))
 	mux.Handle("GET /api/admin/settings/omdb", middleware.RequireAdmin(http.HandlerFunc(app.handlers.settings.GetOMDb)))
@@ -160,6 +162,14 @@ func (app *serverApp) registerAdminOperationsRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/admin/tasks", middleware.RequireAdmin(http.HandlerFunc(app.handlers.scheduler.ListTasks)))
 	mux.Handle("POST /api/admin/tasks/{name}/run", middleware.RequireAdmin(http.HandlerFunc(app.handlers.scheduler.RunTask)))
 	mux.Handle("PATCH /api/admin/tasks/{name}", middleware.RequireAdmin(http.HandlerFunc(app.handlers.scheduler.UpdateTask)))
+
+	// Cloud storage providers (Plan W)
+	mux.Handle("GET /api/admin/cloud/drivers", middleware.RequireAdmin(http.HandlerFunc(app.handlers.storageProvider.ListDrivers)))
+	mux.Handle("GET /api/admin/cloud/providers", middleware.RequireAdmin(http.HandlerFunc(app.handlers.storageProvider.List)))
+	mux.Handle("POST /api/admin/cloud/providers", middleware.RequireAdmin(http.HandlerFunc(app.handlers.storageProvider.Create)))
+	mux.Handle("DELETE /api/admin/cloud/providers/{id}", middleware.RequireAdmin(http.HandlerFunc(app.handlers.storageProvider.Delete)))
+	mux.Handle("POST /api/admin/cloud/providers/{id}/refresh", middleware.RequireAdmin(http.HandlerFunc(app.handlers.storageProvider.Refresh)))
+	mux.Handle("POST /api/admin/cloud/providers/{id}/validate-url", middleware.RequireAdmin(http.HandlerFunc(app.handlers.storageProvider.ValidateURL)))
 }
 
 func (app *serverApp) registerLibraryRoutes(mux *http.ServeMux) {
@@ -178,6 +188,7 @@ func (app *serverApp) registerProfileRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/profile/progress/{mediaId}", app.handlers.profile.GetProgress)
 	mux.HandleFunc("PUT /api/profile/progress/{mediaId}", app.handlers.profile.UpdateProgress)
 	mux.HandleFunc("GET /api/profile/favorites", app.handlers.profile.ListFavorites)
+	mux.HandleFunc("GET /api/profile/favorites/alphabet", app.handlers.profile.GetFavoritesAlphabet)
 	mux.HandleFunc("POST /api/profile/favorites/{mediaId}", app.handlers.profile.ToggleFavorite)
 	mux.HandleFunc("GET /api/profile/recently-watched", app.handlers.profile.ListRecentlyWatched)
 	mux.HandleFunc("GET /api/profile/continue-watching", app.handlers.profile.ContinueWatching)
@@ -197,6 +208,7 @@ func (app *serverApp) registerDiscoveryRoutes(mux *http.ServeMux) {
 
 func (app *serverApp) registerMediaRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/media", app.handlers.media.List)
+	mux.HandleFunc("GET /api/media/alphabet", app.handlers.media.GetAlphabet)
 	mux.HandleFunc("GET /api/media/{id}", app.handlers.media.Get)
 	mux.HandleFunc("GET /api/media/{id}/files", app.handlers.media.GetWithFiles)
 	mux.HandleFunc("GET /api/media/{id}/versions", app.handlers.media.GetVersions)
@@ -204,6 +216,7 @@ func (app *serverApp) registerMediaRoutes(mux *http.ServeMux) {
 
 func (app *serverApp) registerSeriesRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/series", app.handlers.series.ListSeries)
+	mux.HandleFunc("GET /api/series/alphabet", app.handlers.series.GetAlphabet)
 	mux.HandleFunc("GET /api/series/search", app.handlers.series.SearchSeries)
 	mux.HandleFunc("GET /api/series/{id}", app.handlers.series.GetSeries)
 	mux.HandleFunc("GET /api/series/{id}/seasons", app.handlers.series.ListSeasons)
@@ -217,7 +230,9 @@ func (app *serverApp) registerMetadataRoutes(mux *http.ServeMux) {
 
 	mux.Handle("PUT /api/media/{id}/identify", middleware.RequireAdmin(http.HandlerFunc(app.handlers.metadata.Identify)))
 	mux.Handle("POST /api/media/{id}/refresh", middleware.RequireAdmin(http.HandlerFunc(app.handlers.metadata.Refresh)))
+	mux.Handle("POST /api/media/{id}/cloud-probe", middleware.RequireAdmin(http.HandlerFunc(app.handlers.streamURL.CloudProbe)))
 	mux.Handle("POST /api/admin/metadata/refresh-ratings", middleware.RequireAdmin(http.HandlerFunc(app.handlers.metadata.BulkRefreshRatings)))
+	mux.Handle("POST /api/admin/metadata/force-refresh", middleware.RequireAdmin(http.HandlerFunc(app.handlers.metadata.ForceBulkRefreshMetadata)))
 	mux.Handle("PATCH /api/media/{id}/metadata", middleware.RequireAdmin(http.HandlerFunc(app.handlers.metadata.EditMediaMetadata)))
 	mux.Handle("PATCH /api/series/{id}/metadata", middleware.RequireAdmin(http.HandlerFunc(app.handlers.metadata.EditSeriesMetadata)))
 	mux.Handle("PATCH /api/episodes/{id}/metadata", middleware.RequireAdmin(http.HandlerFunc(app.handlers.metadata.EditEpisodeMetadata)))
@@ -269,6 +284,7 @@ func (app *serverApp) registerSubtitleRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/subtitles/{id}/translate", app.handlers.subtitle.Translate)
 	mux.HandleFunc("GET /api/media/{id}/subtitles/search", app.handlers.subtitleSearch.Search)
 	mux.HandleFunc("POST /api/media/{id}/subtitles/download", app.handlers.subtitleSearch.Download)
+	mux.HandleFunc("POST /api/media/{id}/subtitles/auto-download", app.handlers.subtitleSearch.AutoDownload)
 }
 
 func (app *serverApp) registerNotificationRoutes(mux *http.ServeMux) {

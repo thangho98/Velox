@@ -22,6 +22,11 @@ data class SubtitleDownloadRequest(
 )
 
 @Serializable
+data class AutoDownloadSubtitleRequest(
+    @SerialName("language") val language: String
+)
+
+@Serializable
 data class TranslateSubtitleRequest(
     @SerialName("target_language") val targetLanguage: String,
 )

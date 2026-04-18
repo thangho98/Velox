@@ -38,6 +38,12 @@ export function useDownloadSubtitle(mediaId: number) {
   })
 }
 
+export function useAutoDownloadSubtitle(mediaId: number) {
+  return useMutation({
+    mutationFn: () => api.post<unknown>(`/media/${mediaId}/subtitles/auto-download`),
+  })
+}
+
 export function useTranslateSubtitle() {
   return useMutation({
     mutationFn: ({ subtitleId, targetLanguage }: { subtitleId: number; targetLanguage: string }) =>

@@ -9,6 +9,9 @@ type Series struct {
 	TmdbID       *int64       `json:"tmdb_id,omitempty"`
 	ImdbID       *string      `json:"imdb_id,omitempty"`
 	TvdbID       *int64       `json:"tvdb_id,omitempty"`
+	AnilistID    *int64       `json:"anilist_id,omitempty"`
+	RomajiTitle  string       `json:"romaji_title"`
+	Studio       string       `json:"studio"`
 	Overview     string       `json:"overview"`
 	Status       string       `json:"status"`         // "Returning Series" | "Ended" | "Canceled"
 	Network      string       `json:"network"`        // "CBS", "Netflix", etc.
@@ -103,6 +106,9 @@ type SeriesListItem struct {
 	TmdbID       *int64       `json:"tmdb_id,omitempty"`
 	ImdbID       *string      `json:"imdb_id,omitempty"`
 	TvdbID       *int64       `json:"tvdb_id,omitempty"`
+	AnilistID    *int64       `json:"anilist_id,omitempty"`
+	RomajiTitle  string       `json:"romaji_title"`
+	Studio       string       `json:"studio"`
 	Overview     string       `json:"overview"`
 	Status       string       `json:"status"`
 	Network      string       `json:"network"`
@@ -135,4 +141,5 @@ type SeriesListFilter struct {
 	Sort      string // "newest" | "oldest" | "rating" | "title"
 	Limit     int
 	Offset    int
+	StartChar string
 }

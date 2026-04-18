@@ -86,7 +86,14 @@ fun VideoPlayer(
 ) {
 
     val context = LocalContext.current
-    val activity = context as? Activity
+    val activity = remember(context) {
+        var ctx = context
+        while (ctx is android.content.ContextWrapper) {
+            if (ctx is Activity) return@remember ctx
+            ctx = ctx.baseContext
+        }
+        null
+    }
 
     // Cast Manager
     val castManager = rememberCastManager()
@@ -138,12 +145,17 @@ fun VideoPlayer(
 
     // Handle fullscreen orientation changes
     LaunchedEffect(isFullscreen) {
-        activity?.let {
-            if (isFullscreen) {
-                it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            } else {
-                it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            }
+        val act = activity ?: run {
+            android.util.Log.w("VideoPlayer", "toggleFullscreen: activity is null")
+            return@LaunchedEffect
+        }
+        if (isFullscreen) {
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            // Force portrait first, then release to user preference after rotation completes
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            kotlinx.coroutines.delay(500)
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 

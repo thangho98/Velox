@@ -1,12 +1,27 @@
 package model
 
-// Library represents a media library (one or more folders on disk)
+// Library represents a media library (one or more folders on disk,
+// or a cloud folder via StorageProviderID + SourceURL).
 type Library struct {
-	ID        int64    `json:"id"`
-	Name      string   `json:"name"`
-	Type      string   `json:"type"`  // "movies" | "tvshows" | "mixed"
-	Paths     []string `json:"paths"` // all root folders; at least one required
-	CreatedAt string   `json:"created_at"`
+	ID                int64    `json:"id"`
+	Name              string   `json:"name"`
+	Type              string   `json:"type"`  // "movies" | "tvshows" | "mixed" | "anime"
+	Paths             []string `json:"paths"` // local roots; ignored when cloud-backed
+	StorageProviderID *int64   `json:"storage_provider_id,omitempty"`
+	SourceURL         *string  `json:"source_url,omitempty"`
+	CreatedAt         string   `json:"created_at"`
+}
+
+const (
+	LibraryTypeMovies  = "movies"
+	LibraryTypeTVShows = "tvshows"
+	LibraryTypeMixed   = "mixed"
+	LibraryTypeAnime   = "anime"
+)
+
+// IsCloudLibrary reports whether this library is backed by a cloud provider.
+func (l *Library) IsCloudLibrary() bool {
+	return l.StorageProviderID != nil
 }
 
 // Genre represents a media genre
