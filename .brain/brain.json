@@ -1,90 +1,207 @@
 {
-  "meta": { "schema_version": "1.1.0", "awf_version": "3.3.0" },
-  "project": { "name": "Velox", "type": "Media Server", "status": "active" },
+  "meta": {
+    "schema_version": "1.1.0",
+    "awf_version": "3.3.0"
+  },
+  "project": {
+    "name": "Velox",
+    "type": "Media Server",
+    "status": "active"
+  },
   "tech_stack": {
-      "frontend": { "web": "React 19 + TypeScript + Vite 8 + TailwindCSS 4" },
-      "android": { "lang": "Kotlin", "ui": "Jetpack Compose", "di": "Dagger Hilt", "player": "Media3 ExoPlayer", "icons": "Material Icons Rounded (via LucideIcons alias object)" },
-      "backend": { "lang": "Go 1.26", "framework": "stdlib net/http", "transcoding": "FFmpeg 8.0 (jellyfin-ffmpeg 7.1.3 in Docker)" },
-      "database": { "main": "SQLite (WAL mode)" }
+    "frontend": {
+      "web": "React 19 + TypeScript + Vite 8 + TailwindCSS 4"
+    },
+    "android": {
+      "lang": "Kotlin",
+      "ui": "Jetpack Compose",
+      "di": "Dagger Hilt",
+      "player": "Media3 ExoPlayer",
+      "icons": "Material Icons Rounded (via LucideIcons alias object)"
+    },
+    "backend": {
+      "lang": "Go 1.26",
+      "framework": "stdlib net/http",
+      "transcoding": "FFmpeg 8.0 (jellyfin-ffmpeg 7.1.3 in Docker)"
+    },
+    "database": {
+      "main": "SQLite (WAL mode, 37 migrations)"
+    }
   },
   "database_schema": {
-      "tables": ["media_markers", "users", "media_files", "libraries", "series", "seasons", "episodes", "favorites", "watch_progress", "subtitles", "app_versions", "tasks"],
-      "relationships": ["One media_file has many media_markers", "One series has many seasons, one season has many episodes", "One user has many watch_progress and favorites"]
+    "tables": [
+      "users",
+      "libraries",
+      "storage_providers",
+      "media_files",
+      "series",
+      "seasons",
+      "episodes",
+      "subtitles",
+      "media_markers",
+      "watch_progress",
+      "favorites",
+      "app_versions",
+      "tasks",
+      "pretranscode_queue"
+    ],
+    "relationships": [
+      "One storage_provider can be shared by many cloud-backed libraries",
+      "One series has many seasons, one season has many episodes",
+      "One media_file has many subtitles, audio tracks, and marker artifacts",
+      "One user has many watch_progress and favorites"
+    ],
+    "summary": "App lưu: user/auth, local và cloud media libraries, metadata anime/movie/series, watch progress, subtitles, HDR/DV metadata per file, scheduled tasks, app version info, và pretranscode queue.",
+    "migration_035_media_file_hdr_metadata": "Added 4 columns to media_files: is_hdr INTEGER, dv_profile INTEGER (0=none, 5=IPT-PQ-C2, 7=dual-layer, 8=single-layer BL+RPU), color_transfer TEXT, color_primaries TEXT. Defaults all 0/empty for existing rows — scanner populates on fresh scan. Runtime reads DVProfile from DB (safe under flag gate); IsHDR stays runtime-probed to avoid unmigrated-row regression.",
+    "migration_036_storage_providers": "Added storage_providers table for encrypted cloud account credentials and provider metadata.",
+    "migration_037_cloud_libraries": "Libraries can now point to storage_provider_id + source_url for cloud-backed scanning and playback."
   },
   "api_endpoints": [
-      { "path": "/api/admin/markers/stats", "method": "GET", "explained": "Get statistics on intro/credit markers for admin dashboard." },
-      { "path": "/api/admin/markers/backfill", "method": "POST", "explained": "Trigger background audio fingerprint detection for a library." },
-      { "path": "/api/stream/{id}/url", "method": "POST", "explained": "Generate temporary stream URL with api_key. TTL now based on media duration." },
-      { "path": "/api/media/{id}/cinema", "method": "GET", "explained": "Get trailers from TMDb for cinema mode." },
-      { "path": "/api/series/{id}/cinema", "method": "GET", "explained": "Get series trailers from TMDb for cinema mode." },
-      { "path": "/api/admin/scheduler/tasks", "method": "GET", "explained": "List all scheduled tasks with status, interval, last_run, next_run for admin dashboard." },
-      { "path": "/api/app/latest", "method": "GET", "explained": "Get latest app version info for in-app update check. Falls back to baseline if DB empty." }
+    {
+      "path": "/api/admin/markers/stats",
+      "method": "GET",
+      "explained": "Get statistics on intro/credit markers for admin dashboard."
+    },
+    {
+      "path": "/api/admin/markers/backfill",
+      "method": "POST",
+      "explained": "Trigger background audio fingerprint detection for a library."
+    },
+    {
+      "path": "/api/stream/{id}/url",
+      "method": "POST",
+      "explained": "Generate temporary stream URL with api_key. TTL based on media duration."
+    },
+    {
+      "path": "/api/media/{id}/cloud-probe",
+      "method": "POST",
+      "explained": "Admin-only on-demand probe for cloud media metadata and embedded subtitle extraction."
+    },
+    {
+      "path": "/api/admin/cloud/drivers",
+      "method": "GET",
+      "explained": "List supported cloud storage drivers and required auth modes."
+    },
+    {
+      "path": "/api/admin/cloud/providers",
+      "method": "GET|POST",
+      "explained": "List or create configured cloud storage providers."
+    },
+    {
+      "path": "/api/admin/cloud/providers/{id}/refresh",
+      "method": "POST",
+      "explained": "Refresh cloud provider credentials or session state."
+    },
+    {
+      "path": "/api/admin/cloud/providers/{id}/validate-url",
+      "method": "POST",
+      "explained": "Validate provider URL / folder linkage before saving a cloud library."
+    },
+    {
+      "path": "/api/media/{id}/cinema",
+      "method": "GET",
+      "explained": "Get trailers from TMDb for cinema mode."
+    },
+    {
+      "path": "/api/series/{id}/cinema",
+      "method": "GET",
+      "explained": "Get series trailers from TMDb for cinema mode."
+    },
+    {
+      "path": "/api/admin/scheduler/tasks",
+      "method": "GET",
+      "explained": "List all scheduled tasks with status, interval, last_run, next_run for admin dashboard."
+    },
+    {
+      "path": "/api/app/latest",
+      "method": "GET",
+      "explained": "Get latest app version info for in-app update check. Falls back to baseline if DB empty."
+    }
   ],
   "business_rules": [
-      "Marker detection triggers a background task and broadcasts progress to admins via websocket.",
-      "Admin features like backfilling markers are guarded by admin checks in both frontend apps.",
-      "User subjective preferences for auto-skipping segments belong in general user preferences.",
-      "Direct Play first; HLS/transcode only when codec/container/audio incompatible.",
-      "Keep screen on while video is playing or locked; allow screen off when paused.",
-      "Stream URL TTL (expires_in) is calculated from media file duration, not fixed.",
-      "Scheduled tasks persist to SQLite tasks table. Intervals are configurable from admin UI.",
-      "HDR tonemapping uses tonemapx (Jellyfin SIMD). Handles HDR10, HLG, and Dolby Vision (including DV Profile 5 IPT-PQ-C2).",
-      "DV content without standard color metadata (NeedsServerTonemap) always tonemapped server-side for browsers. Android direct plays natively.",
-      "All HDR transcode uses software decode to preserve color metadata. HW encoders (VAAPI/NVENC/VT) still used for encoding."
+    "Marker detection triggers a background task and broadcasts progress to admins via websocket.",
+    "Admin features like backfilling markers are guarded by admin checks in both frontend apps.",
+    "Direct Play first; HLS/transcode only when codec/container/audio incompatible.",
+    "Keep screen on while video is playing or locked; allow screen off when paused.",
+    "Stream URL TTL (expires_in) is calculated from media file duration, not fixed.",
+    "Scheduled tasks persist to SQLite tasks table. Intervals are configurable from admin UI.",
+    "Cloud-backed playback must resolve CDN URLs as late as possible because provider URLs can expire or rotate between session creation and FFmpeg restart.",
+    "cloud-media-probe scheduler is deliberately throttled to one probe every 3 seconds and should stop the current run immediately on provider rate limit.",
+    "When user selects a non-default audio track for HLS playback, the exact track ID must be preserved across web, Android, and backend session naming.",
+    "HDR tonemapping default: tonemapx SW (Jellyfin SIMD) — handles HDR10, HLG, DV Profile 5 correctly.",
+    "HW HDR tonemapping (VELOX_HW_TONEMAP=true, opt-in): VAAPI uses tonemap_vaapi (driver-default algorithm, format/matrix/primaries/transfer only). NVENC uses libplacebo on Vulkan (SW decode → Vulkan upload → hwdownload → NVENC).",
+    "DV Profile 5 (IPT-PQ-C2) ALWAYS falls back to SW tonemapx — hardware tonemappers do not understand IPT color space.",
+    "DV Profile 7/8 unlocked via hevc_metadata=remove_dovi=1 BSF (input-side) — strips DV RPU, HDR10 base goes to HW tonemap.",
+    "Scanner extracts HDR/DV side_data + color tags into media_files columns on first scan. Force rescan does NOT re-probe fingerprint match early-return files — metadata refresh is a deliberate admin action."
   ],
   "features": [
-      "Skip Intro / Credits",
-      "Media Scanner",
-      "Live Transcoding (HLS)",
-      "User Management",
-      "Netflix-style Trailers (Cinema Mode)",
-      "Chromecast Support",
-      "Dual Subtitle Overlay",
-      "Metadata Editor with NFO Write",
-      "Pre-transcode",
-      "Android Mobile App (Jetpack Compose)",
-      "AI Subtitle Translation",
-      "Background Subtitle Auto Translate",
-      "In-App Updates (Android)",
-      "Scheduled Tasks Management",
-      "HDR/Dolby Vision Tonemapping (tonemapx)",
-      "In-App Settings Localization (Multi-language Support)"
+    "Skip Intro / Credits",
+    "Media Scanner",
+    "Live Transcoding (HLS)",
+    "Cloud Storage Integration (FShare-first)",
+    "Cloud Subtitle Extraction",
+    "User Management",
+    "Netflix-style Trailers (Cinema Mode)",
+    "Chromecast Support",
+    "Dual Subtitle Overlay",
+    "Metadata Editor with NFO Write",
+    "Pre-transcode",
+    "Android Mobile App (Jetpack Compose)",
+    "AI Subtitle Translation",
+    "Background Subtitle Auto Translate",
+    "In-App Updates (Android)",
+    "Scheduled Tasks Management",
+    "HDR/Dolby Vision Tonemapping (tonemapx SW default)",
+    "HW HDR Tonemapping (VAAPI + NVENC libplacebo, opt-in VELOX_HW_TONEMAP)",
+    "DV Profile 7/8 BSF Passthrough (zero-copy HW tonemap via hevc_metadata=remove_dovi=1)",
+    "In-App Settings Localization (Multi-language Support)"
   ],
   "knowledge_items": {
-      "patterns": [
-          "Use ViewModel to bind Jetpack Compose state.",
-          "Grid layouts use GridCells.Adaptive(minSize=100.dp) with fillMaxWidth() + aspectRatio(). LazyRow items use fixed dp sizes with LocalConfiguration responsive breakpoints.",
-          "Phone vs tablet breakpoint: screenWidthDp < 600 = phone.",
-          "LucideIcons object is a thin alias layer over Material Icons Rounded — change icons by editing the alias, no caller changes needed.",
-          "VideoPlayer gesture hierarchy: root pointerInput for tap/drag when controls hidden, controls overlay handles its own events when visible.",
-          "In-app updates: Use Android DownloadManager + REQUEST_INSTALL_PACKAGES + Intent.ACTION_VIEW for native APK install flow.",
-          "Scheduled tasks: Persist to SQLite 'tasks' table with configurable intervals. Repository pattern in backend/internal/repository/scheduled_task.go.",
-          "HDR tonemapping: tonemapx filter for ALL paths (live transcode, pretranscode, trickplay, ABR). Scale filter AFTER tonemap for HDR.",
-          "HDR decode: Always software decode for HDR content (all hwAccel types). HW decoders strip color metadata.",
-          "DV detection: IsHDRLike() detects via color tags + side_data DV profile + filename. NeedsHDRColorMetadataFallback() for DV P5 (missing color tags).",
-          "AI Translation: For reasoning models (Anthropic Claude 3.7, MiniMax), explicitly disable <thinking> blocks in prompt and bump MaxTokens (to 8192) and HTTP Timeout (to 180s) to prevent 'no text content returned' or timeout errors.",
-          "Docker Build Optimization: Always use BuildKit mounts like --mount=type=cache for package managers (pnpm, go, apt, pip) to persistently cache downloads between builds without bloating the image. Avoid Alpine (-alpine) in favor of Debian-based slim images (-slim) to prevent silent musl libc performance penalties.",
-          "Dynamic Locale Override in Compose: To switch app locale natively on-the-fly without an Activity restart, wrap LocalContext using a ContextWrapper that overrides getResources() returning a new ConfigurationContext. Do NOT directly supply the ConfigurationContext as the LocalContext, otherwise Jetpack Compose's ActivityResultRegistryOwner fails due to lost Activity base inheritance."
-      ],
-      "gotchas": [
-          "Android app lacks websocket implementation; polling/fire-and-forget is required for background tasks for now.",
-          "Do NOT use dynamic relative width (fillMaxWidth or percentage) inside LazyRow — it hides the scroll affordance.",
-          "Nested Scaffolds cause double status bar padding — outer Scaffold needs contentWindowInsets = WindowInsets(0).",
-          "SliderDefaults.Track renders a stop indicator dot by default — pass drawStopIndicator = null to remove it.",
-          "Root pointerInput detectDragGestures intercepts Slider drag — skip gestures when controls are visible.",
-          "FLAG_KEEP_SCREEN_ON must be tied to isPlaying (not just isLocked) to prevent screen timeout during playback.",
-          "Double subtitle rendering: Disable C.TRACK_TYPE_TEXT in ExoPlayer when DualSubtitleOverlay handles display.",
-          "AppVersionCard must use AuthManager's dynamic URL, NOT hardcoded BuildConfig.BASE_URL — causes connection failures on different networks.",
-          "GetLatest app version API must handle empty DB gracefully — return baseline version, not 404.",
-          "DV Profile 5 (IPT-PQ-C2) breaks zscale tonemap chain — zscale assumes BT.2020nc matrix, producing green/magenta tint. Use tonemapx instead.",
-          "Placing scale filter BEFORE tonemapx corrupts HDR color pipeline — swscale strips BT.2020 metadata. Always scale AFTER tonemap.",
-          "HLS remux from MKV loses Dolby Vision RPU metadata — browsers cannot render DV natively via HLS. Must tonemap server-side.",
-          "jellyfin-ffmpeg Docker image does NOT include libdovi — DV P5 IPT→BT.2020 conversion relies on FFmpeg 7.x native DV RPU parsing + tonemapx."
-      ],
-      "conventions": [
-          "Use Netflix theme colors (NetflixRed, NetflixWhite, NetflixBlack, NetflixDark, NetflixGray, NetflixLightGray) across Android app UI.",
-          "Material Icons Rounded style for all icons via LucideIcons alias object.",
-          "Responsive sizing: phone (<600dp) gets smaller cards, fonts, poster widths; tablet keeps original sizes."
-      ]
+    "patterns": [
+      "Use ViewModel to bind Jetpack Compose state.",
+      "Grid layouts use GridCells.Adaptive(minSize=100.dp). LazyRow items use fixed dp sizes with responsive breakpoints.",
+      "Phone vs tablet breakpoint: screenWidthDp < 600 = phone.",
+      "LucideIcons object is a thin alias layer over Material Icons Rounded.",
+      "VideoPlayer gesture hierarchy: root pointerInput when controls hidden, controls overlay handles own events.",
+      "In-app updates: DownloadManager + REQUEST_INSTALL_PACKAGES + Intent.ACTION_VIEW.",
+      "Scheduled tasks persist to SQLite 'tasks' table with configurable intervals.",
+      "Cloud playback sessions should capture a resolver closure, not a resolved URL string, so every FFmpeg start/restart can fetch a fresh provider URL.",
+      "HLS audio selection should use exact track ID in the session key/prefix and client state; language alone is not stable enough.",
+      "For HLS selected audio, use the multi-output path even with one chosen track so FFmpeg maps the correct source stream instead of always falling back to 0:a:0.",
+      "Android pull-to-refresh pattern: expose isRefreshing in UI state and wrap the scroll container with Material3 PullToRefreshBox.",
+      "Web HLS stability pattern: cache the last resolved HLS URL in a ref and skip destroy/recreate when the URL itself did not change.",
+      "HDR tonemapping: tonemapx filter for ALL paths. Scale filter AFTER tonemap for HDR.",
+      "HDR decode: Always software decode for HDR content. HW decoders strip color metadata.",
+      "DV detection: IsHDRLike() via color tags + side_data + filename. NeedsHDRColorMetadataFallback() for DV P5.",
+      "AI Translation: For reasoning models, disable <thinking> blocks, bump MaxTokens=8192 and HTTP Timeout=180s.",
+      "Docker Build: Use BuildKit --mount=type=cache for pnpm/go/apt/pip. Prefer Debian slim over Alpine (musl libc penalty).",
+      "Dynamic Locale in Compose: Wrap LocalContext with ContextWrapper overriding getResources(). Do NOT replace LocalContext with ConfigurationContext directly.",
+      "HW tonemap probe pattern: eager non-blocking goroutine at server startup (ProbeTonemapCapabilitiesAsync); atomic.Bool flags for runtime lookup.",
+      "DV Profile 7/8 BSF: Add '-bsf:v:0 hevc_metadata=remove_dovi=1' as INPUT-side option (before -i). Strips DV RPU so HDR10 base layer feeds HW tonemap cleanly."
+    ],
+    "gotchas": [
+      "Android app lacks websocket implementation; polling/fire-and-forget for background tasks.",
+      "Do NOT use dynamic relative width inside LazyRow — hides scroll affordance.",
+      "Nested Scaffolds cause double status bar padding — outer needs contentWindowInsets=WindowInsets(0).",
+      "SliderDefaults.Track renders a stop indicator by default — pass drawStopIndicator=null.",
+      "Root pointerInput detectDragGestures intercepts Slider drag — skip when controls visible.",
+      "FLAG_KEEP_SCREEN_ON must be tied to isPlaying to prevent timeout during playback.",
+      "Double subtitle rendering: Disable C.TRACK_TYPE_TEXT in ExoPlayer when DualSubtitleOverlay handles display.",
+      "AppVersionCard must use AuthManager's dynamic URL, NOT hardcoded BuildConfig.BASE_URL.",
+      "GetLatest app version API must handle empty DB gracefully — return baseline, not 404.",
+      "Parsing v2 HLS filenames with the newer '_at{audioTrackId}' field but old regex/index positions will misread MaxHeight and can generate impossible VAAPI scales like 2x1.",
+      "FShare CDN URLs can return HTTP 503 between playback-info generation and FFmpeg startup. Playback incidents may be upstream-provider failures even when HLS/session code is correct.",
+      "Directstream selected-audio remux to MP4 can fail for AC3 with 'Cannot write moov atom before AC3 packets'; fallback to HLS or adjust mux flags/container.",
+      "DV Profile 5 (IPT-PQ-C2) breaks zscale tonemap chain — assumes BT.2020nc matrix and causes green/magenta tint. Use tonemapx instead.",
+      "Placing scale filter BEFORE tonemapx corrupts HDR pipeline — swscale strips BT.2020 metadata. Always scale AFTER tonemap.",
+      "Intel Mesa Vulkan can fail libplacebo hwupload with VK_ERROR_INVALID_EXTERNAL_HANDLE — NVENC/libplacebo path only works on the right Vulkan stack."
+    ],
+    "conventions": [
+      "Use Netflix theme colors across Android app UI.",
+      "Material Icons Rounded style for all icons via LucideIcons alias object.",
+      "Responsive sizing: phone (<600dp) smaller cards/fonts; tablet original sizes.",
+      "Use track IDs, not just language codes, whenever selected audio/subtitle state has to survive round-trips between frontend, Android, and backend HLS sessions.",
+      "Feature rollout: default flag OFF (opt-in) for any change touching hot transcode path. Probe capability at startup, fall back to SW gracefully."
+    ]
   }
 }

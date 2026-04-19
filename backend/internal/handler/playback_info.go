@@ -444,10 +444,8 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 
 		for _, track := range audioTracks {
 			selected := track.IsDefault
-			if effectiveAudioTrackID > 0 {
-				selected = int(track.ID) == effectiveAudioTrackID
-			} else if defaultAudioLanguage != "" {
-				selected = track.Language == defaultAudioLanguage
+			if selectedAudioTrack != nil {
+				selected = track.ID == selectedAudioTrack.ID
 			}
 			info := AudioTrackInfo{
 				ID:         int(track.ID),

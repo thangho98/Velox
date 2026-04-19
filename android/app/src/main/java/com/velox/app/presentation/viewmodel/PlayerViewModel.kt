@@ -739,10 +739,21 @@ class PlayerViewModel @Inject constructor(
         _player?.let { player ->
             val track = _uiState.value.playbackInfo?.audioTracks?.getOrNull(trackIndex)
             if (track != null) {
-                player.trackSelectionParameters = player.trackSelectionParameters
-                    .buildUpon()
-                    .setPreferredAudioLanguage(track.language)
-                    .build()
+                if (currentPlaybackSource == "hls") {
+                    val info = _uiState.value.playbackInfo
+                    val url = info?.hlsUrl
+                    if (url != null) {
+                        val baseWithoutAt = url.replace(Regex("&at=\\d+"), "").replace(Regex("\\?at=\\d+"), "")
+                        val sep = if (baseWithoutAt.contains("?")) "&" else "?"
+                        val newUrl = "$baseWithoutAt${sep}at=${track.id}"
+                        preparePlayer(newUrl, info, maintainPosition = true)
+                    }
+                } else {
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setPreferredAudioLanguage(track.language)
+                        .build()
+                }
             }
         }
     }

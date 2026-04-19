@@ -1,1 +1,3 @@
  END phase-01-type-routing ✅
+2026-04-16: HW HDR Tonemapping Phase 1 + 1.5 + 2B + 2C — deployed to Synology (VELOX_HW_TONEMAP=true), VAAPI probe pass, awaiting HDR10 pure + DV P7/8 runtime verification. Code uncommitted (19 files + 2 new).
+2026-04-19: Saved project brain after deploying HLS V2 parser/audio-session fixes. Old `scale_vaapi 2x1` bug resolved; current prod issue on media 1371 is upstream FShare HTTP 503 during FFmpeg input open. Separate directstream selected-audio AC3->MP4 remux bug still open.

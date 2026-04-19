@@ -225,9 +225,12 @@ func (t *Transcoder) GenerateHLSWithAudio(mediaID int64, streamSessionID string,
 		"input", filepath.Base(inputPath),
 	)
 
-	if len(audioTracks) <= 1 {
+	if len(audioTracks) == 0 {
 		return t.GenerateHLS(mediaID, streamSessionID, inputPath, fileID, subtitleStreamIndex, videoCopy, startOffset, maxHeight)
 	}
+	// Note: even with a single audio track, we use the multi-output path
+	// to ensure the selected track's StreamIndex is used (GenerateHLS
+	// hardcodes 0:a:0 which always maps to the first audio stream).
 
 	t.CancelTranscodeByStreamSessionIDExcept(streamSessionID, masterPath)
 
@@ -756,6 +759,7 @@ func StartHLSV2Encoder(ctx context.Context, opts V2EncoderOpts) (*exec.Cmd, erro
 		args = append(args,
 			"-map", fmt.Sprintf("0:%d", track.StreamIndex),
 			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
+			"-af", "aresample=async=1",
 			"-f", "hls", "-hls_segment_type", "fmp4",
 			"-hls_fmp4_init_filename", fmt.Sprintf("%saudio%d_-1.mp4", opts.Prefix, i),
 			"-hls_time", fmt.Sprintf("%v", opts.SegLength),

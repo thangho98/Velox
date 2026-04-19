@@ -22,6 +22,7 @@ import javax.inject.Inject
 
 data class SeriesDetailUiState(
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val series: SeriesDetail? = null,
     val selectedSeason: Season? = null,
     val episodes: List<Episode> = emptyList(),
@@ -62,18 +63,22 @@ class SeriesDetailViewModel @Inject constructor(
         }
     }
 
-    fun loadSeries() {
+    fun loadSeries(isRefresh: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            if (isRefresh) {
+                _uiState.update { it.copy(isRefreshing = true, error = null) }
+            } else {
+                _uiState.update { it.copy(isLoading = true, error = null) }
+            }
 
             mediaRepository.getSeries(seriesId).onSuccess { series ->
-                _uiState.update { it.copy(isLoading = false, series = series) }
+                _uiState.update { it.copy(isLoading = false, isRefreshing = false, series = series) }
                 // Auto-select first season
                 if (series.seasons.isNotEmpty()) {
                     selectSeason(series.seasons.first())
                 }
             }.onFailure { error ->
-                _uiState.update { it.copy(isLoading = false, error = error.message) }
+                _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = error.message) }
             }
 
             // Load cinema/trailers
@@ -130,7 +135,7 @@ class SeriesDetailViewModel @Inject constructor(
     }
 
     fun refresh() {
-        loadSeries()
+        loadSeries(isRefresh = true)
     }
 
     fun autoDownloadSubtitle(mediaId: Int, onResult: (Boolean) -> Unit) {

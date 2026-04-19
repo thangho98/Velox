@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/service"
 	"github.com/thawng/velox/internal/trickplay"
 )
@@ -49,6 +50,12 @@ func (h *TrickplayHandler) ServeVTT(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		// Cloud files can't generate trickplay — URLs are short-lived and ffmpeg
+		// needs random access to the full file for frame extraction.
+		if scanner.IsCloudPath(mf.FilePath) {
+			respondError(w, http.StatusNotFound, "trickplay unavailable for cloud media")
 			return
 		}
 		h.gen.GenerateAsync(id, mf.FilePath, int(mf.Duration))

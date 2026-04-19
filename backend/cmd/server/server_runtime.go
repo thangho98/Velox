@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -213,12 +214,12 @@ func (app *serverApp) registerScheduledTasks() {
 		// resolution, audio tracks, and embedded subtitles. Runs sequentially
 		// to avoid FShare rate limiting. Only processes files with empty video_codec.
 		app.services.scheduler.Register("cloud-media-probe", 6*time.Hour, func(ctx context.Context) error {
-			const batchSize = 50
+			const (
+				batchSize  = 50
+				probeDelay = 3 * time.Second // throttle: 1 probe per 3s to avoid FShare rate limiting
+			)
 			probed := 0
 			for {
-				// Always query from offset 0: successfully probed files drop out of the
-				// result set (video_codec becomes non-empty), so the window shifts naturally.
-				// Only increment offset by the number of failures to skip past stuck files.
 				files, err := app.repos.mediaFile.ListUnprobedCloud(ctx, batchSize, 0)
 				if err != nil {
 					return fmt.Errorf("listing unprobed cloud files: %w", err)
@@ -232,13 +233,22 @@ func (app *serverApp) registerScheduledTasks() {
 						return ctx.Err()
 					}
 					if err := app.services.stream.ProbeAndUpdateCloudMetadata(ctx, &files[i]); err != nil {
+						if strings.Contains(err.Error(), "rate limit") {
+							log.Printf("cloud-media-probe: rate limited after %d probed, will resume next run", probed)
+							return nil
+						}
 						log.Printf("cloud-media-probe: file %d: %v", files[i].ID, err)
 						batchFailed++
-						continue
+					} else {
+						probed++
 					}
-					probed++
+					// Throttle between probes to stay under FShare rate limits
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(probeDelay):
+					}
 				}
-				// If every file in the batch failed, stop to avoid infinite loop.
 				if batchFailed == len(files) {
 					log.Printf("cloud-media-probe: entire batch failed (%d files), stopping", batchFailed)
 					break

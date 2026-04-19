@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-04-19]
+### Added
+- Backend: HLS V2 session filenames and keys now include `audioTrackId`, with parser round-trip tests for playlist and segment filenames.
+- Android: Pull-to-refresh on Home, Media Detail, and Series Detail screens using `PullToRefreshBox` and explicit `isRefreshing` state.
+
+### Changed
+- Backend: Stream sessions now resolve cloud playback URLs lazily at FFmpeg start/restart instead of capturing a single resolved URL when the session is created.
+- Backend: Exact audio-track HLS selection is now preserved across playback info, HLS master, and transcoder session keys.
+- Backend: `GenerateHLSWithAudio` keeps using the multi-output path even for a single selected track so the chosen stream index is respected.
+- Backend: `cloud-media-probe` scheduled task is throttled with a 3-second probe delay and stops the run immediately on rate-limit errors.
+- Webapp: HLS audio picker now highlights by selected track ID and avoids unnecessary HLS re-initialization when the resolved URL has not changed.
+- Android: HLS audio switching now rebuilds the playback URL with `at={trackId}` instead of relying only on preferred audio language.
+
+### Fixed
+- Backend: Fixed HLS V2 parser mismatch after `_at{audioTrackId}` was added to filenames. This removes the bogus `MaxHeight=1` parsing path that caused VAAPI `Hardware does not support scaling to size 2x1`.
+- Backend: HLS playlist query rewriting now also covers `#EXT-X-MAP`, `#EXT-X-KEY`, and `#EXT-X-I-FRAME-STREAM-INF` URIs.
+
 ## v0.1.7 [2026-04-18]
 ### Added
 - Backend: Cloud subtitle extraction — `ProbeAndUpdateCloudMetadata` now persists embedded subtitles (was audio tracks only). Cloud files get full ffprobe data (codec, resolution, audio tracks, subtitles) during scan.

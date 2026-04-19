@@ -22,6 +22,7 @@ import javax.inject.Inject
 
 data class MediaDetailUiState(
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val media: MediaDetail? = null,
     val progress: WatchProgress? = null,
     val isFavorite: Boolean = false,
@@ -64,14 +65,18 @@ class MediaDetailViewModel @Inject constructor(
         }
     }
 
-    fun loadMedia() {
+    fun loadMedia(isRefresh: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            if (isRefresh) {
+                _uiState.update { it.copy(isRefreshing = true, error = null) }
+            } else {
+                _uiState.update { it.copy(isLoading = true, error = null) }
+            }
 
             mediaRepository.getMedia(mediaId).onSuccess { media ->
-                _uiState.update { it.copy(isLoading = false, media = media) }
+                _uiState.update { it.copy(isLoading = false, isRefreshing = false, media = media) }
             }.onFailure { error ->
-                _uiState.update { it.copy(isLoading = false, error = error.message) }
+                _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = error.message) }
             }
 
             // Load progress
@@ -192,6 +197,6 @@ class MediaDetailViewModel @Inject constructor(
     }
 
     fun refresh() {
-        loadMedia()
+        loadMedia(isRefresh = true)
     }
 }

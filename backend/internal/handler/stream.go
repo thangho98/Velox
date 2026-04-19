@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -262,24 +263,27 @@ func (h *StreamHandler) HLSMaster(w http.ResponseWriter, r *http.Request) {
 	audioTracks, _ := h.svc.ListAudioTracksForMediaFile(r.Context(), mf.ID)
 	audioTracks = pickAudioTracks(audioTracks, r.URL.Query().Get("at"))
 
+	var audioTrackID int64 = 0
+	if len(audioTracks) > 0 {
+		audioTrackID = audioTracks[0].ID
+	}
+
 	key := hls.SessionKey{
 		StreamSessionID:   ss,
 		MediaID:           id,
 		FileID:            mf.ID,
 		SubtitleStreamIdx: subtitleIdx,
+		AudioTrackID:      audioTrackID,
 		VideoCopy:         videoCopy,
 		MaxHeight:         maxHeight,
 	}
 
 	dvProfile := mf.DVProfile
-	resolvedPath, err := h.svc.ResolveFilePath(r.Context(), id, mf)
-	if err != nil {
-		h.log.Error("Failed to resolve cloud URL for transcode", "err", err)
-		respondError(w, http.StatusInternalServerError, "cannot resolve media path")
-		return
+	resolver := func() (string, error) {
+		return h.svc.ResolveFilePath(context.Background(), id, mf)
 	}
 
-	sess, err := h.mgr.GetOrCreate(r.Context(), key, resolvedPath, mf.Duration, audioTracks, dvProfile)
+	sess, err := h.mgr.GetOrCreate(r.Context(), key, resolver, mf.Duration, audioTracks, dvProfile)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "cannot create session")
 		return
@@ -372,14 +376,11 @@ func (h *StreamHandler) serveV2HLSMedia(w http.ResponseWriter, r *http.Request) 
 	audioTracks = pickAudioTracks(audioTracks, r.URL.Query().Get("at"))
 
 	dvProfile := mf.DVProfile
-	resolvedPath, err := h.svc.ResolveFilePath(r.Context(), key.MediaID, mf)
-	if err != nil {
-		h.log.Error("Failed to resolve cloud URL for transcode", "err", err)
-		respondError(w, http.StatusInternalServerError, "cannot resolve media path")
-		return true
+	resolver := func() (string, error) {
+		return h.svc.ResolveFilePath(context.Background(), key.MediaID, mf) // Use background context since resolver might run async or out of original request scope during FFmpeg restarts
 	}
 
-	sess, err := h.mgr.GetOrCreate(r.Context(), key, resolvedPath, mf.Duration, audioTracks, dvProfile)
+	sess, err := h.mgr.GetOrCreate(r.Context(), key, resolver, mf.Duration, audioTracks, dvProfile)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "cannot retrieve session")
 		return true
@@ -709,7 +710,10 @@ func rewriteHLSPlaylist(content []byte, original url.Values) []byte {
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "#EXT-X-MEDIA:") {
+		if strings.HasPrefix(trimmed, "#EXT-X-MEDIA:") ||
+			strings.HasPrefix(trimmed, "#EXT-X-MAP:") ||
+			strings.HasPrefix(trimmed, "#EXT-X-I-FRAME-STREAM-INF:") ||
+			strings.HasPrefix(trimmed, "#EXT-X-KEY:") {
 			lines[i] = rewriteExtXMediaURI(line, apiKey, token, at, si, start, streamSessionID)
 			continue
 		}

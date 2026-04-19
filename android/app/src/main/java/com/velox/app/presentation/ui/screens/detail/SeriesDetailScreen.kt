@@ -38,8 +38,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import com.velox.app.presentation.ui.components.ResponsiveImage
@@ -248,14 +250,16 @@ fun SeriesDetailContent(
         } else {
             val series = uiState.series ?: return@Scaffold
 
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    // Exclude top padding because TopAppBar is completely transparent
-                    // Padding is applied to Spacer inside instead.
+            PullToRefreshBox(
+                isRefreshing = uiState.isRefreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize()
             ) {
-                item {
-                    Spacer(modifier = Modifier.height(padding.calculateTopPadding() + 40.dp))
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    item {
+                        Spacer(modifier = Modifier.height(padding.calculateTopPadding() + 40.dp))
                 }
 
                 // Central Poster Overlay
@@ -518,12 +522,13 @@ fun SeriesDetailContent(
                             }
                         )
                     }
-                }
-            }
-        }
-    }
-    }
-}
+                } // closes else
+            } // closes LazyColumn
+        } // closes PullToRefreshBox
+    } // closes else (isLoading/error/etc)
+    } // closes Scaffold padding block
+    } // closes Box
+} // closes fun SeriesDetailContent
 
 @Composable
 fun SeasonChip(

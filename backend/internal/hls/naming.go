@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	rxMediaPlaylist = regexp.MustCompile(`^v2_ss([a-zA-Z0-9-]+)_(\d+)_f(\d+)_si(-?\d+)_vc([01])_h(\d+)_([a-zA-Z0-9]+)\.m3u8$`)
-	rxMediaSegment  = regexp.MustCompile(`^v2_ss([a-zA-Z0-9-]+)_(\d+)_f(\d+)_si(-?\d+)_vc([01])_h(\d+)_([a-zA-Z0-9]+)_(-?\d+)\.(m4s|mp4)$`)
+	rxMediaPlaylist = regexp.MustCompile(`^v2_ss([a-zA-Z0-9-]+)_(\d+)_f(\d+)_si(-?\d+)_at(-?\d+)_vc([01])_h(\d+)_([a-zA-Z0-9]+)\.m3u8$`)
+	rxMediaSegment  = regexp.MustCompile(`^v2_ss([a-zA-Z0-9-]+)_(\d+)_f(\d+)_si(-?\d+)_at(-?\d+)_vc([01])_h(\d+)_([a-zA-Z0-9]+)_(-?\d+)\.(m4s|mp4)$`)
 )
 
 // SessionKey uniquely identifies an HLS transcode session
@@ -18,6 +18,7 @@ type SessionKey struct {
 	MediaID           int64
 	FileID            int64
 	SubtitleStreamIdx int
+	AudioTrackID      int64
 	VideoCopy         bool
 	MaxHeight         int
 }
@@ -27,8 +28,8 @@ func BuildPrefix(key SessionKey) string {
 	if key.VideoCopy {
 		videoCopyInt = 1
 	}
-	return fmt.Sprintf("v2_ss%s_%d_f%d_si%d_vc%d_h%d_",
-		key.StreamSessionID, key.MediaID, key.FileID, key.SubtitleStreamIdx, videoCopyInt, key.MaxHeight)
+	return fmt.Sprintf("v2_ss%s_%d_f%d_si%d_at%d_vc%d_h%d_",
+		key.StreamSessionID, key.MediaID, key.FileID, key.SubtitleStreamIdx, key.AudioTrackID, videoCopyInt, key.MaxHeight)
 }
 
 func SegmentNumber(time, segLength float64) int {
@@ -58,33 +59,37 @@ func ParseFilename(filename string) (SessionKey, string, int, error) {
 		mediaID, _ := strconv.ParseInt(m[2], 10, 64)
 		fileID, _ := strconv.ParseInt(m[3], 10, 64)
 		si, _ := strconv.Atoi(m[4])
-		vc, _ := strconv.Atoi(m[5])
-		h, _ := strconv.Atoi(m[6])
+		at, _ := strconv.ParseInt(m[5], 10, 64)
+		vc, _ := strconv.Atoi(m[6])
+		h, _ := strconv.Atoi(m[7])
 		return SessionKey{
 			StreamSessionID:   m[1],
 			MediaID:           mediaID,
 			FileID:            fileID,
 			SubtitleStreamIdx: si,
+			AudioTrackID:      at,
 			VideoCopy:         vc == 1,
 			MaxHeight:         h,
-		}, m[7], 0, nil
+		}, m[8], 0, nil
 	}
 
 	if m := rxMediaSegment.FindStringSubmatch(filename); m != nil {
 		mediaID, _ := strconv.ParseInt(m[2], 10, 64)
 		fileID, _ := strconv.ParseInt(m[3], 10, 64)
 		si, _ := strconv.Atoi(m[4])
-		vc, _ := strconv.Atoi(m[5])
-		h, _ := strconv.Atoi(m[6])
-		num, _ := strconv.Atoi(m[8])
+		at, _ := strconv.ParseInt(m[5], 10, 64)
+		vc, _ := strconv.Atoi(m[6])
+		h, _ := strconv.Atoi(m[7])
+		num, _ := strconv.Atoi(m[9])
 		return SessionKey{
 			StreamSessionID:   m[1],
 			MediaID:           mediaID,
 			FileID:            fileID,
 			SubtitleStreamIdx: si,
+			AudioTrackID:      at,
 			VideoCopy:         vc == 1,
 			MaxHeight:         h,
-		}, m[7], num, nil
+		}, m[8], num, nil
 	}
 
 	return SessionKey{}, "", 0, fmt.Errorf("invalid filename format: %s", filename)

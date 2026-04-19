@@ -51,9 +51,15 @@ func (m *Manager) IsHwTonemapEnabled() bool {
 // GetOrCreate returns an existing session for the given key, or creates a new one.
 // Enforces 1 session per StreamSessionID: if the same viewer already has a session
 // with different parameters (e.g. quality change) the old session is closed first.
-func (m *Manager) GetOrCreate(ctx context.Context, key hls.SessionKey, inputPath string, totalDur float64, audioTracks []model.AudioTrack, dvProfile int) (*Session, error) {
+// The inputResolver is only invoked if a new session needs to be created or when FFmpeg starts.
+func (m *Manager) GetOrCreate(ctx context.Context, key hls.SessionKey, inputResolver func() (string, error), totalDur float64, audioTracks []model.AudioTrack, dvProfile int) (*Session, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	// Check if session exists (Fast path)
+	if sess, ok := m.sessions[key]; ok {
+		sess.Touch()
+		m.mu.Unlock()
+		return sess, nil
+	}
 
 	// Enforce 1 session ID per viewer.
 	for k, v := range m.sessions {
@@ -63,21 +69,26 @@ func (m *Manager) GetOrCreate(ctx context.Context, key hls.SessionKey, inputPath
 			m.log.Info("Closed older session for StreamSessionID", "id", k.StreamSessionID)
 		}
 	}
-
-	if sess, ok := m.sessions[key]; ok {
-		sess.Touch()
-		return sess, nil
-	}
+	m.mu.Unlock()
 
 	outDir := filepath.Join(m.baseOutDir, fmt.Sprintf("%d", key.MediaID))
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return nil, err
 	}
 
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Double-check after lock
+	if sess, ok := m.sessions[key]; ok {
+		sess.Touch()
+		return sess, nil
+	}
+
 	sess := &Session{
 		Key:             key,
 		OutputDir:       outDir,
-		InputPath:       inputPath,
+		InputResolver:   inputResolver,
 		HwAccel:         m.hwAccel,
 		EnableHwTonemap: m.enableHwTonemap,
 		DVProfile:       dvProfile,

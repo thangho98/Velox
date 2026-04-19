@@ -84,6 +84,7 @@ export default function WatchPage() {
   const queryClient = useQueryClient()
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
+  const lastHlsUrlRef = useRef<string>('')
   const hlsPlaylistLiveRef = useRef(false)
   const hlsSeekableEndRef = useRef(0)
   const streamSourceOffsetRef = useRef(0)
@@ -339,9 +340,10 @@ export default function WatchPage() {
   }, [isEpisode, seasonId])
 
   useEffect(() => {
+    // Clear file-specific audio track ID when switching media (not when language changes —
+    // language change from AudioPicker already sets the correct trackId via setAudioTrack).
     setAudioTrack(audioLanguage, null)
-    // audio track IDs are file-specific; never carry them across media items
-  }, [mediaId, audioLanguage, setAudioTrack])
+  }, [mediaId, setAudioTrack]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setSubtitleTrackId(null)
@@ -352,7 +354,8 @@ export default function WatchPage() {
   useEffect(() => {
     if (audioTrackId == null || audioTracks.length === 0) return
     const selectedTrack = audioTracks.find((track) => track.id === audioTrackId)
-    if (!selectedTrack || selectedTrack.is_default) {
+    // Only clear if the track no longer exists in the current file's track list
+    if (!selectedTrack) {
       setAudioTrack(audioLanguage, null)
     }
   }, [audioLanguage, audioTrackId, audioTracks, setAudioTrack])
@@ -776,6 +779,7 @@ export default function WatchPage() {
       hlsRef.current.destroy()
       hlsRef.current = null
     }
+    lastHlsUrlRef.current = '' // force HLS init to restart with new offset
 
     setLastPosition(mediaId, globalTarget)
     setCurrentTime(globalTarget)
@@ -929,21 +933,9 @@ export default function WatchPage() {
   useEffect(() => {
     const video = videoRef.current
     if (!video || !streamUrls) return
-    if (hlsRef.current) {
-      hlsRef.current.destroy()
-      hlsRef.current = null
-    }
-    hlsPlaylistLiveRef.current = false
-    const sessionOffset = hlsStartOffset ?? 0
-    // Start with 0; FRAG_BUFFERED will set the correct offset once buffer data is available.
-    streamSourceOffsetRef.current = 0
-    hlsSeekableEndRef.current = sessionOffset
-    setBufferedRange({
-      start: sessionOffset,
-      end: sessionOffset,
-    })
 
     const useHls = isHlsPlayback
+    const sessionOffset = hlsStartOffset ?? 0
     // Pick URL by current playback tier — direct, pretranscode, or hls.
     const rawUrl = useHls
       ? sessionOffset > 0.25 && streamUrls.hls
@@ -953,6 +945,30 @@ export default function WatchPage() {
         ? streamUrls.pretranscode
         : streamUrls.direct
     if (!rawUrl) return
+
+    // Skip HLS restart if the resolved URL hasn't actually changed.
+    // Prevents unnecessary destroy/recreate cycles from React Query placeholderData
+    // or other deps changing without affecting the stream URL.
+    if (rawUrl === lastHlsUrlRef.current && hlsRef.current) {
+      return
+    }
+    lastHlsUrlRef.current = rawUrl
+
+    log.info(
+      `[HLS init] re-run — session=${streamUrls.stream_session_id}, source=${playbackSource}, url=${rawUrl.substring(0, 100)}`,
+    )
+    if (hlsRef.current) {
+      hlsRef.current.destroy()
+      hlsRef.current = null
+    }
+    hlsPlaylistLiveRef.current = false
+    // Start with 0; FRAG_BUFFERED will set the correct offset once buffer data is available.
+    streamSourceOffsetRef.current = 0
+    hlsSeekableEndRef.current = sessionOffset
+    setBufferedRange({
+      start: sessionOffset,
+      end: sessionOffset,
+    })
     setIsBuffering(true)
     log.info(`player init — source=${playbackSource}, sessionOffset=${sessionOffset.toFixed(2)}s`)
     const hlsInitTimer = log.time('HLS init → first frame')
@@ -1209,6 +1225,7 @@ export default function WatchPage() {
         hlsRef.current.destroy()
         hlsRef.current = null
       }
+      lastHlsUrlRef.current = ''
       hlsPlaylistLiveRef.current = false
       hlsSeekableEndRef.current = 0
       streamSourceOffsetRef.current = 0
@@ -1990,7 +2007,7 @@ export default function WatchPage() {
                         <div className="fixed inset-x-3 bottom-44 z-50 sm:absolute sm:inset-auto sm:bottom-full sm:right-0 sm:z-auto sm:mb-2">
                           <AudioPicker
                             tracks={audioTracks}
-                            selectedLanguage={audioLanguage}
+                            selectedTrackId={audioTrackId}
                             onSelect={(lang, trackId) => {
                               setAudioTrack(lang, trackId)
                               setShowAudioMenu(false)

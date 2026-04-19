@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import coil.compose.AsyncImage
 import com.velox.app.presentation.ui.components.ResponsiveImage
 import com.velox.app.R
@@ -252,12 +253,17 @@ private fun MediaDetailContent(
                 val mediaDetail = uiState.media ?: return@Scaffold
                 val primaryFile = uiState.primaryFile
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
+                PullToRefreshBox(
+                    isRefreshing = uiState.isRefreshing,
+                    onRefresh = onRetryClick,
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    Spacer(modifier = Modifier.height(padding.calculateTopPadding() + 40.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        Spacer(modifier = Modifier.height(padding.calculateTopPadding() + 40.dp))
 
                     // Centered Poster (like SeriesDetailScreen)
                     val screenWidth = LocalConfiguration.current.screenWidthDp
@@ -352,8 +358,9 @@ private fun MediaDetailContent(
                             onCloudProbe = onCloudProbe,
                         )
                     }
+                    }
                 }
-            }
+            } // end PullToRefreshBox
         }
     }
 }

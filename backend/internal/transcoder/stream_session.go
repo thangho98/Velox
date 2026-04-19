@@ -22,7 +22,7 @@ import (
 type Session struct {
 	Key             hls.SessionKey
 	OutputDir       string
-	InputPath       string
+	InputResolver   func() (string, error)
 	HwAccel         string
 	EnableHwTonemap bool
 	DVProfile       int
@@ -201,8 +201,14 @@ func (s *Session) startFFmpegFrom(segNum int) error {
 	cmdCtx, cancel := context.WithCancel(context.Background())
 	s.cmdCancel = cancel
 
+	inputPath, err := s.InputResolver()
+	if err != nil {
+		cancel()
+		return fmt.Errorf("failed to resolve input path: %w", err)
+	}
+
 	opts := V2EncoderOpts{
-		InputPath:         s.InputPath,
+		InputPath:         inputPath,
 		OutputDir:         s.OutputDir,
 		Prefix:            s.Prefix(),
 		StartSegNum:       segNum,

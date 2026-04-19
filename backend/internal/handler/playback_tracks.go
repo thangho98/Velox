@@ -163,36 +163,6 @@ func audioTrackPlayable(track model.AudioTrack, profile *playback.DeviceProfile)
 	return profile.SupportsAudioCodec(playback.NormalizeCodec(track.Codec))
 }
 
-func findCompatibleAudioTrack(
-	audioTracks []model.AudioTrack,
-	profile *playback.DeviceProfile,
-	preferredLanguage string,
-	fallbackLanguage string,
-) *model.AudioTrack {
-	for _, language := range []string{preferredLanguage, fallbackLanguage} {
-		if language == "" {
-			continue
-		}
-		for i := range audioTracks {
-			if !languageMatches(audioTracks[i].Language, language) {
-				continue
-			}
-			if !audioTrackPlayable(audioTracks[i], profile) {
-				continue
-			}
-			return &audioTracks[i]
-		}
-	}
-
-	for i := range audioTracks {
-		if audioTrackPlayable(audioTracks[i], profile) {
-			return &audioTracks[i]
-		}
-	}
-
-	return nil
-}
-
 func resolvePlaybackAudioTrack(
 	requestedID int,
 	preferredLanguage string,
@@ -207,24 +177,46 @@ func resolvePlaybackAudioTrack(
 		return requested, int(requested.ID), false
 	}
 
-	base := defaultAudioTrack(audioTracks)
-	if base == nil {
-		return nil, 0, false
-	}
-	if audioTrackPlayable(*base, profile) {
-		return base, 0, false
+	var ideal *model.AudioTrack
+	if preferredLanguage != "" {
+		for i := range audioTracks {
+			if languageMatches(audioTracks[i].Language, preferredLanguage) {
+				ideal = &audioTracks[i]
+				break
+			}
+		}
 	}
 
-	compatible := findCompatibleAudioTrack(audioTracks, profile, preferredLanguage, base.Language)
-	if compatible == nil {
-		return base, 0, false
+	if ideal == nil {
+		ideal = defaultAudioTrack(audioTracks)
+	}
+
+	if ideal == nil {
+		return nil, 0, false
 	}
 
 	effectiveID := 0
-	if !compatible.IsDefault {
-		effectiveID = int(compatible.ID)
+	if !ideal.IsDefault {
+		effectiveID = int(ideal.ID)
 	}
-	return compatible, effectiveID, compatible.ID != base.ID
+
+	if audioTrackPlayable(*ideal, profile) {
+		return ideal, effectiveID, false
+	}
+
+	if ideal.Language != "" {
+		for i := range audioTracks {
+			if languageMatches(audioTracks[i].Language, ideal.Language) && audioTrackPlayable(audioTracks[i], profile) {
+				compID := 0
+				if !audioTracks[i].IsDefault {
+					compID = int(audioTracks[i].ID)
+				}
+				return &audioTracks[i], compID, audioTracks[i].ID != ideal.ID
+			}
+		}
+	}
+
+	return ideal, effectiveID, false
 }
 
 func adjustPlaybackDecisionForSelectedAudioTrack(

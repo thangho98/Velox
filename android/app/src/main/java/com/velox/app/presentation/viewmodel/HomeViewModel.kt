@@ -20,6 +20,7 @@ import javax.inject.Inject
 
 data class HomeUiState(
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val user: User? = null,
     val continueWatching: List<ContinueWatchingItem> = emptyList(),
     val nextUp: List<NextUpItem> = emptyList(),
@@ -51,9 +52,13 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun loadData() {
+    fun loadData(isRefresh: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            if (isRefresh) {
+                _uiState.update { it.copy(isRefreshing = true, error = null) }
+            } else {
+                _uiState.update { it.copy(isLoading = true, error = null) }
+            }
 
             try {
                 // Load libraries
@@ -92,11 +97,12 @@ class HomeViewModel @Inject constructor(
                     }
                     .onFailure { /* ignore */ }
 
-                _uiState.update { it.copy(isLoading = false) }
+                _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        isRefreshing = false,
                         error = e.message ?: "Failed to load data",
                     )
                 }
@@ -105,7 +111,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refresh() {
-        loadData()
+        loadData(isRefresh = true)
     }
 
     fun dismissContinueWatching(mediaId: Int) {

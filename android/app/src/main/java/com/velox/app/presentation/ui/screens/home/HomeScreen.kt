@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.velox.app.presentation.ui.components.ResponsiveImage
 import coil.compose.AsyncImage
 import com.velox.app.R
@@ -69,7 +70,8 @@ fun HomeScreen(
         onSettingsClick = onSettingsClick,
         onNavigateToMovies = onNavigateToMovies,
         onNavigateToSeries = onNavigateToSeries,
-        onDismissContinueWatching = { viewModel.dismissContinueWatching(it) }
+        onDismissContinueWatching = { viewModel.dismissContinueWatching(it) },
+        onRefresh = { viewModel.refresh() }
     )
 }
 
@@ -86,6 +88,7 @@ fun HomeContent(
     onNavigateToMovies: () -> Unit,
     onNavigateToSeries: () -> Unit,
     onDismissContinueWatching: (Int) -> Unit,
+    onRefresh: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -123,14 +126,19 @@ fun HomeContent(
                 CircularProgressIndicator(color = NetflixRed)
             }
         } else {
-            LazyColumn(
+            PullToRefreshBox(
+                isRefreshing = uiState.isRefreshing,
+                onRefresh = onRefresh,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(vertical = 16.dp),
+                    .padding(padding)
             ) {
-                // Welcome section
-                item {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(vertical = 16.dp),
+                ) {
+                    // Welcome section
+                    item {
                     val screenWidth = LocalConfiguration.current.screenWidthDp
                     Column(
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -307,6 +315,7 @@ fun HomeContent(
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
+                    }
                     }
                 }
             }
@@ -768,6 +777,7 @@ fun HomeScreenPreview() {
             onNavigateToMovies = {},
             onNavigateToSeries = {},
             onDismissContinueWatching = {},
+            onRefresh = {},
         )
     }
 }
