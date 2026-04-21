@@ -73,8 +73,15 @@ func (app *serverApp) newMux() *http.ServeMux {
 	app.registerNotificationRoutes(mux)
 	app.registerAudioTrackRoutes(mux)
 	app.registerAppVersionRoutes(mux)
+	app.registerDownloadRoutes(mux)
 
 	return mux
+}
+
+func (app *serverApp) registerDownloadRoutes(mux *http.ServeMux) {
+	mux.Handle("POST /api/media/{id}/download", middleware.RequireAdmin(http.HandlerFunc(app.handlers.download.StartDownload)))
+	mux.Handle("POST /api/series/{id}/download", middleware.RequireAdmin(http.HandlerFunc(app.handlers.download.StartSeriesDownload)))
+	mux.Handle("GET /api/downloads", middleware.RequireAdmin(http.HandlerFunc(app.handlers.download.GetTasks)))
 }
 
 func (app *serverApp) registerHealthRoutes(mux *http.ServeMux) {
@@ -141,6 +148,7 @@ func (app *serverApp) registerAdminOperationsRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/admin/stats/playback", middleware.RequireAdmin(http.HandlerFunc(app.handlers.activity.GetPlaybackStats)))
 	mux.Handle("GET /api/admin/server", middleware.RequireAdmin(http.HandlerFunc(app.handlers.admin.ServerInfo)))
 	mux.Handle("GET /api/admin/stats/libraries", middleware.RequireAdmin(http.HandlerFunc(app.handlers.admin.LibraryStats)))
+	mux.Handle("POST /api/admin/ophim/sync", middleware.RequireAdmin(http.HandlerFunc(app.handlers.admin.SyncOphim)))
 	mux.Handle("GET /api/admin/webhooks", middleware.RequireAdmin(http.HandlerFunc(app.handlers.webhook.List)))
 	mux.Handle("POST /api/admin/webhooks", middleware.RequireAdmin(http.HandlerFunc(app.handlers.webhook.Create)))
 	mux.Handle("PUT /api/admin/webhooks/{id}", middleware.RequireAdmin(http.HandlerFunc(app.handlers.webhook.Update)))

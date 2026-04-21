@@ -282,7 +282,9 @@ class PlaybackManager @Inject constructor(
             DefaultDataSource.Factory(
                 context,
                 DefaultHttpDataSource.Factory()
-                    .setAllowCrossProtocolRedirects(true),
+                    .setAllowCrossProtocolRedirects(true)
+                    .setConnectTimeoutMs(45_000)
+                    .setReadTimeoutMs(45_000),
             ),
         ).createMediaSource(
             MediaItem.Builder()

@@ -59,16 +59,25 @@ func hwScaleFilter(hwAccel string, height int) string {
 
 // ffmpegInputProbeArgs increases demux probing so image-based subtitle streams
 // like PGS are discovered reliably before we attempt burn-in.
-func ffmpegInputProbeArgs() []string {
-	return []string{
+func ffmpegInputProbeArgs(inputPath string) []string {
+	args := []string{
 		"-probesize", "50000000",
 		"-analyzeduration", "100000000",
 	}
+	if strings.HasPrefix(inputPath, "http://") || strings.HasPrefix(inputPath, "https://") {
+		args = append([]string{
+			"-reconnect", "1",
+			"-reconnect_at_eof", "1",
+			"-reconnect_streamed", "1",
+			"-reconnect_delay_max", "5",
+		}, args...)
+	}
+	return args
 }
 
 // buildFFmpegInputArgs returns input-side FFmpeg args (probe + hwaccel).
-func buildFFmpegInputArgs(hwAccel string, hdr bool, dvProfile int, enableHwTonemap bool) []string {
-	args := ffmpegInputProbeArgs()
+func buildFFmpegInputArgs(hwAccel string, hdr bool, dvProfile int, enableHwTonemap bool, inputPath string) []string {
+	args := ffmpegInputProbeArgs(inputPath)
 	if hdr {
 		if ShouldUseHwTonemap(hwAccel, dvProfile, enableHwTonemap) {
 			switch hwAccel {

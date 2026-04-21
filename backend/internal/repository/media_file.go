@@ -201,16 +201,17 @@ func (r *MediaFileRepo) FindByPath(ctx context.Context, path string) (*model.Med
 	return scanMediaFile(row)
 }
 
-// FindCloudFile finds a cloud file by its provider and native ID, ignoring query parameters
+// FindCloudFile finds a cloud file by its provider and native ID, ignoring query parameters and episode subdirectories
 func (r *MediaFileRepo) FindCloudFile(ctx context.Context, provider, nativeID string) (*model.MediaFile, error) {
 	basePath := provider + "://" + nativeID
-	likePath := basePath + "?%"
+	queryParamPath := basePath + "?%"
+	episodePath := basePath + "/%"
 	row := r.db.QueryRowContext(ctx, `SELECT id, media_id, file_path, file_size, duration,
 		width, height, video_codec, video_profile, video_level, video_fps,
 		audio_codec, container, bitrate,
 		is_hdr, dv_profile, color_transfer, color_primaries,
 		fingerprint, is_primary, added_at, last_verified_at
-		FROM media_files WHERE file_path = ? OR file_path LIKE ? LIMIT 1`, basePath, likePath)
+		FROM media_files WHERE file_path = ? OR file_path LIKE ? OR file_path LIKE ? LIMIT 1`, basePath, queryParamPath, episodePath)
 	return scanMediaFile(row)
 }
 

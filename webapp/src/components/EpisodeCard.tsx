@@ -6,6 +6,7 @@ import {
   useUpdateProgress,
   useStreamUrl,
   useAutoDownloadSubtitle,
+  useDownloadToNas,
 } from '@/hooks/stores/useMedia'
 import { usePlayerStore } from '@/stores/player'
 import {
@@ -57,6 +58,15 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
   const { mutate: autoDownloadSub, isPending: isDownloadingSub } = useAutoDownloadSubtitle(
     episode.media_id,
   )
+  const { mutate: downloadToNas, isPending: isDownloadingToNas } = useDownloadToNas(
+    episode.media_id,
+  )
+
+  const isCloudMedia = episode.media_files?.some((f) => f.is_primary && f.file_path.includes('://'))
+  const isDownloaded = episode.media_files?.some(
+    (f) => f.is_primary && !f.file_path.includes('://'),
+  )
+
   const duration = episode.duration || 0
   const showProgressBar =
     !!progress && (progress.position > 0 || progress.completed) && duration > 0
@@ -103,7 +113,6 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
         <LuDownload size={16} />
       ),
       onClick: () => {
-        showToastSuccess('Searching and downloading subtitles...')
         autoDownloadSub(undefined, {
           onSuccess: () => showToastSuccess('Subtitles downloaded successfully!'),
           onError: () => showToastError('Could not find subtitle matches.'),
@@ -119,6 +128,36 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
       separator: true,
     },
   ]
+
+  if (isCloudMedia) {
+    menuItems.splice(menuItems.length - 1, 0, {
+      label: isDownloaded
+        ? t('actions.downloadedToNas', 'Đã tải về NAS')
+        : isDownloadingToNas
+          ? t('actions.downloading', 'Đang tải...')
+          : t('actions.downloadEpisodeToNas', 'Tải tập này về NAS'),
+      icon: isDownloadingToNas ? (
+        <LuLoaderCircle size={16} className="animate-spin" />
+      ) : isDownloaded ? (
+        <LuCheck size={16} className="text-green-500" />
+      ) : (
+        <LuDownload size={16} />
+      ),
+      disabled: isDownloaded || isDownloadingToNas,
+      adminOnly: true,
+      onClick: () => {
+        downloadToNas(undefined, {
+          onSuccess: () =>
+            showToastSuccess(t('detail.downloadInitiated', 'Đã thêm vào hàng đợi tải xuống NAS')),
+          onError: (err) =>
+            showToastError(
+              t('detail.downloadError', 'Tải xuống thất bại'),
+              err instanceof Error ? err.message : 'Unknown error',
+            ),
+        })
+      },
+    })
+  }
 
   return (
     <div className="group flex items-start gap-3 rounded-lg bg-netflix-dark/80 p-3 backdrop-blur-sm transition-colors hover:bg-netflix-gray sm:items-center sm:gap-4 sm:p-4">

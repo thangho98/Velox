@@ -106,6 +106,10 @@ dependencies {
     // Navigation
     implementation(libs.androidx.navigation.compose)
 
+    // TV Compose
+    implementation(libs.androidx.tv.foundation)
+    implementation(libs.androidx.tv.material)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)

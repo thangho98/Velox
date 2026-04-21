@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/service"
 	"github.com/thawng/velox/internal/watcher"
 )
@@ -194,6 +195,29 @@ func (app *serverApp) registerScheduledTasks() {
 			}
 			offset += limit
 		}
+		return nil
+	})
+
+	app.services.scheduler.Register("ophim-metadata-sync", 24*time.Hour, func(ctx context.Context) error {
+		var libraryID int64 = 1
+		if libs, err := app.repos.library.List(ctx); err == nil && len(libs) > 0 {
+			libraryID = libs[0].ID
+			for _, lib := range libs {
+				if strings.Contains(strings.ToLower(lib.Name), "ophim") {
+					libraryID = lib.ID
+					break
+				}
+			}
+		}
+
+		ophimScanner := scanner.NewOphimScanner(app.db, app.repos.media, app.repos.mediaFile, app.repos.series, app.repos.season, app.repos.episode)
+		ophimScanner.SetMetadataMatcher(app.services.metadata)
+		// Default to dynamic LibraryID and sync pages 1 to 5
+		added, err := ophimScanner.SyncRange(ctx, libraryID, 1, 5)
+		if err != nil {
+			return fmt.Errorf("ophim sync failed: %w", err)
+		}
+		log.Printf("ophim-metadata-sync completed: %d items added", added)
 		return nil
 	})
 

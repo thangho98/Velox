@@ -523,7 +523,7 @@ func (t *Transcoder) RemuxSelectedAudioToWriter(inputPath string, audioStreamInd
 	}
 	args = append(args,
 		"-f", "mp4",
-		"-movflags", "frag_keyframe+empty_moov",
+		"-movflags", "frag_keyframe+empty_moov+default_base_moof+delay_moov",
 		"pipe:1",
 	)
 

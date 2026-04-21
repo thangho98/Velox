@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   useSeriesDetail,
   useSeasons,
@@ -11,7 +11,9 @@ import {
   useSeriesGenres,
   useSeriesCredits,
   useEditEpisodeMetadata,
+  useDownloadSeriesToNas,
 } from '@/hooks/stores/useMedia'
+import { useToast } from '@/components/Toast'
 import { useAuthStore } from '@/stores/auth'
 import { EpisodeCard } from '@/components/EpisodeCard'
 import { ResponsiveImage } from '@/components/ResponsiveImage'
@@ -21,7 +23,16 @@ import { useSeriesTrailers } from '@/hooks/useCinemaMode'
 import { YouTubeBackground } from '@/components/YouTubeBackground'
 import { useTranslation } from '@/hooks/useTranslation'
 import type { Episode } from '@/types/api'
-import { LuChevronLeft, LuFilm, LuTv, LuLock, LuPencil, LuPlay } from 'react-icons/lu'
+import {
+  LuChevronLeft,
+  LuFilm,
+  LuTv,
+  LuLock,
+  LuPencil,
+  LuPlay,
+  LuDownload,
+  LuLoaderCircle,
+} from 'react-icons/lu'
 
 export default function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>()
@@ -37,27 +48,25 @@ export default function SeriesDetailPage() {
   const { data: seriesGenres = [] } = useSeriesGenres(id)
   const { data: seriesCredits = [] } = useSeriesCredits(id)
   const { user } = useAuthStore()
+  const { success: showToastSuccess, error: showToastError } = useToast()
+  const { mutate: downloadSeriesToNas, isPending: isDownloadingToNas } = useDownloadSeriesToNas(id)
   const [showEditor, setShowEditor] = useState(false)
   const { youtubeKey } = useSeriesTrailers(id)
 
   const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null)
-  const currentSeasonId = selectedSeasonId || seasons?.[0]?.id || 0
+
+  const currentSeasonId =
+    selectedSeasonId && seasons?.some((s) => s.id === selectedSeasonId)
+      ? selectedSeasonId
+      : seasons?.[0]?.id || 0
+
   const { mutate: editEpisode, isPending: isEpisodeSaving } = useEditEpisodeMetadata(
     id,
     currentSeasonId,
   )
   const { data: continueWatchingData } = useContinueWatching({ limit: 100 })
   const { data: nextUpData } = useNextUp({ limit: 100 })
-  const { data: episodes, isLoading: episodesLoading } = useEpisodes(
-    id,
-    selectedSeasonId || seasons?.[0]?.id || 0,
-  )
-
-  useEffect(() => {
-    if (!seasons?.length) return
-    if (selectedSeasonId && seasons.some((season) => season.id === selectedSeasonId)) return
-    setSelectedSeasonId(seasons[0].id)
-  }, [selectedSeasonId, seasons])
+  const { data: episodes, isLoading: episodesLoading } = useEpisodes(id, currentSeasonId)
 
   if (seriesLoading) {
     return (
@@ -194,19 +203,56 @@ export default function SeriesDetailPage() {
                 </p>
               )}
 
-              {/* Play Button */}
-              {playTargetMediaId && (
-                <div className="mb-6 flex flex-wrap items-center gap-3">
-                  <Link
-                    to={`/watch/${playTargetMediaId}`}
-                    className="flex items-center gap-2 rounded bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+              {/* Play Button and Download to NAS */}
+              <div className="mb-6 flex flex-wrap items-center gap-3">
+                {playTargetMediaId && (
+                  <>
+                    <Link
+                      to={`/watch/${playTargetMediaId}`}
+                      className="flex items-center gap-2 rounded bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+                    >
+                      <LuPlay size={18} className="fill-current" />
+                      {playLabel}
+                    </Link>
+                    {playSubtitle && <p className="text-sm text-gray-400">{playSubtitle}</p>}
+                  </>
+                )}
+
+                {/* Download to NAS Button */}
+                {user?.is_admin && (
+                  <button
+                    onClick={() => {
+                      downloadSeriesToNas(undefined, {
+                        onSuccess: () => {
+                          showToastSuccess(
+                            t(
+                              'detail.downloadSeriesInitiated',
+                              'Đã thêm Series vào hàng đợi tải xuống NAS',
+                            ),
+                          )
+                        },
+                        onError: (error) => {
+                          showToastError(
+                            t('detail.downloadError', 'Tải xuống thất bại'),
+                            error instanceof Error ? error.message : 'Unknown error',
+                          )
+                        },
+                      })
+                    }}
+                    disabled={isDownloadingToNas}
+                    className="flex h-10 items-center justify-center gap-2 rounded bg-white/20 px-4 text-sm font-semibold text-white transition hover:bg-white/30 disabled:opacity-50"
                   >
-                    <LuPlay size={18} className="fill-current" />
-                    {playLabel}
-                  </Link>
-                  {playSubtitle && <p className="text-sm text-gray-400">{playSubtitle}</p>}
-                </div>
-              )}
+                    {isDownloadingToNas ? (
+                      <LuLoaderCircle size={18} className="animate-spin" />
+                    ) : (
+                      <LuDownload size={18} />
+                    )}
+                    {isDownloadingToNas
+                      ? t('actions.downloading', 'Đang tải...')
+                      : t('actions.downloadSeriesToNas', 'Tải Series về NAS')}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -227,7 +273,7 @@ export default function SeriesDetailPage() {
                       key={season.id}
                       onClick={() => setSelectedSeasonId(season.id)}
                       className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                        selectedSeasonId === season.id
+                        currentSeasonId === season.id
                           ? 'bg-netflix-red text-white'
                           : 'bg-netflix-dark text-gray-300 hover:bg-netflix-gray'
                       }`}
@@ -236,9 +282,9 @@ export default function SeriesDetailPage() {
                     </button>
                   ))}
                 </div>
-                {selectedSeasonId && seasons.find((s) => s.id === selectedSeasonId)?.title && (
+                {currentSeasonId && seasons.find((s) => s.id === currentSeasonId)?.title && (
                   <p className="mt-2 text-sm text-gray-400">
-                    {seasons.find((s) => s.id === selectedSeasonId)?.title}
+                    {seasons.find((s) => s.id === currentSeasonId)?.title}
                   </p>
                 )}
               </div>

@@ -108,7 +108,9 @@ export default function WatchPage() {
       if (forceTranscode) {
         url.searchParams.delete('vcopy')
       }
-      return `${url.pathname}${url.search}${url.hash}`
+      return url.origin === window.location.origin
+        ? `${url.pathname}${url.search}${url.hash}`
+        : url.href
     },
     [],
   )
@@ -1684,9 +1686,7 @@ export default function WatchPage() {
       {/* Buffering spinner */}
       {isBuffering && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="-translate-y-20">
-            <div className="h-12 w-12 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-          </div>
+          <div className="h-12 w-12 animate-spin rounded-full border-2 border-white/20 border-t-white" />
         </div>
       )}
 

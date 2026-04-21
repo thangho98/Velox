@@ -19,6 +19,11 @@ func NewSeriesRepo(db DBTX) *SeriesRepo {
 	return &SeriesRepo{db: db}
 }
 
+// WithTx returns a copy of the repo that uses the given transaction.
+func (r *SeriesRepo) WithTx(tx *sql.Tx) *SeriesRepo {
+	return &SeriesRepo{db: tx}
+}
+
 // Create inserts a new series
 func (r *SeriesRepo) Create(ctx context.Context, s *model.Series) error {
 	query := `INSERT INTO series

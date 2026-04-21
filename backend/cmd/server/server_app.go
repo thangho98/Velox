@@ -114,6 +114,7 @@ type serverServices struct {
 	scheduler      *service.Scheduler
 	verifier       *scanner.Verifier
 	imagemeta      *imagemeta.Service
+	download       *service.DownloadService
 }
 
 type serverHandlers struct {
@@ -139,6 +140,7 @@ type serverHandlers struct {
 	cinema          *handler.CinemaHandler
 	activity        *handler.ActivityHandler
 	admin           *handler.AdminHandler
+	download        *handler.DownloadHandler
 	webhook         *handler.WebhookHandler
 	markerAdmin     *handler.MarkerAdminHandler
 	notification    *handler.NotificationHandler
@@ -393,6 +395,13 @@ func (app *serverApp) initServices() error {
 		rate.NewLimiter(20, 1),
 	)
 
+	app.services.download = service.NewDownloadService(
+		repos.media,
+		repos.mediaFile,
+		app.services.stream,
+		filepath.Join(app.cfg.DataDir, "library", "downloads"),
+	)
+
 	return app.initTrickplayGenerator()
 }
 
@@ -442,6 +451,7 @@ func (app *serverApp) initHandlers() {
 
 	app.handlers.library = handler.NewLibraryHandler(services.library)
 	app.handlers.media = handler.NewMediaHandler(services.media)
+	app.handlers.download = handler.NewDownloadHandler(services.download, app.repos.episode)
 	app.handlers.stream = handler.NewStreamHandler(services.stream, services.streamManager)
 	streamURLHandler := handler.NewStreamURLHandler(app.apiKeyStore, services.stream)
 	if app.cloudRegistry != nil {
@@ -492,7 +502,14 @@ func (app *serverApp) initHandlers() {
 	app.handlers.cinema = handler.NewCinemaHandler(services.cinema)
 	app.handlers.activity = handler.NewActivityHandler(services.activity)
 	app.handlers.activity.SetMediaService(services.media)
-	app.handlers.admin = handler.NewAdminHandler(services.admin)
+	ophimScannerAdmin := scanner.NewOphimScanner(app.db, app.repos.media, app.repos.mediaFile, app.repos.series, app.repos.season, app.repos.episode)
+	ophimScannerAdmin.SetMetadataMatcher(services.metadata)
+
+	app.handlers.admin = handler.NewAdminHandler(
+		services.admin,
+		ophimScannerAdmin,
+		app.repos.library,
+	)
 	app.handlers.webhook = handler.NewWebhookHandler(services.webhook)
 	app.handlers.markerAdmin = handler.NewMarkerAdminHandler(services.marker)
 	app.handlers.notification = handler.NewNotificationHandler(services.notification)

@@ -47,6 +47,8 @@ export {
   useTranslateSubtitle,
   // Metadata ops
   useRefreshMetadata,
+  useDownloadToNas,
+  useDownloadSeriesToNas,
   useCloudProbe,
   useEditMediaMetadata,
   useEditSeriesMetadata,

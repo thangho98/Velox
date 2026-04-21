@@ -35,6 +35,27 @@ export function useCloudProbe(mediaId: number) {
   })
 }
 
+export function useDownloadToNas(mediaId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<unknown>(`/media/${mediaId}/download`, {}),
+    onSuccess: () => {
+      // Just invalidate download tasks or media keys if necessary
+      queryClient.invalidateQueries({ queryKey: ['downloads'] })
+    },
+  })
+}
+
+export function useDownloadSeriesToNas(seriesId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<unknown>(`/series/${seriesId}/download`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['downloads'] })
+    },
+  })
+}
+
 // --- Metadata Editor hooks ---
 
 export function useEditMediaMetadata(mediaId: number) {

@@ -20,6 +20,7 @@ import (
 	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/pkg/ffprobe"
+	"github.com/thawng/velox/pkg/ophim"
 )
 
 // hlsCacheEntry caches PrepareHLS results so subsequent playlist polls
@@ -84,10 +85,48 @@ func (s *StreamService) SetCloudResolver(resolver func(context.Context, int64, *
 
 // ResolveFilePath converts mf.FilePath to a playable HTTP URL if it is a cloud path.
 func (s *StreamService) ResolveFilePath(ctx context.Context, mediaID int64, mf *model.MediaFile) (string, error) {
+	if strings.HasPrefix(mf.FilePath, "ophim://") {
+		parts := strings.Split(strings.TrimPrefix(mf.FilePath, "ophim://"), "/")
+		slug := parts[0]
+		client := ophim.New()
+		movie, err := client.GetMovieDetails(ctx, slug)
+		if err == nil && len(movie.Episodes) > 0 {
+			if len(parts) > 1 {
+				epSlug := parts[1]
+				for _, ep := range movie.Episodes[0].ServerData {
+					if ep.Slug == epSlug {
+						return ep.LinkM3U8, nil
+					}
+				}
+			} else if len(movie.Episodes[0].ServerData) > 0 {
+				return movie.Episodes[0].ServerData[0].LinkM3U8, nil
+			}
+		}
+		return "", fmt.Errorf("failed to fetch ophim stream link for slug: %s", slug)
+	}
+
 	if s.cloudResolver == nil || !scanner.IsCloudPath(mf.FilePath) {
 		return mf.FilePath, nil
 	}
-	return s.cloudResolver(ctx, mediaID, mf)
+
+	var resolved string
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		resolved, err = s.cloudResolver(ctx, mediaID, mf)
+		if err == nil {
+			return resolved, nil
+		}
+		s.log.Warn("failed to resolve cloud path", "attempt", attempt, "media_file_id", mf.ID, "error", err)
+		if attempt < 3 {
+			// Backoff: 1s, then 2s. If FShare API is 502ing, a short wait might help.
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(attempt) * time.Second):
+			}
+		}
+	}
+	return "", err
 }
 
 // FindPretranscode looks up a ready pre-transcode file for a media file.

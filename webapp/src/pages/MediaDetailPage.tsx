@@ -14,6 +14,7 @@ import {
   useMediaGenres,
   useMediaCredits,
   useStreamUrl,
+  useDownloadToNas,
   useCloudProbe,
 } from '@/hooks/stores/useMedia'
 import { useAuthStore } from '@/stores/auth'
@@ -57,6 +58,7 @@ export default function MediaDetailPage() {
   const { mutate: dismissProgress } = useDismissProgress()
   const { mutate: refreshMetadata, isPending: isRefreshing } = useRefreshMetadata(mediaId)
   const { mutate: cloudProbe, isPending: isProbing } = useCloudProbe(mediaId)
+  const { mutate: downloadToNas, isPending: isDownloadingToNas } = useDownloadToNas(mediaId)
   const { mutate: autoDownloadSub, isPending: isDownloadingSub } = useAutoDownloadSubtitle(mediaId)
   const { mutate: editMetadata, isPending: isSaving } = useEditMediaMetadata(mediaId)
   const { mutate: uploadImage, isPending: isUploadingImage } = useUploadMediaImage(mediaId)
@@ -341,7 +343,6 @@ export default function MediaDetailPage() {
                           <LuDownload size={16} />
                         ),
                         onClick: () => {
-                          showToastSuccess('Searching and downloading subtitles...')
                           autoDownloadSub(undefined, {
                             onSuccess: () => showToastSuccess('Subtitles downloaded successfully!'),
                             onError: () => showToastError('Could not find subtitle matches.'),
@@ -368,6 +369,24 @@ export default function MediaDetailPage() {
                       ...(isCloudMedia
                         ? [
                             {
+                              label: 'Download to NAS',
+                              icon: isDownloadingToNas ? (
+                                <LuLoaderCircle size={16} className="animate-spin" />
+                              ) : (
+                                <LuDownload size={16} />
+                              ),
+                              onClick: () => {
+                                downloadToNas(undefined, {
+                                  onSuccess: () =>
+                                    showToastSuccess('Download queued successfully!'),
+                                  onError: (error) =>
+                                    showToastError(`Download failed: ${error.message}`),
+                                })
+                              },
+                              disabled: isDownloadingToNas,
+                              adminOnly: true,
+                            },
+                            {
                               label: 'Extract cloud subtitles',
                               icon: isProbing ? (
                                 <LuLoaderCircle size={16} className="animate-spin" />
@@ -375,7 +394,6 @@ export default function MediaDetailPage() {
                                 <LuScanSearch size={16} />
                               ),
                               onClick: () => {
-                                showToastSuccess('Probing cloud file for subtitles...')
                                 cloudProbe(undefined, {
                                   onSuccess: () =>
                                     showToastSuccess('Cloud probe complete — subtitles extracted!'),

@@ -138,7 +138,7 @@ func (t *Transcoder) generateABRVariant(inputPath, playlistPath, segPattern stri
 
 	// Detect HDR before building input args — HDR+VAAPI needs software decode.
 	hdr := isHDRFile(inputPath)
-	args = append(args, buildFFmpegInputArgs(hwAccel, hdr, 0, false)...)
+	args = append(args, buildFFmpegInputArgs(hwAccel, hdr, 0, false, inputPath)...)
 	args = append(args, "-i", inputPath)
 
 	// Apply HDR→SDR tonemapping if the source is HDR, then scale to target height.

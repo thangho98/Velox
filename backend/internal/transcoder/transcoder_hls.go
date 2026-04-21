@@ -117,7 +117,7 @@ func (t *Transcoder) runHLSFFmpeg(ctx context.Context, inputPath, dir, prefix st
 	} else {
 		args = []string{"-hide_banner", "-loglevel", "warning"}
 		// TODO: Legacy mode GenerateHLS doesn't pass DVProfile right now. Force SW tonemapping (false) to be safe.
-		args = append(args, buildFFmpegInputArgs(hwAccel, hdr, 0, false)...)
+		args = append(args, buildFFmpegInputArgs(hwAccel, hdr, 0, false, inputPath)...)
 		if startOffset > 0 {
 			args = append(args, "-ss", fmt.Sprintf("%.3f", startOffset))
 		}
@@ -364,9 +364,9 @@ func (t *Transcoder) runMultiOutputHLS(ctx context.Context, inputPath, dir, pref
 	args := []string{"-hide_banner", "-loglevel", "warning"}
 	startOffset = normalizeStartOffset(startOffset)
 	if videoCopy {
-		args = append(args, ffmpegInputProbeArgs()...)
+		args = append(args, ffmpegInputProbeArgs(inputPath)...)
 	} else {
-		args = append(args, buildFFmpegInputArgs(hwAccel, hdr, 0, false)...)
+		args = append(args, buildFFmpegInputArgs(hwAccel, hdr, 0, false, inputPath)...)
 	}
 	if startOffset > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.3f", startOffset))
@@ -665,9 +665,9 @@ func StartHLSV2Encoder(ctx context.Context, opts V2EncoderOpts) (*exec.Cmd, erro
 	hdr := isHDRFile(opts.InputPath)
 
 	if opts.VideoCopy {
-		args = append(args, ffmpegInputProbeArgs()...)
+		args = append(args, ffmpegInputProbeArgs(opts.InputPath)...)
 	} else {
-		args = append(args, buildFFmpegInputArgs(opts.HwAccel, hdr, opts.DVProfile, opts.EnableHwTonemap)...)
+		args = append(args, buildFFmpegInputArgs(opts.HwAccel, hdr, opts.DVProfile, opts.EnableHwTonemap, opts.InputPath)...)
 	}
 
 	if startOffset > 0 {
