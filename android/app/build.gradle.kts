@@ -83,6 +83,13 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    lint {
+        // NonNullableMutableLiveDataDetector crashes with IncompatibleClassChangeError
+        // on KaCallableMemberCall under newer Kotlin Analysis API. Project doesn't use
+        // MutableLiveData (StateFlow + Hilt only), so disabling is safe.
+        disable += "NullSafeMutableLiveData"
+    }
 }
 
 dependencies {
