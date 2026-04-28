@@ -35,7 +35,12 @@ func setupUserTestDB(t *testing.T) *sql.DB {
 			audio_language         TEXT DEFAULT '',
 			max_streaming_quality  TEXT DEFAULT 'auto',
 			theme                  TEXT DEFAULT 'dark',
-			language               TEXT DEFAULT 'en' CHECK (language IN ('en', 'vi'))
+			language               TEXT DEFAULT 'en' CHECK (language IN ('en', 'vi')),
+			last_live_channel_id   INTEGER REFERENCES livetv_channels(id) ON DELETE SET NULL
+		);
+
+		CREATE TABLE livetv_channels (
+			id INTEGER PRIMARY KEY
 		);
 
 		CREATE TABLE user_library_access (

@@ -1,36 +1,52 @@
 # Changelog
 
-## [2026-04-19]
+## [2026-04-23]
 ### Added
-- Backend: HLS V2 session filenames and keys now include `audioTrackId`, with parser round-trip tests for playlist and segment filenames.
+- Backend: Migration 045 `user_live_channel_data` table (per-user recently-watched tracking for live TV). Columns: `user_id`, `channel_id`, `play_count`, `last_watched_at`, `updated_at`; indexed by `(user_id, last_watched_at DESC)`.
+- Backend: `handleStreamEntry` now bumps `user_live_channel_data` with a 5-minute in-memory cooldown per `(user_id, channel_id)` so HLS segment re-requests and rapid channel-surfing don't inflate counts.
+- Backend: `GET /api/livetv/channels/recent?limit=N` returns the authenticated user's most-recently-watched channels via `LiveTVRepo.ListRecentChannels`.
+- Android (mobile + TV): "Recently Watched Channels" home row. `HomeViewModel` injects `LiveTvRepository` and collects `getLiveTvRecentChannels(20).firstOrNull()` on `loadData`; both `HomeScreen` and `TvHomeScreen` render a carousel that navigates to `livetv_player/{channelId}`.
+
+### Fixed
+- Android: Live TV ExoPlayer no longer gets 401 when hitting `/livetv/stream/{id}`. `LiveTvViewModel` + `LiveTvPlayerViewModel` inject `AuthManager` and expose `streamUrl(channelId)` that appends `?token=<urlencoded JWT>` (Jellyfin-style). Auth middleware already accepts `token` query param before the JWT header.
+- Android: Screen no longer auto-dims during Live TV playback. `PlayerView.keepScreenOn` is bound to `!isPaused` in the `update` block, matching the main VideoPlayer pattern.
+- Android: Lingering MediaSession notification during Live TV. `PlaybackManager.releasePlayer()` now explicitly `stopService(VeloxPlaybackService)`; previously the `MediaSessionService` kept running with a stale player reference after the main player released.
+- Android: `LiveTvMiniPlayer` API tightened — takes a fully-formed `streamUrl: String` instead of a `baseUrl`, so callers consistently go through `viewModel.streamUrl(channelId)`.
+
+### Notes
+- Confirmed single universal APK continues to serve phone + TV (`MainActivity` LAUNCHER + `TvMainActivity` LEANBACK_LAUNCHER, `uses-feature leanback/touchscreen required="false"`). No separate TV build.
+
+## v0.1.7 [2026-04-19]
+### Added
+- Backend: Full cloud storage foundation with provider registry, encrypted credentials, FShare driver, cloud library linking, cloud scanner, provider refresh service, stream URL resolver, and storage-provider admin APIs.
+- Backend: Cloud subtitle extraction — `ProbeAndUpdateCloudMetadata` now persists embedded subtitles (was audio tracks only). Cloud files get full ffprobe data (codec, resolution, audio tracks, subtitles) during scan.
+- Backend: `POST /api/media/{id}/cloud-probe` admin endpoint for on-demand cloud file probing.
+- Backend: `cloud-media-probe` scheduled task (6h interval) — backfills unprobed cloud files with metadata sequentially to avoid FShare rate limiting.
+- Backend: AniList metadata integration with OAuth helper flow and backend wiring for anime matching.
+- Backend: HLS V2 session filenames and session keys now include `audioTrackId`, with parser round-trip tests for playlist and segment filenames.
+- Backend: Metadata fallback — when TMDb movie search fails, automatically tries TV series search. Matches BBC documentaries and similar content that only exist as TV series on TMDb.
+- Backend: `ListUnprobedCloud` repository method for querying cloud files missing video codec data.
+- Backend: `hdr_resolve.go` — cloud-aware HDR detection using persisted DB fields instead of re-probing with ffprobe.
+- Backend: `ffprobe` context-aware variants (`IsHDRLikeCtx`, `NeedsHDRColorMetadataFallbackCtx`, `GetDVProfileCtx`) for proper timeout/cancellation on network-backed files.
+- Backend: Migration 035 stores HDR / Dolby Vision metadata for media files, and scanner extraction now persists HDR / DV details from ffprobe during scan.
+- Backend: VAAPI + NVENC Vulkan hardware HDR tonemap path added for supported transcode flows.
+- Webapp: New Storage settings UI for adding, refreshing, validating, and linking cloud providers to libraries.
+- Webapp: "Extract cloud subtitles" button in movie detail ActionMenu (admin only, cloud media only).
+- Webapp: AniList Connect link + clipboard paste button in Settings → Metadata.
+- Webapp: HLS audio picker now tracks exact track ID and avoids unnecessary HLS re-initialization when the resolved stream URL has not changed.
+- Android: Updated cloud playback URL handling with `CloudUrlRefreshInterceptor` for expired CDN links.
+- Android: "Extract cloud subtitles" button in movie detail ActionMenu (admin only, cloud media only).
+- Android: AniList Connect link + clipboard paste button in Settings → Metadata provider cards.
 - Android: Pull-to-refresh on Home, Media Detail, and Series Detail screens using `PullToRefreshBox` and explicit `isRefreshing` state.
+- Dockerfile: Added `sqlite3` CLI for production DB inspection.
 
 ### Changed
 - Backend: Stream sessions now resolve cloud playback URLs lazily at FFmpeg start/restart instead of capturing a single resolved URL when the session is created.
 - Backend: Exact audio-track HLS selection is now preserved across playback info, HLS master, and transcoder session keys.
 - Backend: `GenerateHLSWithAudio` keeps using the multi-output path even for a single selected track so the chosen stream index is respected.
 - Backend: `cloud-media-probe` scheduled task is throttled with a 3-second probe delay and stops the run immediately on rate-limit errors.
-- Webapp: HLS audio picker now highlights by selected track ID and avoids unnecessary HLS re-initialization when the resolved URL has not changed.
 - Android: HLS audio switching now rebuilds the playback URL with `at={trackId}` instead of relying only on preferred audio language.
-
-### Fixed
-- Backend: Fixed HLS V2 parser mismatch after `_at{audioTrackId}` was added to filenames. This removes the bogus `MaxHeight=1` parsing path that caused VAAPI `Hardware does not support scaling to size 2x1`.
-- Backend: HLS playlist query rewriting now also covers `#EXT-X-MAP`, `#EXT-X-KEY`, and `#EXT-X-I-FRAME-STREAM-INF` URIs.
-
-## v0.1.7 [2026-04-18]
-### Added
-- Backend: Cloud subtitle extraction — `ProbeAndUpdateCloudMetadata` now persists embedded subtitles (was audio tracks only). Cloud files get full ffprobe data (codec, resolution, audio tracks, subtitles) during scan.
-- Backend: `POST /api/media/{id}/cloud-probe` admin endpoint for on-demand cloud file probing.
-- Backend: `cloud-media-probe` scheduled task (6h interval) — backfills unprobed cloud files with metadata sequentially to avoid FShare rate limiting.
-- Backend: Metadata fallback — when TMDb movie search fails, automatically tries TV series search. Matches BBC documentaries and similar content that only exist as TV series on TMDb.
-- Backend: `ListUnprobedCloud` repository method for querying cloud files missing video codec data.
-- Backend: `hdr_resolve.go` — cloud-aware HDR detection using persisted DB fields instead of re-probing with ffprobe.
-- Backend: `ffprobe` context-aware variants (`IsHDRLikeCtx`, `NeedsHDRColorMetadataFallbackCtx`, `GetDVProfileCtx`) for proper timeout/cancellation on network-backed files.
-- Webapp: "Extract cloud subtitles" button in movie detail ActionMenu (admin only, cloud media only).
-- Webapp: AniList Connect link + clipboard paste button in Settings → Metadata.
-- Android: "Extract cloud subtitles" button in movie detail ActionMenu (admin only, cloud media only).
-- Android: AniList Connect link + clipboard paste button in Settings → Metadata provider cards.
-- Dockerfile: Added `sqlite3` CLI for production DB inspection.
+- Android: App version bumped to `0.1.7` (`versionCode=107`) to match the seeded mandatory update record.
 
 ### Fixed
 - Backend: File verifier no longer marks cloud files (`fshare://...`) as missing — `fileExists()` skips `os.Stat` for cloud paths.
@@ -40,9 +56,13 @@
 - Backend: `ParseCloudPath("fshare://")` returns `ok=false` for empty native IDs.
 - Backend: Scheduled task pagination uses offset-0 strategy to avoid skipping files after successful probes.
 - Backend: Centralized cloud path detection through `scanner.IsCloudPath()` across all services.
+- Backend: Fixed HLS V2 parser mismatch after `_at{audioTrackId}` was added to filenames. This removes the bogus `MaxHeight=1` parsing path that caused VAAPI `Hardware does not support scaling to size 2x1`.
+- Backend: HLS playlist query rewriting now also covers `#EXT-X-MAP`, `#EXT-X-KEY`, and `#EXT-X-I-FRAME-STREAM-INF` URIs.
 - Android: Fullscreen rotation fix — unwrap `ContextWrapper` chain to find Activity, use `SENSOR_LANDSCAPE` + force-portrait-then-release for reliable orientation toggle.
+- Android: Restored missing Settings screens and `SystemAdminViewModel` integration needed for the expanded admin/settings surface.
 
 ### Security
+- Backend: Storage provider credentials are encrypted at rest with AES-256-GCM and support external secret override via `VELOX_CLOUD_SECRET`.
 - Cloud resolver injected into `SubtitleService` — embedded subtitle extraction from cloud files no longer leaks raw `fshare://` paths to FFmpeg.
 
 ## [2026-04-17]

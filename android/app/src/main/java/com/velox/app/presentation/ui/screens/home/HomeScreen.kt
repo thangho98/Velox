@@ -34,8 +34,10 @@ import com.velox.app.domain.model.Library
 import com.velox.app.domain.model.MediaItem
 import com.velox.app.domain.model.NextUpItem
 import com.velox.app.domain.model.User
+import com.velox.app.domain.model.livetv.LiveChannel
 import com.velox.app.presentation.ui.components.LucideIcons
 import com.velox.app.presentation.ui.components.NotificationBell
+import com.velox.app.presentation.ui.components.livetv.LiveTvChannelCard
 import com.velox.app.presentation.viewmodel.HomeUiState
 import com.velox.app.presentation.viewmodel.HomeViewModel
 import com.velox.app.ui.theme.NetflixBlack
@@ -51,11 +53,13 @@ fun HomeScreen(
     onMediaClick: (Int) -> Unit,
     onPlayClick: (Int) -> Unit,
     onSeriesClick: (Int) -> Unit,
+    onChannelClick: (Int) -> Unit,
     onSearchClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onNavigateToMovies: () -> Unit,
     onNavigateToSeries: () -> Unit,
+    onNavigateToLiveTv: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -65,11 +69,13 @@ fun HomeScreen(
         onMediaClick = onMediaClick,
         onPlayClick = onPlayClick,
         onSeriesClick = onSeriesClick,
+        onChannelClick = onChannelClick,
         onSearchClick = onSearchClick,
         onNotificationsClick = onNotificationsClick,
         onSettingsClick = onSettingsClick,
         onNavigateToMovies = onNavigateToMovies,
         onNavigateToSeries = onNavigateToSeries,
+        onNavigateToLiveTv = onNavigateToLiveTv,
         onDismissContinueWatching = { viewModel.dismissContinueWatching(it) },
         onRefresh = { viewModel.refresh() }
     )
@@ -82,11 +88,13 @@ fun HomeContent(
     onMediaClick: (Int) -> Unit,
     onPlayClick: (Int) -> Unit,
     onSeriesClick: (Int) -> Unit,
+    onChannelClick: (Int) -> Unit,
     onSearchClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onNavigateToMovies: () -> Unit,
     onNavigateToSeries: () -> Unit,
+    onNavigateToLiveTv: () -> Unit,
     onDismissContinueWatching: (Int) -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -227,6 +235,30 @@ fun HomeContent(
                                 NextUpCard(
                                     item = item,
                                     onClick = { onPlayClick(item.mediaId) },
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+                }
+
+                // Recently Watched Channels
+                if (uiState.recentChannels.isNotEmpty()) {
+                    item {
+                        SectionHeader(
+                            title = "Recently Watched Channels",
+                            onSeeAll = onNavigateToLiveTv,
+                        )
+                    }
+                    item {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(uiState.recentChannels) { channel ->
+                                RecentChannelCard(
+                                    channel = channel,
+                                    onClick = { onChannelClick(channel.id) },
                                 )
                             }
                         }
@@ -690,6 +722,85 @@ fun LibraryCard(
 }
 
 @Composable
+fun RecentChannelCard(
+    channel: LiveChannel,
+    onClick: () -> Unit,
+) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val cardWidth = if (screenWidth < 600) 140.dp else 160.dp
+
+    val seedColors = remember {
+        listOf(
+            Color(0xFF12234D),
+            Color(0xFF3D141A),
+            Color(0xFF2C1C08),
+            Color(0xFF083023),
+            Color(0xFF112933),
+            Color(0xFF1F1540),
+            Color(0xFF33152A),
+            Color(0xFF1A1A1A),
+        )
+    }
+    val bg = remember(channel.name) {
+        var hash = 0
+        for (ch in "${channel.name}:${channel.groupTitle}") hash = (hash * 31 + ch.code) % 997
+        seedColors[kotlin.math.abs(hash) % seedColors.size]
+    }
+
+    Column(
+        modifier = Modifier
+            .width(cardWidth)
+            .clickable(onClick = onClick),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(84.dp),
+            color = bg,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+        ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (!channel.logo.isNullOrBlank()) {
+                    AsyncImage(
+                        model = channel.logo,
+                        contentDescription = channel.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                } else {
+                    Text(
+                        text = channel.name,
+                        color = NetflixWhite.copy(alpha = 0.92f),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = channel.name,
+            color = NetflixWhite,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+        if (channel.groupTitle.isNotBlank()) {
+            Text(
+                text = channel.groupTitle,
+                color = NetflixLightGray,
+                fontSize = 10.sp,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
 fun NextUpCard(
     item: NextUpItem,
     onClick: () -> Unit,
@@ -771,11 +882,13 @@ fun HomeScreenPreview() {
             onMediaClick = {},
             onPlayClick = {},
             onSeriesClick = {},
+            onChannelClick = {},
             onSearchClick = {},
             onNotificationsClick = {},
             onSettingsClick = {},
             onNavigateToMovies = {},
             onNavigateToSeries = {},
+            onNavigateToLiveTv = {},
             onDismissContinueWatching = {},
             onRefresh = {},
         )

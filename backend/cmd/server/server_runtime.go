@@ -157,6 +157,8 @@ func (app *serverApp) registerScheduledTasks() {
 		return nil
 	})
 
+	app.services.liveTV.RegisterTasks(app.services.scheduler)
+
 	app.services.scheduler.Register("notification-cleanup", 24*time.Hour, func(ctx context.Context) error {
 		before := time.Now().Add(-30 * 24 * time.Hour)
 		deleted, err := app.repos.notification.DeleteOld(ctx, before)

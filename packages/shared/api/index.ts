@@ -9,6 +9,7 @@ export {
   setSessionExpiredCallback,
   getDirectStreamUrl,
   getHlsMasterUrl,
+  getLiveStreamUrl,
   refreshAccessToken,
 } from './client'
 

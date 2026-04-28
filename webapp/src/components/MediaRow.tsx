@@ -59,12 +59,12 @@ export function MediaRow({ title, seeAllLink, items, isLoading, showProgress }: 
       </div>
 
       {/* Row */}
-      <div className="group relative">
+      <div className="group/row relative">
         {/* Left arrow */}
         {canScrollLeft && (
           <button
             onClick={() => scroll('left')}
-            className="absolute left-0 top-0 z-10 flex h-full w-10 items-center justify-center bg-gradient-to-r from-netflix-black to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+            className="absolute left-0 top-0 z-10 flex h-full w-10 items-center justify-center bg-gradient-to-r from-netflix-black to-transparent opacity-0 transition-opacity group-hover/row:opacity-100"
             aria-label="Scroll left"
           >
             <LuChevronLeft size={24} className="text-white" />
@@ -75,7 +75,7 @@ export function MediaRow({ title, seeAllLink, items, isLoading, showProgress }: 
         {canScrollRight && (
           <button
             onClick={() => scroll('right')}
-            className="absolute right-0 top-0 z-10 flex h-full w-10 items-center justify-center bg-gradient-to-l from-netflix-black to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+            className="absolute right-0 top-0 z-10 flex h-full w-10 items-center justify-center bg-gradient-to-l from-netflix-black to-transparent opacity-0 transition-opacity group-hover/row:opacity-100"
             aria-label="Scroll right"
           >
             <LuChevronRight size={24} className="text-white" />

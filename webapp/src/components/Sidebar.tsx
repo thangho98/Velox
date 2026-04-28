@@ -1,5 +1,14 @@
 import { Link, useLocation } from 'react-router'
-import { LuHouse, LuFilm, LuTv, LuHeart, LuClock, LuSettings, LuFolderOpen } from 'react-icons/lu'
+import {
+  LuHouse,
+  LuFilm,
+  LuTv,
+  LuHeart,
+  LuClock,
+  LuSettings,
+  LuFolderOpen,
+  LuMonitorPlay,
+} from 'react-icons/lu'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -8,6 +17,7 @@ const sidebarItems = [
   { labelKey: 'nav.home', path: '/', icon: LuHouse },
   { labelKey: 'nav.movies', path: '/movies', icon: LuFilm },
   { labelKey: 'nav.series', path: '/series', icon: LuTv },
+  { labelKey: 'nav.liveTv', path: '/livetv', icon: LuMonitorPlay },
   { labelKey: 'nav.browse', path: '/browse', icon: LuFolderOpen },
   { labelKey: 'nav.favorites', path: '/favorites', icon: LuHeart },
   { labelKey: 'nav.recentlyWatched', path: '/recently-watched', icon: LuClock },

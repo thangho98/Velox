@@ -269,6 +269,16 @@ class PlaybackManager @Inject constructor(
         uiListeners.clear()
         currentMediaId = null
         _state.value = PlaybackRuntimeState()
+        stopPlaybackService()
+    }
+
+    private fun stopPlaybackService() {
+        if (!serviceStarted) return
+        runCatching {
+            context.stopService(Intent(context, VeloxPlaybackService::class.java))
+        }.onFailure { error ->
+            Timber.w(error, "Failed to stop playback service")
+        }
     }
 
     private fun appendApiKey(url: String, apiKey: String?): String {

@@ -128,6 +128,7 @@ data class Episode(
     val still: ImageResource? = null,
     val airDate: String?,
     val duration: Float?,
+    val filePath: String? = null,
 )
 
 data class ContinueWatchingItem(

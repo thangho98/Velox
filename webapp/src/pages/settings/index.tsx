@@ -16,6 +16,7 @@ import {
   LuBell,
   LuFilm,
   LuSkipForward,
+  LuTv,
 } from 'react-icons/lu'
 import { useAuthStore } from '@/stores/auth'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -38,6 +39,7 @@ import { CinemaSection } from './components/CinemaSection'
 import { MarkersSection } from './components/MarkersSection'
 import { PretranscodeSection } from './components/PretranscodeSection'
 import { StorageSection } from './components/StorageSection'
+import { LiveTvSection } from './components/LiveTvSection'
 
 // ── Section Definitions ───────────────────────────────────────────────────────
 
@@ -140,6 +142,13 @@ const ALL_SECTIONS: Section[] = [
     adminOnly: true,
   },
   {
+    id: 'livetv',
+    labelKey: 'Live TV / IPTV', // Hardcoded as English fallback for now
+    icon: <LuTv size={18} />,
+    group: 'Velox Server',
+    adminOnly: true,
+  },
+  {
     id: 'storage',
     labelKey: 'sections.storage.title',
     icon: <LuHardDrive size={18} />,
@@ -195,6 +204,7 @@ const SECTION_COMPONENTS: Record<string, React.FC> = {
   activity: ActivitySection,
   tasks: TasksSection,
   webhooks: WebhooksSection,
+  livetv: LiveTvSection,
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
@@ -232,7 +242,7 @@ export default function SettingsPage() {
             <optgroup key={group} label={t(`groups.${group.toLowerCase().replace(/ /g, '')}`)}>
               {items.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {t(item.labelKey)}
+                  {item.labelKey.includes('sections.') ? t(item.labelKey) : item.labelKey}
                 </option>
               ))}
             </optgroup>
@@ -262,7 +272,9 @@ export default function SettingsPage() {
                   }`}
                 >
                   <span className="shrink-0">{item.icon}</span>
-                  <span className="flex-1 text-left">{t(item.labelKey)}</span>
+                  <span className="flex-1 text-left">
+                    {item.labelKey.includes('sections.') ? t(item.labelKey) : item.labelKey}
+                  </span>
                 </button>
               ))}
             </div>

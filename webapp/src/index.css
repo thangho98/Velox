@@ -1,26 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 
 @theme {
-  --color-netflix-black: #141414;
-  --color-netflix-dark: #181818;
-  --color-netflix-gray: #2f2f2f;
-  --color-netflix-light-gray: #808080;
-  --color-netflix-red: #e50914;
-  --color-netflix-red-hover: #f40612;
+  --font-sans:
+    'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --color-ink-0: #000000;
+  --color-ink-50: #0a0a0a;
+  --color-ink-100: #141414;
+  --color-ink-200: #1c1c1c;
+  --color-ink-300: #262626;
+  --color-ink-400: #2e2e2e;
+
+  --color-fog-400: #525252;
+  --color-fog-500: #737373;
+  --color-fog-600: #a3a3a3;
+  --color-fog-700: #d4d4d4;
+  --color-fog-800: #e5e5e5;
+
+  --color-crimson-500: #e50a1e;
+  --color-crimson-600: #c80918;
+
+  --color-netflix-black: #000000;
+  --color-netflix-dark: #0a0a0a;
+  --color-netflix-gray: #1c1c1c;
+  --color-netflix-light-gray: #737373;
+  --color-netflix-red: #e50a1e;
+  --color-netflix-red-hover: #c80918;
   --color-netflix-white: #ffffff;
   --color-netflix-blue: #0071eb;
+
+  --shadow-card: 0 10px 30px -12px rgba(0, 0, 0, 0.9);
+  --shadow-pop:
+    0 24px 60px -18px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 :root {
   font-family:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    'Helvetica Neue',
-    Arial,
-    sans-serif;
+    'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -41,7 +58,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #141414;
+  background-color: #000000;
   color: #ffffff;
 }
 
@@ -56,36 +73,102 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #141414;
+  background: #0a0a0a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #808080;
+  background: #2e2e2e;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a0a0a0;
+  background: #525252;
 }
 
 /* Hide scrollbar for horizontal scroll areas but keep functionality */
-.hide-scrollbar {
+.hide-scrollbar,
+.hide-scroll {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-.hide-scrollbar::-webkit-scrollbar {
+.hide-scrollbar::-webkit-scrollbar,
+.hide-scroll::-webkit-scrollbar {
   display: none;
 }
 
 /* Custom focus styles — skip inputs/selects (they have their own focus styles) */
 *:focus-visible:not(input):not(select):not(textarea) {
-  outline: 2px solid #e50914;
+  outline: 2px solid #ffffff;
   outline-offset: 2px;
 }
 
 /* Selection color */
 ::selection {
-  background-color: #e50914;
+  background-color: #e50a1e;
   color: white;
+}
+
+.topbar {
+  backdrop-filter: blur(14px);
+}
+
+.tab-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -18px;
+  height: 2px;
+  background: #ffffff;
+}
+
+@keyframes livepulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+}
+
+.live-dot {
+  animation: livepulse 1.6s ease-in-out infinite;
+}
+
+.poster {
+  background-image:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 14px);
+  background-size: 14px 14px;
+}
+
+.poster-tint-0 {
+  background-color: #2a1a1f;
+}
+
+.poster-tint-1 {
+  background-color: #1a2230;
+}
+
+.poster-tint-2 {
+  background-color: #2a2418;
+}
+
+.poster-tint-3 {
+  background-color: #181f1f;
+}
+
+.poster-tint-4 {
+  background-color: #231a2a;
+}
+
+.poster-tint-5 {
+  background-color: #2a1f1a;
+}
+
+.poster-tint-6 {
+  background-color: #1f2a1a;
 }

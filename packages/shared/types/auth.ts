@@ -51,6 +51,7 @@ export interface UserPreferences {
   max_streaming_quality: string
   theme: string
   language: string
+  last_live_channel_id: number | null
 }
 
 export interface UpdateProfileRequest {

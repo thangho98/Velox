@@ -37,7 +37,8 @@ fun TvAppNavigation(startDestination: String = "login") {
             TvNavigationDrawer(
                 initialSelectedIndex = 0,
                 onNavigateHome = { /* Already here */ },
-                onNavigateSearch = { navController.navigate("search") }
+                onNavigateSearch = { navController.navigate("search") },
+                onNavigateLiveTv = { navController.navigate("livetv") }
             ) {
                 TvHomeScreen(
                     onNavigateToMedia = { mediaId ->
@@ -45,7 +46,10 @@ fun TvAppNavigation(startDestination: String = "login") {
                     },
                     onNavigateToSeries = { seriesId ->
                         navController.navigate("series/$seriesId")
-                    }
+                    },
+                    onNavigateToChannel = { channelId ->
+                        navController.navigate("livetv_player/$channelId")
+                    },
                 )
             }
         }
@@ -58,7 +62,12 @@ fun TvAppNavigation(startDestination: String = "login") {
                         popUpTo("home") { inclusive = true }
                     }
                 },
-                onNavigateSearch = { /* Already here */ }
+                onNavigateSearch = { /* Already here */ },
+                onNavigateLiveTv = {
+                    navController.navigate("livetv") {
+                        popUpTo("home") { saveState = true }
+                    }
+                }
             ) {
                 TvSearchScreen(
                     onNavigateToMedia = { mediaId ->
@@ -66,6 +75,29 @@ fun TvAppNavigation(startDestination: String = "login") {
                     },
                     onNavigateToSeries = { seriesId ->
                         navController.navigate("series/$seriesId")
+                    }
+                )
+            }
+        }
+
+        composable("livetv") {
+            TvNavigationDrawer(
+                initialSelectedIndex = 2,
+                onNavigateHome = {
+                    navController.navigate("home") {
+                        popUpTo("home") { inclusive = true }
+                    }
+                },
+                onNavigateSearch = {
+                    navController.navigate("search") {
+                        popUpTo("home") { saveState = true }
+                    }
+                },
+                onNavigateLiveTv = { /* Already here */ }
+            ) {
+                com.velox.app.presentation.tv.screens.TvLiveTvScreen(
+                    onChannelClick = { channelId ->
+                        navController.navigate("livetv_player/$channelId")
                     }
                 )
             }
@@ -107,6 +139,19 @@ fun TvAppNavigation(startDestination: String = "login") {
                 onNavigateBack = {
                     navController.popBackStack()
                 }
+            )
+        }
+
+        composable(
+            route = "livetv_player/{channelId}",
+            arguments = listOf(navArgument("channelId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val channelId = backStackEntry.arguments?.getInt("channelId") ?: return@composable
+            // Reuse the mobile one or create a specific TV one. Both should use exoPlayer natively.
+            // We use the mobile one to share the ExoPlayer code since TV has similar fullscreen need.
+            com.velox.app.presentation.ui.screens.livetv.LiveTvPlayerScreen(
+                channelId = channelId,
+                onBackClick = { navController.popBackStack() }
             )
         }
     }

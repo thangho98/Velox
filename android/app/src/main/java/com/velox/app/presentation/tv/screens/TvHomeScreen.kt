@@ -29,6 +29,7 @@ import com.velox.app.presentation.viewmodel.HomeViewModel
 fun TvHomeScreen(
     onNavigateToMedia: (mediaId: Int) -> Unit,
     onNavigateToSeries: (seriesId: Int) -> Unit,
+    onNavigateToChannel: (channelId: Int) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -54,6 +55,17 @@ fun TvHomeScreen(
                     title = "Continue Watching",
                     items = uiState.continueWatching,
                     onItemClick = { onNavigateToMedia(it.mediaId) }
+                )
+            }
+        }
+
+        if (uiState.recentChannels.isNotEmpty()) {
+            item {
+                TvCarouselSection(
+                    title = "Recently Watched Channels",
+                    items = uiState.recentChannels,
+                    onItemClick = { onNavigateToChannel(it.id) },
+                    isLandscape = true
                 )
             }
         }
@@ -126,6 +138,14 @@ private fun <T> TvCarouselSection(
                             posterPath = item.posterPath,
                             onClick = { onItemClick(item as T) },
                             isLandscape = false
+                        )
+                    }
+                    is com.velox.app.domain.model.livetv.LiveChannel -> {
+                        TvMediaCard(
+                            title = item.name,
+                            posterPath = item.logo,
+                            onClick = { onItemClick(item as T) },
+                            isLandscape = true
                         )
                     }
                 }

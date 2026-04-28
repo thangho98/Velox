@@ -7,15 +7,15 @@ interface LogoProps {
 
 export function Logo({ className = '', size = 'md' }: LogoProps) {
   const sizeClasses = {
-    sm: 'text-xl',
-    md: 'text-2xl',
-    lg: 'text-3xl',
+    sm: 'text-[22px]',
+    md: 'text-[22px]',
+    lg: 'text-[28px]',
   }
 
   return (
     <Link
       to="/"
-      className={`font-bold tracking-tight text-netflix-red hover:text-netflix-red-hover transition-colors ${sizeClasses[size]} ${className}`}
+      className={`font-extrabold uppercase tracking-[0.22em] text-crimson-500 transition-opacity hover:opacity-90 ${sizeClasses[size]} ${className}`}
     >
       VELOX
     </Link>

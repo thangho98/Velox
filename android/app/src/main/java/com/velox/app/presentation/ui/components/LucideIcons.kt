@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
@@ -139,6 +140,7 @@ object LucideIcons {
     val Error get() = Icons.Rounded.Warning
     val Fullscreen get() = Icons.Rounded.Fullscreen
     val FullscreenExit get() = Icons.Rounded.FullscreenExit
+    val PictureInPicture get() = Icons.Rounded.PictureInPictureAlt
     val LockOpen get() = Icons.Rounded.LockOpen
     val House get() = Icons.Rounded.Home
     val Edit get() = Icons.Rounded.Edit

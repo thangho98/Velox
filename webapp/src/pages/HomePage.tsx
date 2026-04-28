@@ -1,4 +1,4 @@
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import {
   useLibraries,
   useContinueWatching,
@@ -10,14 +10,18 @@ import { MediaRow } from '@/components/MediaRow'
 import { ContinueWatchingCard } from '@/components/ContinueWatchingCard'
 import { NextUpCard } from '@/components/NextUpCard'
 import { ScrollRow } from '@/components/ScrollRow'
+import { ChannelCard } from '@/components/livetv/ChannelCard'
+import { useLiveTVRecentChannels } from '@/hooks/stores/useLiveTV'
 import { useAuthStore } from '@/stores/auth'
 import { LuPlay, LuFilm, LuLibrary } from 'react-icons/lu'
 
 export default function HomePage() {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const { data: libraries, isLoading: libsLoading } = useLibraries()
   const { data: continueWatching, isLoading: continueLoading } = useContinueWatching({ limit: 20 })
   const { data: nextUp, isLoading: nextUpLoading } = useNextUp({ limit: 20 })
+  const { data: recentChannels } = useLiveTVRecentChannels(20)
   const { data: recentMovies, isLoading: moviesLoading } = useMediaList({
     type: 'movie',
     limit: 20,
@@ -41,6 +45,7 @@ export default function HomePage() {
   const hasLibraries = !libsLoading && libraries && libraries.length > 0
   const hasContinueWatching = continueWatching && continueWatching.length > 0
   const hasNextUp = nextUp && nextUp.length > 0
+  const hasRecentChannels = recentChannels && recentChannels.length > 0
 
   return (
     <div className="space-y-8">
@@ -138,6 +143,30 @@ export default function HomePage() {
               ))}
             </ScrollRow>
           )}
+        </section>
+      )}
+
+      {/* Recently Watched Channels */}
+      {hasRecentChannels && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white lg:text-xl">
+              Recently Watched Channels
+            </h2>
+            <Link to="/livetv" className="text-sm text-gray-400 hover:text-white transition-colors">
+              See all →
+            </Link>
+          </div>
+          <ScrollRow>
+            {recentChannels?.map((ch) => (
+              <div key={ch.id} className="w-44 shrink-0 lg:w-48">
+                <ChannelCard
+                  channel={ch}
+                  onClick={() => navigate(`/livetv/watch/${ch.id}`, { state: { channel: ch } })}
+                />
+              </div>
+            ))}
+          </ScrollRow>
         </section>
       )}
 

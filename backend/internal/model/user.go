@@ -34,6 +34,7 @@ type UserPreferences struct {
 	MaxStreamingQuality string `json:"max_streaming_quality"`
 	Theme               string `json:"theme"`
 	Language            string `json:"language"`
+	LastLiveChannelID   *int64 `json:"last_live_channel_id"`
 }
 
 // UserLibraryAccess links users to libraries they can access

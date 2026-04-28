@@ -23,6 +23,7 @@ import (
 	"github.com/thawng/velox/internal/scanner"
 	"github.com/thawng/velox/internal/service"
 	"github.com/thawng/velox/internal/service/imagemeta"
+	"github.com/thawng/velox/internal/service/m3uparser"
 	"github.com/thawng/velox/internal/storage"
 	"github.com/thawng/velox/internal/transcoder"
 	"github.com/thawng/velox/internal/trickplay"
@@ -82,6 +83,7 @@ type serverRepos struct {
 	scheduledTask      *repository.ScheduledTaskRepository
 	imageMetadata      *repository.ImageMetadataRepo
 	storageProvider    *repository.StorageProviderRepo
+	liveTV             *repository.LiveTVRepo
 }
 
 type serverServices struct {
@@ -115,6 +117,7 @@ type serverServices struct {
 	verifier       *scanner.Verifier
 	imagemeta      *imagemeta.Service
 	download       *service.DownloadService
+	liveTV         *service.LiveTVService
 }
 
 type serverHandlers struct {
@@ -149,6 +152,7 @@ type serverHandlers struct {
 	scheduler       *handler.SchedulerHandler
 	appVersion      *handler.AppVersionHandler
 	storageProvider *handler.StorageProviderHandler
+	liveTV          *handler.LiveTVHandler
 }
 
 func newServerApp(cfg *config.Config) (*serverApp, error) {
@@ -284,6 +288,7 @@ func newServerRepos(db *sql.DB) serverRepos {
 		scheduledTask:      repository.NewScheduledTaskRepository(db),
 		imageMetadata:      repository.NewImageMetadataRepo(db),
 		storageProvider:    repository.NewStorageProviderRepo(db),
+		liveTV:             repository.NewLiveTVRepo(db),
 	}
 }
 
@@ -350,7 +355,7 @@ func (app *serverApp) initServices() error {
 		app.tmdbClient,
 		app.cfg.DataDir,
 	)
-	app.services.series = service.NewSeriesService(repos.series, repos.season, repos.episode)
+	app.services.series = service.NewSeriesService(repos.series, repos.season, repos.episode, repos.mediaFile)
 	app.services.stream = service.NewStreamService(repos.mediaFile, repos.audioTrack, app.services.transcoder)
 
 	outDir := filepath.Join(app.cfg.DataDir, "hls")
@@ -401,6 +406,8 @@ func (app *serverApp) initServices() error {
 		app.services.stream,
 		filepath.Join(app.cfg.DataDir, "library", "downloads"),
 	)
+
+	app.services.liveTV = service.NewLiveTVService(repos.liveTV, m3uparser.New())
 
 	return app.initTrickplayGenerator()
 }
@@ -523,6 +530,7 @@ func (app *serverApp) initHandlers() {
 		app.repos.library,
 		app.cfg.Cloud.SecretKey,
 	)
+	app.handlers.liveTV = handler.NewLiveTVHandler(app.repos.liveTV, services.liveTV, services.auth, app.cfg.Cloud.SecretKey)
 
 	app.handlers.auth.SetActivityService(services.activity)
 	app.handlers.library.SetActivityService(services.activity)

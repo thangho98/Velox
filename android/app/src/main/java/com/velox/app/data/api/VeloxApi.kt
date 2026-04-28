@@ -1,5 +1,9 @@
 package com.velox.app.data.api
 
+import com.velox.app.data.dto.livetv.LiveChannelDto
+import com.velox.app.data.dto.livetv.LiveGroupDto
+import com.velox.app.data.dto.livetv.LiveProgramDto
+import com.velox.app.data.dto.livetv.ToggleHiddenResponse
 import com.velox.app.data.model.*
 import retrofit2.Response
 import retrofit2.http.*
@@ -8,6 +12,30 @@ interface VeloxApi {
     // Health check
     @GET("health")
     suspend fun healthCheck(): Response<MessageResponse>
+
+    // Live TV
+    @GET("livetv/groups")
+    suspend fun getLiveTvGroups(): Response<DataWrapper<List<String>>>
+
+    @GET("livetv/channels")
+    suspend fun getLiveTvChannels(
+        @Query("group") group: String? = null,
+        @Query("limit") limit: Int = 200,
+    ): Response<DataWrapper<List<LiveChannelDto>>>
+
+    @GET("livetv/channels/recent")
+    suspend fun getLiveTvRecentChannels(
+        @Query("limit") limit: Int = 20,
+    ): Response<DataWrapper<List<LiveChannelDto>>>
+
+    @GET("livetv/channels/{id}")
+    suspend fun getLiveTvChannel(@Path("id") channelId: Int): Response<DataWrapper<LiveChannelDto>>
+
+    @GET("livetv/channels/{id}/epg")
+    suspend fun getLiveTvEpg(@Path("id") channelId: Int): Response<DataWrapper<List<LiveProgramDto>>>
+
+    @POST("livetv/channels/{id}/toggle-hidden")
+    suspend fun toggleLiveTvChannelHidden(@Path("id") channelId: Int): Response<DataWrapper<ToggleHiddenResponse>>
 
     // Auth
     @POST("auth/login")
@@ -491,6 +519,19 @@ interface VeloxApi {
         @Path("id") subtitleId: Int,
         @Body request: TranslateSubtitleRequest,
     ): Response<DataWrapper<SubtitleDto>>
+
+    // Downloads
+    @POST("media/{id}/download")
+    suspend fun startDownload(@Path("id") mediaId: Int): Response<DataWrapper<Any>>
+
+    @POST("series/{id}/download")
+    suspend fun startSeriesDownload(@Path("id") seriesId: Int): Response<DataWrapper<Any>>
+
+    @DELETE("media/{id}/download")
+    suspend fun deleteDownload(@Path("id") mediaId: Int): Response<MessageResponse>
+
+    @DELETE("series/{id}/download")
+    suspend fun deleteSeriesDownload(@Path("id") seriesId: Int): Response<MessageResponse>
 
     // Subtitles - Serve Raw Content
     @GET("media-files/{fileId}/subtitles/{subId}/serve")

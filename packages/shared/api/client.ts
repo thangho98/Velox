@@ -228,3 +228,13 @@ export function getHlsMasterUrl(mediaId: number, token?: string): string {
   }
   return base
 }
+
+// Live TV stream entry URL. Including the token lets the backend record
+// "recently watched" — without it the channel still plays but stays untracked.
+export function getLiveStreamUrl(channelId: number, token?: string): string {
+  const base = `${getPlatform().getApiBaseUrl()}/livetv/stream/${channelId}`
+  if (token) {
+    return `${base}?token=${encodeURIComponent(token)}`
+  }
+  return base
+}

@@ -20,6 +20,8 @@ const FavoritesPage = lazy(() => import('@/pages/FavoritesPage'))
 const RecentlyWatchedPage = lazy(() => import('@/pages/RecentlyWatchedPage'))
 const SearchPage = lazy(() => import('@/pages/SearchPage'))
 const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
+const LiveTvPage = lazy(() => import('@/pages/LiveTvPage'))
+const WatchLivePage = lazy(() => import('@/pages/WatchLivePage'))
 
 // Auth guard component - wraps content with Layout
 function RequireAuth() {
@@ -104,6 +106,7 @@ export function RouterProvider() {
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/browse" element={<BrowsePage />} />
+              <Route path="/livetv" element={<LiveTvPage />} />
               {/* Redirects for old/missing routes */}
               <Route
                 path="/notifications"
@@ -130,6 +133,7 @@ export function RouterProvider() {
             {/* Fullscreen routes (player) */}
             <Route element={<RequireAuthFullScreen />}>
               <Route path="/watch/:id" element={<WatchPage />} />
+              <Route path="/livetv/watch/:channelId" element={<WatchLivePage />} />
             </Route>
 
             {/* 404 */}

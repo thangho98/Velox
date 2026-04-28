@@ -31,4 +31,10 @@ abstract class RepositoryModule {
     abstract fun bindSettingsRepository(
         settingsRepositoryImpl: com.velox.app.data.repository.SettingsRepositoryImpl,
     ): com.velox.app.domain.repository.SettingsRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindLiveTvRepository(
+        liveTvRepositoryImpl: com.velox.app.data.repository.livetv.LiveTvRepositoryImpl,
+    ): com.velox.app.domain.repository.livetv.LiveTvRepository
 }

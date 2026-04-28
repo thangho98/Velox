@@ -21,4 +21,8 @@ sealed class Screen(val route: String) {
     data object Settings : Screen("settings")
     data object Profile : Screen("profile")
     data object Notifications : Screen("notifications")
+    data object LiveTv : Screen("livetv")
+    data object LiveTvPlayer : Screen("livetv_player/{channelId}") {
+        fun createRoute(channelId: Int) = "livetv_player/$channelId"
+    }
 }

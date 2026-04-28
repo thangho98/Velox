@@ -3,17 +3,21 @@ package com.velox.app.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.velox.app.domain.model.ContinueWatchingItem
+import com.velox.app.domain.model.DataResult
 import com.velox.app.domain.model.Library
 import com.velox.app.domain.model.MediaItem
 import com.velox.app.domain.model.NextUpItem
 import com.velox.app.domain.model.SeriesItem
 import com.velox.app.domain.model.User
+import com.velox.app.domain.model.livetv.LiveChannel
 import com.velox.app.domain.repository.AuthRepository
 import com.velox.app.domain.repository.MediaRepository
+import com.velox.app.domain.repository.livetv.LiveTvRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -26,6 +30,7 @@ data class HomeUiState(
     val nextUp: List<NextUpItem> = emptyList(),
     val recentlyAddedMovies: List<MediaItem> = emptyList(),
     val recentlyAddedSeries: List<SeriesItem> = emptyList(),
+    val recentChannels: List<LiveChannel> = emptyList(),
     val libraries: List<Library> = emptyList(),
     val error: String? = null,
 )
@@ -34,6 +39,7 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val mediaRepository: MediaRepository,
+    private val liveTvRepository: LiveTvRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -96,6 +102,12 @@ class HomeViewModel @Inject constructor(
                         _uiState.update { it.copy(recentlyAddedSeries = items) }
                     }
                     .onFailure { /* ignore */ }
+
+                // Load recently watched live TV channels
+                val recentChannelsResult = liveTvRepository.getLiveTvRecentChannels(20).firstOrNull()
+                if (recentChannelsResult is DataResult.Success) {
+                    _uiState.update { it.copy(recentChannels = recentChannelsResult.data) }
+                }
 
                 _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
             } catch (e: Exception) {

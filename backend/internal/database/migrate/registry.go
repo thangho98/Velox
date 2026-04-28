@@ -240,6 +240,42 @@ func All() []Migration {
 			Up:      up039,
 			Down:    down039,
 		},
+		{
+			Version: 40,
+			Name:    "live_tv",
+			Up:      up040,
+			Down:    down040,
+		},
+		{
+			Version: 41,
+			Name:    "add_epg_url",
+			Up:      up041,
+			Down:    down041,
+		},
+		{
+			Version: 43,
+			Name:    "live_channels_hidden",
+			Up:      up043,
+			Down:    down043,
+		},
+		{
+			Version: 42,
+			Name:    "user_preferences_last_channel_id",
+			Up:      up042,
+			Down:    down042,
+		},
+		{
+			Version: 44,
+			Name:    "live_channel_headers",
+			Up:      up044,
+			Down:    down044,
+		},
+		{
+			Version: 45,
+			Name:    "user_live_channel_data",
+			Up:      up045,
+			Down:    down045,
+		},
 	}
 }
 
@@ -887,6 +923,21 @@ func up022(tx *sql.Tx) error {
 func down022(tx *sql.Tx) error {
 	_, err := tx.Exec(`
 		ALTER TABLE user_preferences DROP COLUMN language;
+	`)
+	return err
+}
+
+// 042: Add last_live_channel_id to user_preferences
+func up042(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		ALTER TABLE user_preferences ADD COLUMN last_live_channel_id INTEGER REFERENCES livetv_channels(id) ON DELETE SET NULL;
+	`)
+	return err
+}
+
+func down042(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		ALTER TABLE user_preferences DROP COLUMN last_live_channel_id;
 	`)
 	return err
 }

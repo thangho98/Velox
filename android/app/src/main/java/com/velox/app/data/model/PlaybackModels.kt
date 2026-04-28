@@ -187,6 +187,7 @@ data class UserPreferencesDto(
     @SerialName("max_streaming_quality") val maxStreamingQuality: String? = null,
     val theme: String? = null,
     val language: String? = null,
+    @SerialName("last_live_channel_id") val lastLiveChannelId: Long? = null,
 )
 
 @Serializable
@@ -197,4 +198,5 @@ data class UpdatePreferencesRequest(
     @SerialName("max_streaming_quality") val maxStreamingQuality: String? = null,
     val theme: String? = null,
     val language: String? = null,
+    @SerialName("last_live_channel_id") val lastLiveChannelId: Long? = null,
 )

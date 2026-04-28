@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +33,7 @@ fun TvNavigationDrawer(
     initialSelectedIndex: Int = 0,
     onNavigateHome: () -> Unit,
     onNavigateSearch: () -> Unit,
+    onNavigateLiveTv: () -> Unit = {},
     content: @Composable () -> Unit
 ) {
     var selectedIndex by remember { mutableIntStateOf(initialSelectedIndex) }
@@ -70,6 +72,21 @@ fun TvNavigationDrawer(
                     }
                 ) {
                     Text(text = "Search")
+                }
+
+                Spacer(modifier = Modifier.padding(16.dp))
+
+                NavigationDrawerItem(
+                    selected = selectedIndex == 2,
+                    onClick = {
+                        selectedIndex = 2
+                        onNavigateLiveTv()
+                    },
+                    leadingContent = {
+                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = "Live TV")
+                    }
+                ) {
+                    Text(text = "Live TV")
                 }
             }
         }

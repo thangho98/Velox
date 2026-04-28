@@ -20,6 +20,11 @@ var authSkipPaths = []string{
 	"/api/images/*",
 	"/api/media/*/trickplay/*",
 	"/api/app-versions/latest",
+	// Live TV stream proxy: <video> cannot send Authorization headers. Both
+	// endpoints are self-contained — stream entry only leaks already-public
+	// channel URLs; proxy URLs are HMAC-signed with short expiry.
+	"/api/livetv/stream/*",
+	"/api/livetv/proxy",
 }
 
 func (app *serverApp) newHTTPServer() *http.Server {
@@ -74,13 +79,20 @@ func (app *serverApp) newMux() *http.ServeMux {
 	app.registerAudioTrackRoutes(mux)
 	app.registerAppVersionRoutes(mux)
 	app.registerDownloadRoutes(mux)
+	app.registerLiveTVRoutes(mux)
 
 	return mux
+}
+
+func (app *serverApp) registerLiveTVRoutes(mux *http.ServeMux) {
+	app.handlers.liveTV.RegisterRoutes(mux)
 }
 
 func (app *serverApp) registerDownloadRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/media/{id}/download", middleware.RequireAdmin(http.HandlerFunc(app.handlers.download.StartDownload)))
 	mux.Handle("POST /api/series/{id}/download", middleware.RequireAdmin(http.HandlerFunc(app.handlers.download.StartSeriesDownload)))
+	mux.Handle("DELETE /api/series/{id}/download", middleware.RequireAdmin(http.HandlerFunc(app.handlers.download.DeleteSeriesDownload)))
+	mux.Handle("DELETE /api/media/{id}/download", middleware.RequireAdmin(http.HandlerFunc(app.handlers.download.DeleteDownload)))
 	mux.Handle("GET /api/downloads", middleware.RequireAdmin(http.HandlerFunc(app.handlers.download.GetTasks)))
 }
 

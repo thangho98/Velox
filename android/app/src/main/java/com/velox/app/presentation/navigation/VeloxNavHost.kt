@@ -33,6 +33,7 @@ private val mainTabs = listOf(
     Screen.Home.route,
     Screen.Movies.route,
     Screen.Series.route,
+    Screen.LiveTv.route,
     Screen.Browse.route,
     Screen.Favorites.route,
 )
@@ -114,6 +115,9 @@ fun VeloxNavHost(
                     onSeriesClick = { seriesId ->
                         navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
                     },
+                    onChannelClick = { channelId ->
+                        navController.navigate(Screen.LiveTvPlayer.createRoute(channelId))
+                    },
                     onNotificationsClick = {
                         navController.navigate(Screen.Notifications.route)
                     },
@@ -132,6 +136,13 @@ fun VeloxNavHost(
                     },
                     onNavigateToSeries = {
                         navController.navigate(Screen.Series.route) {
+                            popUpTo(Screen.Home.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onNavigateToLiveTv = {
+                        navController.navigate(Screen.LiveTv.route) {
                             popUpTo(Screen.Home.route) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
@@ -181,6 +192,23 @@ fun VeloxNavHost(
                     },
                     onSeriesClick = { seriesId ->
                         navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
+                    },
+                    onNotificationsClick = {
+                        navController.navigate(Screen.Notifications.route)
+                    },
+                    onSearchClick = {
+                        navController.navigate(Screen.Search.route)
+                    },
+                    onSettingsClick = {
+                        navController.navigate(Screen.Settings.route)
+                    },
+                )
+            }
+
+            composable(Screen.LiveTv.route) {
+                com.velox.app.presentation.ui.screens.livetv.LiveTvScreen(
+                    onChannelClick = { channelId ->
+                        navController.navigate(Screen.LiveTvPlayer.createRoute(channelId))
                     },
                     onNotificationsClick = {
                         navController.navigate(Screen.Notifications.route)
@@ -269,6 +297,18 @@ fun VeloxNavHost(
                         navController.popBackStack()
                         navController.navigate(Screen.Player.createRoute(nextMediaId))
                     },
+                )
+            }
+
+            composable(
+                route = Screen.LiveTvPlayer.route,
+                arguments = listOf(navArgument("channelId") { type = NavType.IntType }),
+            ) { backStackEntry ->
+                val channelId = backStackEntry.arguments?.getInt("channelId") ?: return@composable
+                // We shouldn't hardcode "http://192.168.1.5:8080". We'll fix it later.
+                com.velox.app.presentation.ui.screens.livetv.LiveTvPlayerScreen(
+                    channelId = channelId,
+                    onBackClick = { navController.popBackStack() }
                 )
             }
 
