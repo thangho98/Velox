@@ -15,9 +15,7 @@ export function Layout({ children, fullWidth = false }: LayoutProps) {
 
       <main className={`min-h-screen ${fullWidth ? 'pt-0' : 'pt-[72px]'}`}>
         <div
-          className={
-            fullWidth ? '' : 'mx-auto max-w-[1600px] px-4 pb-28 sm:px-6 md:pb-16 lg:px-10 lg:pb-10'
-          }
+          className={fullWidth ? '' : 'mx-auto max-w-[1600px] px-4 pb-28 sm:px-6 lg:px-10 lg:pb-10'}
         >
           {children}
         </div>

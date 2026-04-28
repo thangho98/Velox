@@ -90,7 +90,7 @@ export function Navbar() {
           <div className="flex min-w-0 items-center gap-8">
             <Logo size="sm" className="shrink-0" />
             {isAuthenticated && (
-              <nav className="hidden items-center gap-7 md:flex">
+              <nav className="hidden items-center gap-7 lg:flex">
                 {navItems.map((item) => {
                   const isActive = location.pathname === item.path
                   return (
@@ -98,7 +98,7 @@ export function Navbar() {
                       key={item.path}
                       to={item.path}
                       aria-current={isActive ? 'page' : undefined}
-                      className={`relative inline-flex items-center gap-2 pb-1 text-sm font-medium tracking-[0.02em] transition-colors ${
+                      className={`relative inline-flex items-center gap-2 whitespace-nowrap pb-1 text-sm font-medium tracking-[0.02em] transition-colors ${
                         isActive ? 'tab-active text-white' : 'text-fog-500 hover:text-white'
                       }`}
                     >

@@ -19,8 +19,8 @@ export function MobileTabBar() {
   if (!isAuthenticated) return null
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-white/5 bg-black/95 px-2 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-md md:hidden">
-      <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-white/5 bg-black/95 px-2 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-md lg:hidden">
+      <div className="mx-auto grid max-w-md grid-cols-5 gap-1 md:max-w-3xl">
         {mobileItems.map((item) => {
           const isActive = location.pathname === item.path
           const Icon = item.icon
