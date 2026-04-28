@@ -1,18 +1,47 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/thawng/velox/internal/service"
 )
 
+// SettingsServiceInterface defines the methods needed by the settings handler.
+type SettingsServiceInterface interface {
+	GetOpenSubtitles(ctx context.Context) (*service.OpenSubtitlesSettings, error)
+	UpdateOpenSubtitles(ctx context.Context, apiKey, username, password string) (*service.OpenSubtitlesSettings, error)
+	GetTMDb(ctx context.Context) (*service.APIKeySettings, error)
+	UpdateTMDb(ctx context.Context, apiKey string) (*service.APIKeySettings, error)
+	GetAniList(ctx context.Context) (*service.APIKeySettings, error)
+	UpdateAniList(ctx context.Context, apiKey string) (*service.APIKeySettings, error)
+	GetOMDb(ctx context.Context) (*service.APIKeySettings, error)
+	UpdateOMDb(ctx context.Context, apiKey string) (*service.APIKeySettings, error)
+	GetTVDB(ctx context.Context) (*service.APIKeySettings, error)
+	UpdateTVDB(ctx context.Context, apiKey string) (*service.APIKeySettings, error)
+	GetPlayback(ctx context.Context) (*service.PlaybackSettings, error)
+	UpdatePlayback(ctx context.Context, mode string) (*service.PlaybackSettings, error)
+	GetFanart(ctx context.Context) (*service.APIKeySettings, error)
+	UpdateFanart(ctx context.Context, apiKey string) (*service.APIKeySettings, error)
+	GetAutoSubtitles(ctx context.Context) (*service.AutoSubtitleSettings, error)
+	UpdateAutoSubtitles(ctx context.Context, languages string) (*service.AutoSubtitleSettings, error)
+	GetSubdl(ctx context.Context) (*service.APIKeySettings, error)
+	UpdateSubdl(ctx context.Context, apiKey string) (*service.APIKeySettings, error)
+	GetDeepL(ctx context.Context) (*service.APIKeySettings, error)
+	UpdateDeepL(ctx context.Context, apiKey string) (*service.APIKeySettings, error)
+	GetAITranslation(ctx context.Context) (*service.AITranslationSettings, error)
+	UpdateAITranslation(ctx context.Context, provider, apiKey, baseURL, model string) (*service.AITranslationSettings, error)
+	GetAutoTranslate(ctx context.Context) (*service.AutoTranslateSettings, error)
+	UpdateAutoTranslate(ctx context.Context, enabled bool, languages string) (*service.AutoTranslateSettings, error)
+}
+
 // SettingsHandler handles admin settings endpoints.
 type SettingsHandler struct {
-	settingsSvc *service.SettingsService
+	settingsSvc SettingsServiceInterface
 }
 
 // NewSettingsHandler creates a new settings handler.
-func NewSettingsHandler(settingsSvc *service.SettingsService) *SettingsHandler {
+func NewSettingsHandler(settingsSvc SettingsServiceInterface) *SettingsHandler {
 	return &SettingsHandler{settingsSvc: settingsSvc}
 }
 
