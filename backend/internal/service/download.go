@@ -16,6 +16,7 @@ import (
 	"github.com/thawng/velox/internal/model"
 	"github.com/thawng/velox/internal/repository"
 	"github.com/thawng/velox/internal/scanner"
+	"github.com/thawng/velox/pkg/ffmpegbin"
 )
 
 type DownloadService struct {
@@ -202,7 +203,7 @@ func (s *DownloadService) swapToLocalFile(ctx context.Context, task *model.Downl
 func (s *DownloadService) downloadM3U8(ctx context.Context, m3u8URL string, destPath string, taskID string) error {
 	// For m3u8, use ffmpeg
 	// ffmpeg -i url -c copy -bsf:a aac_adtstoasc dest.mp4
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", m3u8URL, "-c", "copy", "-bsf:a", "aac_adtstoasc", destPath)
+	cmd := exec.CommandContext(ctx, ffmpegbin.FFmpeg(), "-y", "-i", m3u8URL, "-c", "copy", "-bsf:a", "aac_adtstoasc", destPath)
 	// Progress parsing can be tricky, we'll just fake it or leave at 50%
 	s.updateTaskStatus(taskID, 50, model.DownloadStatusDownloading, "")
 
@@ -269,5 +270,38 @@ func (s *DownloadService) downloadHTTP(ctx context.Context, rawURL string, destP
 			return err
 		}
 	}
+	return nil
+}
+
+// DeleteDownloadedFile deletes local downloaded files for a given media ID
+func (s *DownloadService) DeleteDownloadedFile(ctx context.Context, mediaID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 1. Get the files associated with the mediaID
+	files, err := s.mediaFileRepo.ListByMediaID(ctx, mediaID)
+	if err != nil {
+		return fmt.Errorf("list media files: %w", err)
+	}
+
+	deletedLocal := false
+	for _, f := range files {
+		// Only delete locally downloaded files inside s.outputDir
+		if !scanner.IsCloudPath(f.FilePath) && strings.HasPrefix(f.FilePath, s.outputDir) {
+			if err := os.Remove(f.FilePath); err != nil && !os.IsNotExist(err) {
+				log.Printf("Failed to delete local media file %d: %v", f.ID, err)
+			}
+			if err := s.mediaFileRepo.Delete(ctx, f.ID); err != nil {
+				log.Printf("Failed to delete media_files record %d: %v", f.ID, err)
+			} else {
+				deletedLocal = true
+			}
+		}
+	}
+
+	if !deletedLocal {
+		return fmt.Errorf("no local downloaded file found to delete")
+	}
+
 	return nil
 }

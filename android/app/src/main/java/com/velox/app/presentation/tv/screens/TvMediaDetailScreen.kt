@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,8 +44,14 @@ fun TvMediaDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val isCloudMedia = uiState.primaryFile?.filePath?.contains("://") == true &&
+            uiState.primaryFile?.filePath?.startsWith("http") != true
 
+    val isDownloaded = uiState.primaryFile?.filePath?.contains("library/downloads") == true &&
+            uiState.primaryFile?.filePath?.contains("://") != true
 
+    var isStartingDownload by remember { mutableStateOf(false) }
+    var isDeletingDownload by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         uiState.media?.let { media ->
@@ -105,23 +115,94 @@ fun TvMediaDetailScreen(
                         lineHeight = 24.sp
                     )
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val sourceName = when {
+                        uiState.primaryFile?.filePath?.startsWith("ophim://", ignoreCase = true) == true -> "OPhim"
+                        uiState.primaryFile?.filePath?.startsWith("fshare://", ignoreCase = true) == true -> "Fshare"
+                        else -> "Local"
+                    }
+                    Text(
+                        text = "Source: $sourceName",
+                        fontSize = 16.sp,
+                        color = Color.Gray
+                    )
+
                     Spacer(modifier = Modifier.height(48.dp))
 
-                    Button(
-                        onClick = { onNavigateToPlayer(media.id) },
-                        colors = ButtonDefaults.colors(
-                            containerColor = Color.Red,
-                            contentColor = Color.White
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth(0.5f)
-                            .height(56.dp)
-                    ) {
-                        Text(
-                            text = "PLAY",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = { onNavigateToPlayer(media.id) },
+                            colors = ButtonDefaults.colors(
+                                containerColor = Color.Red,
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .height(56.dp)
+                                .padding(end = 16.dp)
+                        ) {
+                            Text(
+                                text = "PLAY",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        if (isCloudMedia && uiState.isAdmin) {
+                            Button(
+                                onClick = {
+                                    if (isStartingDownload) return@Button
+                                    isStartingDownload = true
+                                    viewModel.downloadMedia { success ->
+                                        isStartingDownload = false
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            if (success) "Download started!" else "Failed to start download.",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.colors(
+                                    containerColor = Color.DarkGray,
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier.height(56.dp).padding(end = 16.dp)
+                            ) {
+                                Text(
+                                    text = if (isStartingDownload) "STARTING..." else "DOWNLOAD TO NAS",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        if (isDownloaded && uiState.isAdmin) {
+                            Button(
+                                onClick = {
+                                    if (isDeletingDownload) return@Button
+                                    isDeletingDownload = true
+                                    viewModel.deleteDownload { success ->
+                                        isDeletingDownload = false
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            if (success) "Deleted successfully!" else "Failed to delete.",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.colors(
+                                    containerColor = Color.DarkGray,
+                                    contentColor = Color.Red
+                                ),
+                                modifier = Modifier.height(56.dp)
+                            ) {
+                                Text(
+                                    text = if (isDeletingDownload) "DELETING..." else "DELETE LOCAL DOWNLOAD",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }

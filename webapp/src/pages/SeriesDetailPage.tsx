@@ -12,6 +12,7 @@ import {
   useSeriesCredits,
   useEditEpisodeMetadata,
   useDownloadSeriesToNas,
+  useRemoveSeriesDownloadFromNas,
 } from '@/hooks/stores/useMedia'
 import { useToast } from '@/components/Toast'
 import { useAuthStore } from '@/stores/auth'
@@ -32,6 +33,7 @@ import {
   LuPlay,
   LuDownload,
   LuLoaderCircle,
+  LuTrash,
 } from 'react-icons/lu'
 
 export default function SeriesDetailPage() {
@@ -50,6 +52,8 @@ export default function SeriesDetailPage() {
   const { user } = useAuthStore()
   const { success: showToastSuccess, error: showToastError } = useToast()
   const { mutate: downloadSeriesToNas, isPending: isDownloadingToNas } = useDownloadSeriesToNas(id)
+  const { mutate: removeSeriesDownload, isPending: isRemovingSeriesDownload } =
+    useRemoveSeriesDownloadFromNas(id)
   const [showEditor, setShowEditor] = useState(false)
   const { youtubeKey } = useSeriesTrailers(id)
 
@@ -108,6 +112,20 @@ export default function SeriesDetailPage() {
       ? nextUpItem.episode_title
       : null
   const seriesYear = series.first_air_date ? new Date(series.first_air_date).getFullYear() : null
+
+  const hasCloudMedia = episodes?.some((ep) =>
+    ep.media_files?.some(
+      (f) =>
+        !f.file_path.includes('library/downloads') &&
+        (f.file_path.includes('://') || !f.file_path.startsWith('/')),
+    ),
+  )
+
+  const hasDownloadedFiles = episodes?.some((ep) =>
+    ep.media_files?.some(
+      (f) => f.file_path.includes('library/downloads') && f.file_path.startsWith('/'),
+    ),
+  )
 
   return (
     <div className="min-h-screen bg-netflix-black">
@@ -204,53 +222,97 @@ export default function SeriesDetailPage() {
               )}
 
               {/* Play Button and Download to NAS */}
-              <div className="mb-6 flex flex-wrap items-center gap-3">
-                {playTargetMediaId && (
-                  <>
+              <div className="mb-6 flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  {playTargetMediaId && (
                     <Link
                       to={`/watch/${playTargetMediaId}`}
-                      className="flex items-center gap-2 rounded bg-netflix-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+                      className="flex items-center gap-2 rounded bg-netflix-red px-8 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700"
                     >
-                      <LuPlay size={18} className="fill-current" />
+                      <LuPlay size={20} className="fill-current" />
                       {playLabel}
                     </Link>
-                    {playSubtitle && <p className="text-sm text-gray-400">{playSubtitle}</p>}
-                  </>
-                )}
+                  )}
 
-                {/* Download to NAS Button */}
-                {user?.is_admin && (
-                  <button
-                    onClick={() => {
-                      downloadSeriesToNas(undefined, {
-                        onSuccess: () => {
-                          showToastSuccess(
-                            t(
-                              'detail.downloadSeriesInitiated',
-                              'Đã thêm Series vào hàng đợi tải xuống NAS',
-                            ),
-                          )
-                        },
-                        onError: (error) => {
-                          showToastError(
-                            t('detail.downloadError', 'Tải xuống thất bại'),
-                            error instanceof Error ? error.message : 'Unknown error',
-                          )
-                        },
-                      })
-                    }}
-                    disabled={isDownloadingToNas}
-                    className="flex h-10 items-center justify-center gap-2 rounded bg-white/20 px-4 text-sm font-semibold text-white transition hover:bg-white/30 disabled:opacity-50"
-                  >
-                    {isDownloadingToNas ? (
-                      <LuLoaderCircle size={18} className="animate-spin" />
-                    ) : (
-                      <LuDownload size={18} />
-                    )}
-                    {isDownloadingToNas
-                      ? t('actions.downloading', 'Đang tải...')
-                      : t('actions.downloadSeriesToNas', 'Tải Series về NAS')}
-                  </button>
+                  {/* Download / Delete Series from NAS */}
+                  {user?.is_admin && (
+                    <>
+                      {hasCloudMedia && (
+                        <button
+                          onClick={() => {
+                            downloadSeriesToNas(undefined, {
+                              onSuccess: () => {
+                                showToastSuccess(
+                                  t(
+                                    'detail.downloadSeriesInitiated',
+                                    'Đã thêm Series vào hàng đợi tải xuống NAS',
+                                  ),
+                                )
+                              },
+                              onError: (error) => {
+                                showToastError(
+                                  t('detail.downloadError', 'Tải xuống thất bại'),
+                                  error instanceof Error ? error.message : 'Unknown error',
+                                )
+                              },
+                            })
+                          }}
+                          disabled={isDownloadingToNas}
+                          className="flex items-center gap-2 rounded bg-[#333]/80 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#444] disabled:opacity-50"
+                        >
+                          {isDownloadingToNas ? (
+                            <LuLoaderCircle size={20} className="animate-spin" />
+                          ) : (
+                            <LuDownload size={20} />
+                          )}
+                          {isDownloadingToNas
+                            ? t('actions.downloading', 'Đang tải...')
+                            : t('actions.downloadSeriesToNas', 'Tải Series về NAS')}
+                        </button>
+                      )}
+
+                      {hasDownloadedFiles && (
+                        <button
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                t(
+                                  'actions.confirmDeleteSeries',
+                                  'Bạn có chắc muốn xoá toàn bộ bản tải về NAS của Series này không?',
+                                ),
+                              )
+                            ) {
+                              removeSeriesDownload(undefined, {
+                                onSuccess: () =>
+                                  showToastSuccess(
+                                    t('actions.deleteSeriesSuccess', 'Đã xoá toàn bộ tập tải về!'),
+                                  ),
+                                onError: (err) =>
+                                  showToastError(
+                                    t('actions.deleteSeriesFailed', 'Xoá series thất bại.'),
+                                    err instanceof Error ? err.message : '',
+                                  ),
+                              })
+                            }
+                          }}
+                          disabled={isRemovingSeriesDownload}
+                          className="flex items-center gap-2 rounded bg-red-900/30 px-6 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-900/60 disabled:opacity-50"
+                        >
+                          {isRemovingSeriesDownload ? (
+                            <LuLoaderCircle size={20} className="animate-spin" />
+                          ) : (
+                            <LuTrash size={20} />
+                          )}
+                          {isRemovingSeriesDownload
+                            ? t('actions.deleting', 'Đang xoá...')
+                            : t('actions.deleteSeries', 'Xoá Series trên NAS')}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+                {playTargetMediaId && playSubtitle && (
+                  <p className="text-sm font-medium text-gray-400">{playSubtitle}</p>
                 )}
               </div>
             </div>

@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,6 +43,8 @@ fun TvSeriesDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var isStartingDownload by remember { mutableStateOf(false) }
+    var isDeletingDownload by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         uiState.series?.let { series ->
@@ -102,25 +108,107 @@ fun TvSeriesDetailScreen(
                         lineHeight = 24.sp
                     )
 
+                    val firstEpisode = uiState.episodes.firstOrNull()
+                    val firstEpisodeId = firstEpisode?.mediaId
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val sourceName = when {
+                        firstEpisode?.filePath?.startsWith("ophim://", ignoreCase = true) == true -> "OPhim"
+                        firstEpisode?.filePath?.startsWith("fshare://", ignoreCase = true) == true -> "Fshare"
+                        firstEpisode != null -> "Local"
+                        else -> "Unknown"
+                    }
+                    if (firstEpisode != null) {
+                        Text(
+                            text = "Source: $sourceName",
+                            fontSize = 16.sp,
+                            color = Color.Gray
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(48.dp))
 
-                    val firstEpisodeId = uiState.episodes.firstOrNull()?.mediaId
+                    val hasCloudMedia = uiState.episodes.any { ep ->
+                        ep.filePath?.contains("://") == true && !ep.filePath.startsWith("http")
+                    }
+                    val hasDownloadedFiles = uiState.episodes.any { ep ->
+                        ep.filePath?.contains("library/downloads") == true && !ep.filePath.contains("://")
+                    }
                     if (firstEpisodeId != null) {
-                        Button(
-                            onClick = { onNavigateToPlayer(firstEpisodeId) },
-                            colors = ButtonDefaults.colors(
-                                containerColor = Color.Red,
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth(0.5f)
-                                .height(56.dp)
-                        ) {
-                            Text(
-                                text = "PLAY FIRST EPISODE",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Button(
+                                onClick = { onNavigateToPlayer(firstEpisodeId) },
+                                colors = ButtonDefaults.colors(
+                                    containerColor = Color.Red,
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier
+                                    .height(56.dp)
+                                    .padding(end = 16.dp)
+                            ) {
+                                Text(
+                                    text = "PLAY FIRST EPISODE",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            if (hasCloudMedia && uiState.isAdmin) {
+                                Button(
+                                    onClick = {
+                                        if (isStartingDownload) return@Button
+                                        isStartingDownload = true
+                                        viewModel.downloadSeries { success ->
+                                            isStartingDownload = false
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                if (success) "Download started!" else "Failed to start download.",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.colors(
+                                        containerColor = Color.DarkGray,
+                                        contentColor = Color.White
+                                    ),
+                                    modifier = Modifier.height(56.dp).padding(end = 16.dp)
+                                ) {
+                                    Text(
+                                        text = if (isStartingDownload) "STARTING..." else "DOWNLOAD TO NAS",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            if (hasDownloadedFiles && uiState.isAdmin) {
+                                Button(
+                                    onClick = {
+                                        if (isDeletingDownload) return@Button
+                                        isDeletingDownload = true
+                                        viewModel.deleteSeriesDownload { success ->
+                                            isDeletingDownload = false
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                if (success) "Deleted successfully!" else "Failed to delete.",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.colors(
+                                        containerColor = Color.DarkGray,
+                                        contentColor = Color.Red
+                                    ),
+                                    modifier = Modifier.height(56.dp)
+                                ) {
+                                    Text(
+                                        text = if (isDeletingDownload) "DELETING..." else "DELETE LOCAL DOWNLOAD",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
                         }
                     } else if (uiState.areEpisodesLoading) {
                         Text(

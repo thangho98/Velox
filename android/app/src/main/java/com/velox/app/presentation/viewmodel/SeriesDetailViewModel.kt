@@ -149,4 +149,44 @@ class SeriesDetailViewModel @Inject constructor(
                 }
         }
     }
+
+    fun downloadSeries(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            mediaRepository.startSeriesDownload(seriesId).onSuccess {
+                onResult(true)
+            }.onFailure {
+                onResult(false)
+            }
+        }
+    }
+
+    fun deleteSeriesDownload(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            mediaRepository.deleteSeriesDownload(seriesId).onSuccess {
+                onResult(true)
+            }.onFailure {
+                onResult(false)
+            }
+        }
+    }
+
+    fun downloadEpisode(mediaId: Int, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            mediaRepository.startDownload(mediaId).onSuccess {
+                onResult(true)
+            }.onFailure {
+                onResult(false)
+            }
+        }
+    }
+
+    fun deleteEpisodeDownload(mediaId: Int, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            mediaRepository.deleteDownload(mediaId).onSuccess {
+                onResult(true)
+            }.onFailure {
+                onResult(false)
+            }
+        }
+    }
 }

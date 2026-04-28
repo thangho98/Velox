@@ -84,7 +84,11 @@ fun SeriesDetailScreen(
         onSeasonSelect = { viewModel.selectSeason(it) },
         onAutoDownloadSubtitle = { mediaId, onResult ->
             viewModel.autoDownloadSubtitle(mediaId, onResult)
-        }
+        },
+        onDownloadSeries = { onResult -> viewModel.downloadSeries(onResult) },
+        onDeleteSeriesDownload = { onResult -> viewModel.deleteSeriesDownload(onResult) },
+        onDownloadEpisode = { mediaId, onResult -> viewModel.downloadEpisode(mediaId, onResult) },
+        onDeleteEpisodeDownload = { mediaId, onResult -> viewModel.deleteEpisodeDownload(mediaId, onResult) },
     )
 }
 
@@ -99,6 +103,10 @@ fun SeriesDetailContent(
     onSeasonSelect: (Season) -> Unit,
     onEditEpisode: ((Episode) -> Unit)? = null,
     onAutoDownloadSubtitle: (Int, (Boolean) -> Unit) -> Unit = { _, _ -> },
+    onDownloadSeries: ((Boolean) -> Unit) -> Unit = {},
+    onDeleteSeriesDownload: ((Boolean) -> Unit) -> Unit = {},
+    onDownloadEpisode: (Int, (Boolean) -> Unit) -> Unit = { _, _ -> },
+    onDeleteEpisodeDownload: (Int, (Boolean) -> Unit) -> Unit = { _, _ -> },
 ) {
     var currentTrailerIndex by remember { mutableIntStateOf(0) }
     var showTrailer by remember { mutableStateOf(false) }
@@ -412,6 +420,28 @@ fun SeriesDetailContent(
                                     )
                                 }
                             }
+
+                            val firstEpisode = uiState.episodes.firstOrNull()
+                            val topLevelSourceName = when {
+                                firstEpisode?.filePath?.startsWith("ophim://", ignoreCase = true) == true -> "OPhim"
+                                firstEpisode?.filePath?.startsWith("fshare://", ignoreCase = true) == true -> "Fshare"
+                                firstEpisode != null -> "Local"
+                                else -> "Unknown"
+                            }
+                            if (firstEpisode != null) {
+                                Surface(
+                                    color = Color(0x334B5563), // a discrete badge color
+                                    shape = RoundedCornerShape(4.dp),
+                                ) {
+                                    Text(
+                                        text = topLevelSourceName,
+                                        color = Color(0xFF9CA3AF),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    )
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -457,6 +487,81 @@ fun SeriesDetailContent(
                                     color = NetflixLightGray,
                                     fontSize = 14.sp
                                 )
+
+                                Box {
+                                    val hasCloudMedia = uiState.episodes.any { ep ->
+                                        ep.filePath?.contains("://") == true && !ep.filePath.startsWith("http")
+                                    }
+                                    val hasDownloadedFiles = uiState.episodes.any { ep ->
+                                        ep.filePath?.contains("library/downloads") == true && !ep.filePath.contains("://")
+                                    }
+                                    var showSeriesActionMenu by remember { mutableStateOf(false) }
+                                    var isDownloadingSeries by remember { mutableStateOf(false) }
+                                    ActionMenuButton(
+                                        expanded = showSeriesActionMenu,
+                                        onClick = { showSeriesActionMenu = true },
+                                    )
+                                    ActionMenu(
+                                        expanded = showSeriesActionMenu,
+                                        onDismiss = { showSeriesActionMenu = false },
+                                        items = buildList {
+                                            if (uiState.isAdmin) {
+                                                add(ActionMenuItem.RefreshMetadata(onClick = { showSeriesActionMenu = false; onRefresh() }))
+                                            }
+                                            if (hasCloudMedia && uiState.isAdmin) {
+                                                add(ActionMenuItem.Custom(
+                                                    label = "Download Series to NAS",
+                                                    icon = LucideIcons.Download,
+                                                    isLoading = isDownloadingSeries,
+                                                    autoDismiss = false,
+                                                    onClick = {
+                                                        if (isDownloadingSeries) return@Custom
+                                                        isDownloadingSeries = true
+                                                        coroutineScope.launch {
+                                                            snackbarHostState.showSnackbar("Starting download to NAS...")
+                                                        }
+                                                        onDownloadSeries { success ->
+                                                            isDownloadingSeries = false
+                                                            showSeriesActionMenu = false
+                                                            coroutineScope.launch {
+                                                                snackbarHostState.showSnackbar(
+                                                                    if (success) "Download started!"
+                                                                    else "Failed to start download."
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                ))
+                                            }
+                                            if (hasDownloadedFiles && uiState.isAdmin) {
+                                                var isDeletingSeriesDownload by remember { mutableStateOf(false) }
+                                                add(ActionMenuItem.Custom(
+                                                    label = "Delete Series on NAS",
+                                                    icon = LucideIcons.Delete,
+                                                    isLoading = isDeletingSeriesDownload,
+                                                    autoDismiss = false,
+                                                    onClick = {
+                                                        if (isDeletingSeriesDownload) return@Custom
+                                                        isDeletingSeriesDownload = true
+                                                        coroutineScope.launch {
+                                                            snackbarHostState.showSnackbar("Deleting series downloads...")
+                                                        }
+                                                        onDeleteSeriesDownload { success ->
+                                                            isDeletingSeriesDownload = false
+                                                            showSeriesActionMenu = false
+                                                            coroutineScope.launch {
+                                                                snackbarHostState.showSnackbar(
+                                                                    if (success) "Deleted successfully!"
+                                                                    else "Failed to delete series."
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                ))
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -519,7 +624,36 @@ fun SeriesDetailContent(
                                         snackbarHostState.showSnackbar(if (success) "Subtitle downloaded successfully!" else "Could not find a subtitle match.")
                                     }
                                 }
-                            }
+                            },
+                            onDownloadEpisode = { mediaId, onResult ->
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Starting download to NAS...")
+                                }
+                                onDownloadEpisode(mediaId) { success ->
+                                    onResult(success)
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            if (success) "Download started!"
+                                            else "Failed to start download."
+                                        )
+                                    }
+                                }
+                            },
+                            onDeleteEpisodeDownload = { mediaId, onResult ->
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Deleting local download...")
+                                }
+                                onDeleteEpisodeDownload(mediaId) { success ->
+                                    onResult(success)
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            if (success) "Deleted successfully!"
+                                            else "Failed to delete download."
+                                        )
+                                    }
+                                }
+                            },
+                            isAdmin = uiState.isAdmin
                         )
                     }
                 } // closes else
@@ -584,9 +718,19 @@ fun EpisodeCard(
     onClick: () -> Unit,
     onEditClick: (() -> Unit)? = null,
     onAutoDownloadSubtitle: (Int, (Boolean) -> Unit) -> Unit = { _, _ -> },
+    onDownloadEpisode: (Int, (Boolean) -> Unit) -> Unit = { _, _ -> },
+    onDeleteEpisodeDownload: (Int, (Boolean) -> Unit) -> Unit = { _, _ -> },
+    isAdmin: Boolean = false,
 ) {
     var showActionMenu by remember { mutableStateOf(false) }
     var isDownloadingSubtitle by remember { mutableStateOf(false) }
+    var isDownloadingEpisode by remember { mutableStateOf(false) }
+    var isDeletingEpisodeDownload by remember { mutableStateOf(false) }
+
+    val isCloudMedia = episode.filePath?.contains("://") == true &&
+        episode.filePath.startsWith("http").not()
+    val isDownloaded = episode.filePath?.contains("library/downloads") == true &&
+        episode.filePath.contains("://").not()
 
     val screenWidth = LocalConfiguration.current.screenWidthDp
     val cardPadding = if (screenWidth < 600) 16.dp else 32.dp
@@ -680,6 +824,18 @@ fun EpisodeCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                val sourceName = when {
+                    episode.filePath?.startsWith("ophim://", ignoreCase = true) == true -> "OPhim"
+                    episode.filePath?.startsWith("fshare://", ignoreCase = true) == true -> "Fshare"
+                    else -> "Local"
+                }
+                Text(
+                    text = "Source: $sourceName",
+                    color = Color.Gray,
+                    fontSize = 12.sp,
+                )
                 if (progress != null && progress.position > 0 && !progress.completed) {
                     val duration = episode.duration ?: 0f
                     if (duration > 0) {
@@ -737,6 +893,38 @@ fun EpisodeCard(
                                 }
                             }
                         ))
+                        if (isCloudMedia && isAdmin) {
+                            add(ActionMenuItem.Custom(
+                                label = "Download to NAS",
+                                icon = LucideIcons.Download,
+                                isLoading = isDownloadingEpisode,
+                                autoDismiss = false,
+                                onClick = {
+                                    if (isDownloadingEpisode) return@Custom
+                                    isDownloadingEpisode = true
+                                    onDownloadEpisode(episode.mediaId) {
+                                        isDownloadingEpisode = false
+                                        showActionMenu = false
+                                    }
+                                }
+                            ))
+                        }
+                        if (isDownloaded && isAdmin) {
+                            add(ActionMenuItem.Custom(
+                                label = "Delete Local Download",
+                                icon = LucideIcons.Delete,
+                                isLoading = isDeletingEpisodeDownload,
+                                autoDismiss = false,
+                                onClick = {
+                                    if (isDeletingEpisodeDownload) return@Custom
+                                    isDeletingEpisodeDownload = true
+                                    onDeleteEpisodeDownload(episode.mediaId) {
+                                        isDeletingEpisodeDownload = false
+                                        showActionMenu = false
+                                    }
+                                }
+                            ))
+                        }
                         if (onEditClick != null) {
                             add(ActionMenuItem.Separator)
                             add(ActionMenuItem.Edit(onClick = { showActionMenu = false; onEditClick() }))

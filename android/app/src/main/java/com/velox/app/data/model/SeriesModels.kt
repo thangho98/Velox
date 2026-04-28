@@ -73,5 +73,6 @@ data class EpisodeDto(
     val duration: Float? = null,
     @SerialName("season_number") val seasonNumber: Int? = null,
     @SerialName("file_path") val filePath: String? = null,
+    @SerialName("media_files") val mediaFiles: List<MediaFileDto>? = null,
     val credits: CreditsDto? = null,
 )

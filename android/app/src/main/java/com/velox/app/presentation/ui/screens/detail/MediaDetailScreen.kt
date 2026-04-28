@@ -104,6 +104,8 @@ fun MediaDetailScreen(
         onRefreshMetadata = { viewModel.refreshMetadata() },
         onAutoDownloadSubtitle = { onResult -> viewModel.autoDownloadSubtitle(onResult) },
         onCloudProbe = { onResult -> viewModel.cloudProbe(onResult) },
+        onDownloadMedia = { onResult -> viewModel.downloadMedia(onResult) },
+        onDeleteDownload = { onResult -> viewModel.deleteDownload(onResult) },
     )
 }
 
@@ -122,6 +124,8 @@ private fun MediaDetailContent(
     onRefreshMetadata: () -> Unit = {},
     onAutoDownloadSubtitle: ((Boolean) -> Unit) -> Unit = {},
     onCloudProbe: ((Boolean) -> Unit) -> Unit = {},
+    onDownloadMedia: ((Boolean) -> Unit) -> Unit = {},
+    onDeleteDownload: ((Boolean) -> Unit) -> Unit = {},
 ) {
     var currentTrailerIndex by remember { mutableIntStateOf(0) }
     var showTrailer by remember { mutableStateOf(false) }
@@ -356,6 +360,8 @@ private fun MediaDetailContent(
                             onRefreshMetadata = onRefreshMetadata,
                             onAutoDownloadSubtitle = onAutoDownloadSubtitle,
                             onCloudProbe = onCloudProbe,
+                            onDownloadMedia = onDownloadMedia,
+                            onDeleteDownload = onDeleteDownload,
                         )
                     }
                     }
@@ -381,11 +387,17 @@ private fun MediaDetailInfo(
     onRefreshMetadata: () -> Unit = {},
     onAutoDownloadSubtitle: ((Boolean) -> Unit) -> Unit = {},
     onCloudProbe: ((Boolean) -> Unit) -> Unit = {},
+    onDownloadMedia: ((Boolean) -> Unit) -> Unit = {},
+    onDeleteDownload: ((Boolean) -> Unit) -> Unit = {},
 ) {
     var isDownloadingSubtitle by remember { mutableStateOf(false) }
     var isProbingCloud by remember { mutableStateOf(false) }
+    var isStartingDownload by remember { mutableStateOf(false) }
+    var isDeletingDownload by remember { mutableStateOf(false) }
     val isCloudMedia = primaryFile?.filePath?.contains("://") == true &&
         primaryFile.filePath.startsWith("http").not()
+    val isDownloaded = primaryFile?.filePath?.contains("library/downloads") == true &&
+        primaryFile.filePath.contains("://").not()
     val screenWidth = LocalConfiguration.current.screenWidthDp
 
     // Title
@@ -468,6 +480,14 @@ private fun MediaDetailInfo(
             if (primaryFile.container != null) {
                 TechSpecLabeled(label = "Container", value = primaryFile.container.uppercase())
             }
+
+            val sourceName = when {
+                primaryFile.filePath.startsWith("ophim://", ignoreCase = true) -> "OPhim"
+                primaryFile.filePath.startsWith("fshare://", ignoreCase = true) -> "Fshare"
+                else -> "Local"
+            }
+            TechSpecLabeled(label = "Source", value = sourceName)
+
             if (primaryFile.fileSize > 0) {
                 val sizeGB = primaryFile.fileSize / (1024.0 * 1024.0 * 1024.0)
                 val sizeText = if (sizeGB >= 1) {
@@ -605,6 +625,56 @@ private fun MediaDetailInfo(
                             }
                         }
                     ))
+                    if (isCloudMedia) {
+                        add(ActionMenuItem.Custom(
+                            label = "Download to NAS",
+                            icon = LucideIcons.Download, // Re-using Download since no CloudDownload in LucideIcons yet
+                            isLoading = isStartingDownload,
+                            autoDismiss = false,
+                            onClick = {
+                                if (isStartingDownload) return@Custom
+                                isStartingDownload = true
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Starting download to NAS...")
+                                }
+                                onDownloadMedia { success ->
+                                    isStartingDownload = false
+                                    showActionMenu = false
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            if (success) "Download started!"
+                                            else "Failed to start download."
+                                        )
+                                    }
+                                }
+                            }
+                        ))
+                    }
+                    if (isDownloaded && uiState.isAdmin) {
+                        add(ActionMenuItem.Custom(
+                            label = "Delete Local Download",
+                            icon = LucideIcons.Delete,
+                            isLoading = isDeletingDownload,
+                            autoDismiss = false,
+                            onClick = {
+                                if (isDeletingDownload) return@Custom
+                                isDeletingDownload = true
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Deleting local download...")
+                                }
+                                onDeleteDownload { success ->
+                                    isDeletingDownload = false
+                                    showActionMenu = false
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            if (success) "Deleted successfully!"
+                                            else "Failed to delete download."
+                                        )
+                                    }
+                                }
+                            }
+                        ))
+                    }
                     if (uiState.isAdmin) {
                         add(ActionMenuItem.Edit(onClick = { showActionMenu = false }))
                         add(ActionMenuItem.RefreshMetadata(onClick = { showActionMenu = false; onRefreshMetadata() }))

@@ -7,6 +7,7 @@ import {
   useStreamUrl,
   useAutoDownloadSubtitle,
   useDownloadToNas,
+  useRemoveDownloadFromNas,
 } from '@/hooks/stores/useMedia'
 import { usePlayerStore } from '@/stores/player'
 import {
@@ -19,6 +20,7 @@ import {
   LuRotateCcw,
   LuDownload,
   LuLoaderCircle,
+  LuTrash,
 } from 'react-icons/lu'
 import { useToast } from '@/components/Toast'
 import { copyTextToClipboard } from '@/lib/clipboard'
@@ -61,10 +63,15 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
   const { mutate: downloadToNas, isPending: isDownloadingToNas } = useDownloadToNas(
     episode.media_id,
   )
+  const { mutate: removeDownloadFromNas, isPending: isRemovingDownload } = useRemoveDownloadFromNas(
+    episode.media_id,
+  )
 
-  const isCloudMedia = episode.media_files?.some((f) => f.is_primary && f.file_path.includes('://'))
+  const hasCloudFile = episode.media_files?.some(
+    (f) => f.file_path.includes('://') && !f.file_path.startsWith('http'),
+  )
   const isDownloaded = episode.media_files?.some(
-    (f) => f.is_primary && !f.file_path.includes('://'),
+    (f) => !f.file_path.includes('://') && f.file_path.includes('library/downloads'),
   )
 
   const duration = episode.duration || 0
@@ -129,34 +136,67 @@ export function EpisodeCard({ episode, isAdmin, onEdit }: EpisodeCardProps) {
     },
   ]
 
-  if (isCloudMedia) {
-    menuItems.splice(menuItems.length - 1, 0, {
-      label: isDownloaded
-        ? t('actions.downloadedToNas', 'Đã tải về NAS')
-        : isDownloadingToNas
+  if (hasCloudFile) {
+    if (isDownloaded) {
+      menuItems.splice(menuItems.length - 1, 0, {
+        label: isRemovingDownload
+          ? t('actions.deleting', 'Đang xoá...')
+          : t('actions.deleteLocalDownload', 'Xoá bản tải về Local'),
+        icon: isRemovingDownload ? (
+          <LuLoaderCircle size={16} className="animate-spin" />
+        ) : (
+          <LuTrash size={16} className="text-red-400" />
+        ),
+        adminOnly: true,
+        onClick: () => {
+          if (
+            window.confirm(
+              t(
+                'actions.confirmDeleteDownload',
+                'Bạn có chắc muốn xoá bản phim dưới Local này không?',
+              ),
+            )
+          ) {
+            removeDownloadFromNas(undefined, {
+              onSuccess: () =>
+                showToastSuccess(
+                  t('actions.deleteDownloadSuccess', 'Đã xoá bản Local thành công!'),
+                ),
+              onError: (err) =>
+                showToastError(
+                  t('actions.deleteDownloadFailed', 'Xoá file thất bại.'),
+                  err instanceof Error ? err.message : '',
+                ),
+            })
+          }
+        },
+        disabled: isRemovingDownload,
+      })
+    } else {
+      menuItems.splice(menuItems.length - 1, 0, {
+        label: isDownloadingToNas
           ? t('actions.downloading', 'Đang tải...')
           : t('actions.downloadEpisodeToNas', 'Tải tập này về NAS'),
-      icon: isDownloadingToNas ? (
-        <LuLoaderCircle size={16} className="animate-spin" />
-      ) : isDownloaded ? (
-        <LuCheck size={16} className="text-green-500" />
-      ) : (
-        <LuDownload size={16} />
-      ),
-      disabled: isDownloaded || isDownloadingToNas,
-      adminOnly: true,
-      onClick: () => {
-        downloadToNas(undefined, {
-          onSuccess: () =>
-            showToastSuccess(t('detail.downloadInitiated', 'Đã thêm vào hàng đợi tải xuống NAS')),
-          onError: (err) =>
-            showToastError(
-              t('detail.downloadError', 'Tải xuống thất bại'),
-              err instanceof Error ? err.message : 'Unknown error',
-            ),
-        })
-      },
-    })
+        icon: isDownloadingToNas ? (
+          <LuLoaderCircle size={16} className="animate-spin" />
+        ) : (
+          <LuDownload size={16} />
+        ),
+        adminOnly: true,
+        disabled: isDownloadingToNas,
+        onClick: () => {
+          downloadToNas(undefined, {
+            onSuccess: () =>
+              showToastSuccess(t('detail.downloadInitiated', 'Đã thêm vào hàng đợi tải xuống NAS')),
+            onError: (err) =>
+              showToastError(
+                t('detail.downloadError', 'Tải xuống thất bại'),
+                err instanceof Error ? err.message : 'Unknown error',
+              ),
+          })
+        },
+      })
+    }
   }
 
   return (

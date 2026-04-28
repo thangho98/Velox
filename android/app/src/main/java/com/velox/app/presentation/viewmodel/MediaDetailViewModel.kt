@@ -196,6 +196,26 @@ class MediaDetailViewModel @Inject constructor(
         }
     }
 
+    fun downloadMedia(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            mediaRepository.startDownload(mediaId).onSuccess {
+                onResult(true)
+            }.onFailure {
+                onResult(false)
+            }
+        }
+    }
+
+    fun deleteDownload(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            mediaRepository.deleteDownload(mediaId).onSuccess {
+                onResult(true)
+            }.onFailure {
+                onResult(false)
+            }
+        }
+    }
+
     fun refresh() {
         loadMedia(isRefresh = true)
     }

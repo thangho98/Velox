@@ -71,6 +71,7 @@ type Episode struct {
 	Still         *ImageResource `json:"still,omitempty"`
 	AirDate       string         `json:"air_date"`           // YYYY-MM-DD
 	Duration      float64        `json:"duration,omitempty"` // seconds, from primary media_file
+	MediaFiles    []MediaFile    `json:"media_files,omitempty"`
 	CreatedAt     string         `json:"created_at"`
 }
 

@@ -1478,7 +1478,7 @@ export default function WatchPage() {
   const displayTime = dragSeekTime ?? currentTime
   const progressPercent = duration ? (displayTime / duration) * 100 : 0
   const bufferWidthPercent = duration ? Math.max(0, (bufferedRange.end / duration) * 100) : 0
-  const remainingTime = duration > 0 ? duration - displayTime : 0
+  const remainingTime = duration > 0 ? Math.max(0, duration - displayTime) : 0
 
   // ── Gesture tracking ───────────────────────────────────────────────────────
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null)

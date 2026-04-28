@@ -25,8 +25,11 @@ export function ContinueWatchingCard({ item }: ContinueWatchingCardProps) {
   // Calculate progress percentage
   const progressPercent = item.duration > 0 ? (item.position / item.duration) * 100 : 0
 
-  // Calculate remaining time in minutes
-  const remainingMinutes = Math.ceil((item.duration - item.position) / 60)
+  // Calculate remaining time or watched time in minutes
+  const remainingMinutes =
+    item.duration > 0
+      ? Math.max(0, Math.ceil((item.duration - item.position) / 60))
+      : Math.max(0, Math.ceil(item.position / 60))
 
   // Format title: for episodes show "S04E23 · Friends" format
   const displayTitle =
@@ -66,7 +69,9 @@ export function ContinueWatchingCard({ item }: ContinueWatchingCardProps) {
       {/* Info */}
       <div className="absolute bottom-1 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-6">
         <p className="truncate text-sm font-medium text-white">{displayTitle}</p>
-        <p className="text-xs text-gray-400">{remainingMinutes}m remaining</p>
+        <p className="text-xs text-gray-400">
+          {remainingMinutes}m {item.duration > 0 ? 'remaining' : 'watched'}
+        </p>
       </div>
 
       {/* Dismiss button */}

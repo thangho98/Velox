@@ -356,6 +356,7 @@ class MediaRepositoryImpl @Inject constructor(
                         still = dto.still?.toDomain(),
                         airDate = dto.airDate,
                         duration = dto.duration,
+                        filePath = dto.filePath ?: dto.mediaFiles?.firstOrNull()?.filePath,
                     )
                 } ?: emptyList()
                 Result.success(episodes)
@@ -943,6 +944,59 @@ class MediaRepositoryImpl @Inject constructor(
                 Result.success(content)
             } else {
                 Result.failure(Exception("Failed to fetch subtitle content (code: ${response.code()})"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // Downloads
+    override suspend fun startDownload(mediaId: Int): Result<Unit> {
+        return try {
+            val response = api.startDownload(mediaId)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to start download"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun startSeriesDownload(seriesId: Int): Result<Unit> {
+        return try {
+            val response = api.startSeriesDownload(seriesId)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to start series download"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun deleteDownload(mediaId: Int): Result<Unit> {
+        return try {
+            val response = api.deleteDownload(mediaId)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to delete download"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun deleteSeriesDownload(seriesId: Int): Result<Unit> {
+        return try {
+            val response = api.deleteSeriesDownload(seriesId)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to delete series download"))
             }
         } catch (e: Exception) {
             Result.failure(e)

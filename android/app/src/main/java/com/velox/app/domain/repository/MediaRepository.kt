@@ -79,4 +79,10 @@ interface MediaRepository {
     suspend fun autoDownloadSubtitle(mediaId: Int): Result<Unit>
     suspend fun translateSubtitle(subtitleId: Int, targetLanguage: String): Result<Unit>
     suspend fun getSubtitleContent(fileId: Int, subId: Int): Result<String>
+
+    // Downloads
+    suspend fun startDownload(mediaId: Int): Result<Unit>
+    suspend fun startSeriesDownload(seriesId: Int): Result<Unit>
+    suspend fun deleteDownload(mediaId: Int): Result<Unit>
+    suspend fun deleteSeriesDownload(seriesId: Int): Result<Unit>
 }

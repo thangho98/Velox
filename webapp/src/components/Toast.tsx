@@ -45,7 +45,8 @@ export function useToast() {
   const { addToast } = useUIStore()
   return {
     success: (message: string) => addToast(message, 'success'),
-    error: (message: string) => addToast(message, 'error'),
+    error: (message: string, detail?: string) =>
+      addToast(detail ? `${message}: ${detail}` : message, 'error'),
     info: (message: string) => addToast(message, 'info'),
   }
 }

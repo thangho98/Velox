@@ -48,7 +48,9 @@ export {
   // Metadata ops
   useRefreshMetadata,
   useDownloadToNas,
+  useRemoveDownloadFromNas,
   useDownloadSeriesToNas,
+  useRemoveSeriesDownloadFromNas,
   useCloudProbe,
   useEditMediaMetadata,
   useEditSeriesMetadata,

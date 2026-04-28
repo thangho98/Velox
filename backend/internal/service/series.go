@@ -10,9 +10,10 @@ import (
 
 // SeriesService orchestrates series, season, and episode read operations.
 type SeriesService struct {
-	seriesRepo  *repository.SeriesRepo
-	seasonRepo  *repository.SeasonRepo
-	episodeRepo *repository.EpisodeRepo
+	seriesRepo    *repository.SeriesRepo
+	seasonRepo    *repository.SeasonRepo
+	episodeRepo   *repository.EpisodeRepo
+	mediaFileRepo *repository.MediaFileRepo
 }
 
 // NewSeriesService creates a new series service.
@@ -20,11 +21,13 @@ func NewSeriesService(
 	seriesRepo *repository.SeriesRepo,
 	seasonRepo *repository.SeasonRepo,
 	episodeRepo *repository.EpisodeRepo,
+	mediaFileRepo *repository.MediaFileRepo,
 ) *SeriesService {
 	return &SeriesService{
-		seriesRepo:  seriesRepo,
-		seasonRepo:  seasonRepo,
-		episodeRepo: episodeRepo,
+		seriesRepo:    seriesRepo,
+		seasonRepo:    seasonRepo,
+		episodeRepo:   episodeRepo,
+		mediaFileRepo: mediaFileRepo,
 	}
 }
 
@@ -53,5 +56,14 @@ func (s *SeriesService) ListSeasons(ctx context.Context, seriesID int64) ([]mode
 }
 
 func (s *SeriesService) ListEpisodes(ctx context.Context, seasonID int64) ([]model.Episode, error) {
-	return s.episodeRepo.ListBySeasonID(ctx, seasonID)
+	episodes, err := s.episodeRepo.ListBySeasonID(ctx, seasonID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range episodes {
+		if files, err := s.mediaFileRepo.ListByMediaID(ctx, episodes[i].MediaID); err == nil {
+			episodes[i].MediaFiles = files
+		}
+	}
+	return episodes, nil
 }

@@ -15,6 +15,7 @@ import {
   useMediaCredits,
   useStreamUrl,
   useDownloadToNas,
+  useRemoveDownloadFromNas,
   useCloudProbe,
 } from '@/hooks/stores/useMedia'
 import { useAuthStore } from '@/stores/auth'
@@ -33,6 +34,7 @@ import {
   LuDownload,
   LuLoaderCircle,
   LuScanSearch,
+  LuTrash,
 } from 'react-icons/lu'
 
 import { ActionMenu } from '@/components/ActionMenu'
@@ -59,6 +61,8 @@ export default function MediaDetailPage() {
   const { mutate: refreshMetadata, isPending: isRefreshing } = useRefreshMetadata(mediaId)
   const { mutate: cloudProbe, isPending: isProbing } = useCloudProbe(mediaId)
   const { mutate: downloadToNas, isPending: isDownloadingToNas } = useDownloadToNas(mediaId)
+  const { mutate: removeDownloadFromNas, isPending: isRemovingDownload } =
+    useRemoveDownloadFromNas(mediaId)
   const { mutate: autoDownloadSub, isPending: isDownloadingSub } = useAutoDownloadSubtitle(mediaId)
   const { mutate: editMetadata, isPending: isSaving } = useEditMediaMetadata(mediaId)
   const { mutate: uploadImage, isPending: isUploadingImage } = useUploadMediaImage(mediaId)
@@ -107,8 +111,12 @@ export default function MediaDetailPage() {
   }
 
   const primaryFile = media.files.find((f) => f.is_primary) || media.files[0]
-  const isCloudMedia =
-    primaryFile?.file_path?.includes('://') && !primaryFile.file_path.startsWith('http')
+  const hasCloudFile = media.files.some(
+    (f) => f.file_path.includes('://') && !f.file_path.startsWith('http'),
+  )
+  const isDownloaded = media.files.some(
+    (f) => !f.file_path.includes('://') && f.file_path.includes('library/downloads'),
+  )
   const duration = primaryFile?.duration || media.media.duration || 0
   const progressPercent =
     progress && duration > 0 ? Math.min(100, (progress.position / duration) * 100) : 0
@@ -366,10 +374,12 @@ export default function MediaDetailPage() {
                         disabled: isRefreshing,
                         adminOnly: true,
                       },
-                      ...(isCloudMedia
+                      ...(!isDownloaded && hasCloudFile
                         ? [
                             {
-                              label: 'Download to NAS',
+                              label: isDownloadingToNas
+                                ? t('actions.downloading', 'Đang tải...')
+                                : t('actions.downloadEpisodeToNas', 'Tải phim này về NAS'),
                               icon: isDownloadingToNas ? (
                                 <LuLoaderCircle size={16} className="animate-spin" />
                               ) : (
@@ -378,14 +388,67 @@ export default function MediaDetailPage() {
                               onClick: () => {
                                 downloadToNas(undefined, {
                                   onSuccess: () =>
-                                    showToastSuccess('Download queued successfully!'),
+                                    showToastSuccess(
+                                      t(
+                                        'detail.downloadInitiated',
+                                        'Đã thêm vào hàng đợi tải xuống NAS',
+                                      ),
+                                    ),
                                   onError: (error) =>
-                                    showToastError(`Download failed: ${error.message}`),
+                                    showToastError(
+                                      t('detail.downloadError', 'Tải xuống thất bại'),
+                                      error instanceof Error ? error.message : '',
+                                    ),
                                 })
                               },
                               disabled: isDownloadingToNas,
                               adminOnly: true,
                             },
+                          ]
+                        : []),
+                      ...(isDownloaded
+                        ? [
+                            {
+                              label: isRemovingDownload
+                                ? t('actions.deleting', 'Đang xoá...')
+                                : t('actions.deleteLocalDownload', 'Xoá bản tải về Local'),
+                              icon: isRemovingDownload ? (
+                                <LuLoaderCircle size={16} className="animate-spin" />
+                              ) : (
+                                <LuTrash size={16} className="text-red-400" />
+                              ),
+                              onClick: () => {
+                                if (
+                                  window.confirm(
+                                    t(
+                                      'actions.confirmDeleteDownload',
+                                      'Bạn có chắc muốn xoá bản phim dưới Local này không?',
+                                    ),
+                                  )
+                                ) {
+                                  removeDownloadFromNas(undefined, {
+                                    onSuccess: () =>
+                                      showToastSuccess(
+                                        t(
+                                          'actions.deleteDownloadSuccess',
+                                          'Đã xoá bản Local thành công!',
+                                        ),
+                                      ),
+                                    onError: (err) =>
+                                      showToastError(
+                                        t('actions.deleteDownloadFailed', 'Xoá file thất bại.'),
+                                        err instanceof Error ? err.message : '',
+                                      ),
+                                  })
+                                }
+                              },
+                              disabled: isRemovingDownload,
+                              adminOnly: true,
+                            },
+                          ]
+                        : []),
+                      ...(hasCloudFile
+                        ? [
                             {
                               label: 'Extract cloud subtitles',
                               icon: isProbing ? (
@@ -441,11 +504,17 @@ export default function MediaDetailPage() {
                         style={{ width: `${progressPercent}%` }}
                       />
                     </div>
-                    <span className="shrink-0 text-sm text-gray-400">
-                      {progress.completed
-                        ? 'Watched'
-                        : `${formatDuration(Math.max(0, duration - progress.position))} remaining`}
-                    </span>
+                    {progress.completed ? (
+                      <span className="shrink-0 text-sm text-gray-400">Watched</span>
+                    ) : duration > 0 ? (
+                      <span className="shrink-0 text-sm text-gray-400">
+                        {`${formatDuration(Math.max(0, duration - progress.position))} remaining`}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-sm text-gray-400">
+                        {`${formatDuration(progress.position)} watched`}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}

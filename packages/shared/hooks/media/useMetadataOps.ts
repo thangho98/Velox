@@ -46,12 +46,36 @@ export function useDownloadToNas(mediaId: number) {
   })
 }
 
+export function useRemoveDownloadFromNas(mediaId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.delete<unknown>(`/media/${mediaId}/download`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['downloads'] })
+      queryClient.invalidateQueries({ queryKey: mediaKeys.withFiles(mediaId) })
+      // If it's part of a series, this will eventually trigger a re-fetch of episodes if configured
+    },
+  })
+}
+
+
 export function useDownloadSeriesToNas(seriesId: number) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => api.post<unknown>(`/series/${seriesId}/download`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['downloads'] })
+    },
+  })
+}
+
+export function useRemoveSeriesDownloadFromNas(seriesId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.delete<unknown>(`/series/${seriesId}/download`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['downloads'] })
+      queryClient.invalidateQueries({ queryKey: mediaKeys.all() }) // series and episodes might be updated
     },
   })
 }
