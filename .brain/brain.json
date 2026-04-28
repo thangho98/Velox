@@ -25,7 +25,7 @@
       "transcoding": "FFmpeg 8.0 (jellyfin-ffmpeg 7.1.3 in Docker)"
     },
     "database": {
-      "main": "SQLite (WAL mode, 37 migrations)"
+      "main": "SQLite (WAL mode, up to migration 045)"
     }
   },
   "database_schema": {
@@ -43,7 +43,11 @@
       "favorites",
       "app_versions",
       "tasks",
-      "pretranscode_queue"
+      "pretranscode_queue",
+      "live_channels",
+      "live_playlists",
+      "live_programs",
+      "user_live_channel_data"
     ],
     "relationships": [
       "One storage_provider can be shared by many cloud-backed libraries",
@@ -54,7 +58,12 @@
     "summary": "App lưu: user/auth, local và cloud media libraries, metadata anime/movie/series, watch progress, subtitles, HDR/DV metadata per file, scheduled tasks, app version info, và pretranscode queue.",
     "migration_035_media_file_hdr_metadata": "Added 4 columns to media_files: is_hdr INTEGER, dv_profile INTEGER (0=none, 5=IPT-PQ-C2, 7=dual-layer, 8=single-layer BL+RPU), color_transfer TEXT, color_primaries TEXT. Defaults all 0/empty for existing rows — scanner populates on fresh scan. Runtime reads DVProfile from DB (safe under flag gate); IsHDR stays runtime-probed to avoid unmigrated-row regression.",
     "migration_036_storage_providers": "Added storage_providers table for encrypted cloud account credentials and provider metadata.",
-    "migration_037_cloud_libraries": "Libraries can now point to storage_provider_id + source_url for cloud-backed scanning and playback."
+    "migration_037_cloud_libraries": "Libraries can now point to storage_provider_id + source_url for cloud-backed scanning and playback.",
+    "migration_040_live_tv": "live_playlists + live_channels tables for IPTV M3U import.",
+    "migration_041_epg_url": "Added epg_url column to live_playlists for XMLTV source.",
+    "migration_043_live_channels_hidden": "is_hidden flag per channel to soft-hide without re-import.",
+    "migration_044_live_channel_headers": "Stores custom HTTP headers (User-Agent, Referer) per channel for IPTV upstream auth.",
+    "migration_045_user_live_channel_data": "Per-user recently-watched tracking for live TV. Table (user_id, channel_id, play_count, last_watched_at, updated_at) mirrors media user_data. Populated from handleStreamEntry proxy with a 5-min cooldown. Index idx_ulcd_recent on (user_id, last_watched_at DESC)."
   },
   "api_endpoints": [
     {
@@ -76,6 +85,31 @@
       "path": "/api/media/{id}/cloud-probe",
       "method": "POST",
       "explained": "Admin-only on-demand probe for cloud media metadata and embedded subtitle extraction."
+    },
+    {
+      "path": "/api/media/{id}/download",
+      "method": "POST",
+      "explained": "Admin-only trigger to download a specific media (Movie or TV Episode) from Cloud stream (m3u8/HTTP) directly to the NAS backend."
+    },
+    {
+      "path": "/api/series/{id}/download",
+      "method": "POST",
+      "explained": "Admin-only trigger to queue downloads for all episodes in a TV series from Cloud to NAS."
+    },
+    {
+      "path": "/api/media/{id}/download",
+      "method": "DELETE",
+      "explained": "Admin-only delete the locally-downloaded copy of a media item. Only removes files inside DownloadService.outputDir; cloud paths are preserved. Also drops the matching media_files row."
+    },
+    {
+      "path": "/api/series/{id}/download",
+      "method": "DELETE",
+      "explained": "Admin-only delete local downloads for every episode in a series. Iterates episodes and calls DeleteDownloadedFile per media; returns count of episodes whose local copy was removed."
+    },
+    {
+      "path": "/api/downloads",
+      "method": "GET",
+      "explained": "Admin-only list of active and pending download-to-NAS tasks."
     },
     {
       "path": "/api/admin/cloud/drivers",
@@ -116,6 +150,16 @@
       "path": "/api/app/latest",
       "method": "GET",
       "explained": "Get latest app version info for in-app update check. Falls back to baseline if DB empty."
+    },
+    {
+      "path": "/api/livetv/channels/recent",
+      "method": "GET",
+      "explained": "Return the current user's recently-watched live TV channels, ordered by last_watched_at DESC. Query `limit` default 10, max 50. Backed by user_live_channel_data."
+    },
+    {
+      "path": "/livetv/stream/{id}",
+      "method": "GET",
+      "explained": "Live TV HLS/TS proxy endpoint. Accepts ?token=<jwt> query param (Jellyfin-style) for ExoPlayer/native players that cannot attach Authorization headers. Tracks recently-watched channel per authed user with 5-min cooldown."
     }
   ],
   "business_rules": [
@@ -132,14 +176,21 @@
     "HW HDR tonemapping (VELOX_HW_TONEMAP=true, opt-in): VAAPI uses tonemap_vaapi (driver-default algorithm, format/matrix/primaries/transfer only). NVENC uses libplacebo on Vulkan (SW decode → Vulkan upload → hwdownload → NVENC).",
     "DV Profile 5 (IPT-PQ-C2) ALWAYS falls back to SW tonemapx — hardware tonemappers do not understand IPT color space.",
     "DV Profile 7/8 unlocked via hevc_metadata=remove_dovi=1 BSF (input-side) — strips DV RPU, HDR10 base goes to HW tonemap.",
-    "Scanner extracts HDR/DV side_data + color tags into media_files columns on first scan. Force rescan does NOT re-probe fingerprint match early-return files — metadata refresh is a deliberate admin action."
+    "Scanner extracts HDR/DV side_data + color tags into media_files columns on first scan. Force rescan does NOT re-probe fingerprint match early-return files — metadata refresh is a deliberate admin action.",
+    "When downloading content from Cloud to NAS, the worker pushes locally saved files exclusively to `dataDir/library/downloads` and updates the media_files `file_path` flag to point to the local instance, guaranteeing prevention of duplication upon subsequent library scans.",
+    "DownloadSeries endpoints enqueue tasks into a buffered channel of size 2000 so processing happens synchronously one by one, mitigating provider 429 scale-oriented ratelimits.",
+    "Live TV recently-watched tracking is driven by the stream proxy (handleStreamEntry), not by an explicit client call, so every platform (web/Android/TV) gets it for free.",
+    "Recently-watched bump is throttled via in-memory 5-min cooldown per (user_id, channel_id) to avoid inflating play_count from HLS segment re-requests and rapid channel-surfing.",
+    "DeleteDownloadedFile only removes files whose path is inside DownloadService.outputDir AND not a cloud:// scheme — protects against accidentally deleting the original library file when paths overlap.",
+    "Episode payloads are hydrated with `media_files` so the UI can decide between Download-to-NAS vs Delete-local-download per episode without a second round-trip."
   ],
   "features": [
     "Skip Intro / Credits",
     "Media Scanner",
-    "Live Transcoding (HLS)",
+    "Live TV (IPTV) with Dynamic EPG",
     "Cloud Storage Integration (FShare-first)",
     "Cloud Subtitle Extraction",
+    "Cloud-to-NAS Downloading",
     "User Management",
     "Netflix-style Trailers (Cinema Mode)",
     "Chromecast Support",
@@ -147,6 +198,7 @@
     "Metadata Editor with NFO Write",
     "Pre-transcode",
     "Android Mobile App (Jetpack Compose)",
+    "Android TV App (Jetpack Compose for TV)",
     "AI Subtitle Translation",
     "Background Subtitle Auto Translate",
     "In-App Updates (Android)",
@@ -154,7 +206,9 @@
     "HDR/Dolby Vision Tonemapping (tonemapx SW default)",
     "HW HDR Tonemapping (VAAPI + NVENC libplacebo, opt-in VELOX_HW_TONEMAP)",
     "DV Profile 7/8 BSF Passthrough (zero-copy HW tonemap via hevc_metadata=remove_dovi=1)",
-    "In-App Settings Localization (Multi-language Support)"
+    "In-App Settings Localization (Multi-language Support)",
+    "Recently Watched Channels (Live TV — cross-platform home row backed by user_live_channel_data)",
+    "Delete Local NAS Downloads (per-media DELETE + per-series bulk DELETE, with confirm dialog on Web/Android)"
   ],
   "knowledge_items": {
     "patterns": [
@@ -177,7 +231,14 @@
       "Docker Build: Use BuildKit --mount=type=cache for pnpm/go/apt/pip. Prefer Debian slim over Alpine (musl libc penalty).",
       "Dynamic Locale in Compose: Wrap LocalContext with ContextWrapper overriding getResources(). Do NOT replace LocalContext with ConfigurationContext directly.",
       "HW tonemap probe pattern: eager non-blocking goroutine at server startup (ProbeTonemapCapabilitiesAsync); atomic.Bool flags for runtime lookup.",
-      "DV Profile 7/8 BSF: Add '-bsf:v:0 hevc_metadata=remove_dovi=1' as INPUT-side option (before -i). Strips DV RPU so HDR10 base layer feeds HW tonemap cleanly."
+      "DV Profile 7/8 BSF: Add '-bsf:v:0 hevc_metadata=remove_dovi=1' as INPUT-side option (before -i). Strips DV RPU so HDR10 base layer feeds HW tonemap cleanly.",
+      "Using Non-blocking API requests for sequential batching jobs. Handlers can just queue elements to background channel `queue <- task`, letting Go handle the iteration independently of HTTP timeouts.",
+      "For ExoPlayer / native HLS players, authenticate via Jellyfin-style `?token=<jwt>` query param instead of Authorization header — Media3 DefaultHttpDataSource cannot easily inject headers per-segment, and the auth middleware already honors `token` before falling back to JWT header.",
+      "MediaSessionService lifecycle: always pair ensureServiceStarted() with stopService() in the player-release path. Otherwise the service lingers, keeping a stale MediaSession and producing a leftover notification that bleeds into subsequent screens (e.g. Live TV).",
+      "Universal Android APK for phone + TV: declare both MainActivity (LAUNCHER) and TvMainActivity (LEANBACK_LAUNCHER) in AndroidManifest, then set uses-feature leanback/touchscreen required=\"false\". No separate TV variant needed.",
+      "Service interface extraction (e.g., SettingsServiceInterface) is opt-in for testability — only extract when there is a concrete consumer (a handler test) that needs to mock it. Avoid speculative interfaces that double the surface area for no reason.",
+      "Toast.error supports an optional second `detail` arg (`error('msg', err.message)`) — UI shows them concatenated. Use it whenever surfacing a backend error to the user.",
+      "Always invoke ffmpeg via ffmpegbin.FFmpeg() instead of bare `\"ffmpeg\"` — keeps the resolved binary consistent with the rest of the transcode pipeline (jellyfin-ffmpeg in Docker, system ffmpeg locally)."
     ],
     "gotchas": [
       "Android app lacks websocket implementation; polling/fire-and-forget for background tasks.",
@@ -194,14 +255,19 @@
       "Directstream selected-audio remux to MP4 can fail for AC3 with 'Cannot write moov atom before AC3 packets'; fallback to HLS or adjust mux flags/container.",
       "DV Profile 5 (IPT-PQ-C2) breaks zscale tonemap chain — assumes BT.2020nc matrix and causes green/magenta tint. Use tonemapx instead.",
       "Placing scale filter BEFORE tonemapx corrupts HDR pipeline — swscale strips BT.2020 metadata. Always scale AFTER tonemap.",
-      "Intel Mesa Vulkan can fail libplacebo hwupload with VK_ERROR_INVALID_EXTERNAL_HANDLE — NVENC/libplacebo path only works on the right Vulkan stack."
+      "Intel Mesa Vulkan can fail libplacebo hwupload with VK_ERROR_INVALID_EXTERNAL_HANDLE — NVENC/libplacebo path only works on the right Vulkan stack.",
+      "Unbalanced or missing JSX tags (e.g., closing `</p>` logic mistakes inside ternary or logical && expressions) can silently break the compiler in Vite projects (producing bizarre parser failures within dependencies).",
+      "IPTV WebUI Playback: HLS streams from external domains will often fail on the web app due to CORS blocking `m3u8` or `.ts` resources. This is a client-side environment limitation that does not affect Android or TV apps where CORS is ignored.",
+      "PlayerView.keepScreenOn must be toggled in the update block (not the factory) and should be bound to !isPaused — binding to isPlaying alone lets the screen dim during buffering or brief stalls.",
+      "handleStreamEntry fires on every HLS segment fetch — any write-through side effect (progress, recent-channel bump, analytics) MUST be guarded by an in-memory dedupe window or it will hit the DB dozens of times per minute per viewer."
     ],
     "conventions": [
       "Use Netflix theme colors across Android app UI.",
       "Material Icons Rounded style for all icons via LucideIcons alias object.",
       "Responsive sizing: phone (<600dp) smaller cards/fonts; tablet original sizes.",
       "Use track IDs, not just language codes, whenever selected audio/subtitle state has to survive round-trips between frontend, Android, and backend HLS sessions.",
-      "Feature rollout: default flag OFF (opt-in) for any change touching hot transcode path. Probe capability at startup, fall back to SW gracefully."
+      "Feature rollout: default flag OFF (opt-in) for any change touching hot transcode path. Probe capability at startup, fall back to SW gracefully.",
+      "When integrating administrative operations globally (like download endpoints), keep Admin checks strictly in `RequireAdmin` middlewares rather than relying entirely on user flags context inside UI, ensuring full API security."
     ]
   }
 }
