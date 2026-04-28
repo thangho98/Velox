@@ -10,7 +10,7 @@ import (
 	"github.com/thawng/velox/internal/logger"
 )
 
-const version = "velox v0.1.1"
+const version = "velox v0.1.8"
 
 func main() {
 	if err := config.LoadDotEnv(); err != nil {

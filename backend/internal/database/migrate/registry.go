@@ -276,6 +276,12 @@ func All() []Migration {
 			Up:      up045,
 			Down:    down045,
 		},
+		{
+			Version: 46,
+			Name:    "seed_version_018",
+			Up:      up046,
+			Down:    down046,
+		},
 	}
 }
 

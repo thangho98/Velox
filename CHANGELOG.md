@@ -1,20 +1,124 @@
 # Changelog
 
-## [2026-04-23]
+## v0.1.8 [2026-04-28]
+
+5 commits since v0.1.7 (`dbe76cf`, `cee3ef0`, `de43089`, `18a86e4`, `4cacbbc`) — 184 files, ~22k LOC. Highlights: Live TV / IPTV across all platforms, NAS download + delete pipeline, Android TV launcher, first comprehensive backend test pass, design tokens v2.
+
 ### Added
-- Backend: Migration 045 `user_live_channel_data` table (per-user recently-watched tracking for live TV). Columns: `user_id`, `channel_id`, `play_count`, `last_watched_at`, `updated_at`; indexed by `(user_id, last_watched_at DESC)`.
-- Backend: `handleStreamEntry` now bumps `user_live_channel_data` with a 5-minute in-memory cooldown per `(user_id, channel_id)` so HLS segment re-requests and rapid channel-surfing don't inflate counts.
-- Backend: `GET /api/livetv/channels/recent?limit=N` returns the authenticated user's most-recently-watched channels via `LiveTVRepo.ListRecentChannels`.
-- Android (mobile + TV): "Recently Watched Channels" home row. `HomeViewModel` injects `LiveTvRepository` and collects `getLiveTvRecentChannels(20).firstOrNull()` on `loadData`; both `HomeScreen` and `TvHomeScreen` render a carousel that navigates to `livetv_player/{channelId}`.
+
+#### Live TV / IPTV (`cee3ef0`) — primary feature
+
+**Backend**
+- Migrations 040–045 add the IPTV schema:
+  - `040_live_tv`: `live_playlists` (M3U source URL + headers), `live_channels` (tvg-id, tvg-logo, group-title, hidden flag, manual EPG URL), `live_programs` (mock EPG store).
+  - `041_add_epg_url`: per-channel optional XMLTV URL override.
+  - `042_user_preferences_last_channel_id`: last-watched channel per user.
+  - `043_live_channels_hidden`: admin can hide channels from listings.
+  - `044_live_channel_headers`: per-channel custom HTTP headers (User-Agent, Origin, Referer) for upstream fetches.
+  - `045_user_live_channel_data`: per-user recently-watched (`user_id`, `channel_id`, `play_count`, `last_watched_at`), indexed by `(user_id, last_watched_at DESC)`.
+- `internal/service/m3uparser/parser.go` — `#EXTM3U` / `#EXTINF` parser with `tvg-id`, `tvg-logo`, `group-title` extraction.
+- `internal/service/livetv_service.go` + `internal/repository/livetv_repo.go` — playlist CRUD, channel listing, EPG (mock until XMLTV parser lands), recently-watched listing.
+- `internal/handler/livetv_handler.go` + `internal/handler/livetv_proxy.go` — HTTP routes and HMAC-signed upstream HLS proxy.
+- New endpoints (all under `/api/livetv`):
+  - `GET /groups`, `GET /channels`, `GET /channels/{id}`, `GET /channels/{id}/epg`
+  - `GET /channels/recent?limit=N` — authenticated user's recently-watched
+  - `POST /channels/{id}/toggle-hidden` (admin only)
+  - `GET /livetv/stream/{id}` — accepts `?token=<jwt>` for native players that can't attach `Authorization` headers per HLS segment
+- Stream entry bumps `user_live_channel_data` with a 5-minute in-memory cooldown per `(user, channel)` to keep HLS segment re-requests and rapid channel-surfing from inflating `play_count`.
+
+**Webapp**
+- Pages: `LiveTvPage` (channel grid + EPG sidebar) and `WatchLivePage` (full-screen HLS player + collapsible channel sidebar).
+- Components: `components/livetv/CategoryPills`, `ChannelCard`, `EpgTimeline`, `LiveTVPlayer`.
+- State: `hooks/stores/useLiveTV.ts` (Zustand) + React Query keys.
+- Settings: new `LiveTvSection.tsx` for playlist add/refresh and channel visibility toggle.
+- Navigation: Navbar / Sidebar / `MobileTabBar` add a Live TV entry with a `LivePulseDot` indicator. `Layout` swaps desktop sidebar for `MobileTabBar` on small screens.
+- Design tokens (`index.css`): `ink-0/50/100/200/300/400`, `fog-400/500/600/700/800`, `crimson-500/600`, `shadow-card`, `shadow-pop`. Consumed by every new Live TV surface and the refreshed `Navbar` / `Logo` / `Layout`.
+- "Recently Watched Channels" row on `HomePage`.
+
+**Android (phone + TV)**
+- New layers under `data/` and `domain/livetv` (DTOs, models, `LiveTvRepository{,Impl}`).
+- ViewModels: `LiveTvViewModel`, `LiveTvPlayerViewModel`. Both inject `AuthManager` and expose `streamUrl(channelId)` that URL-encodes the JWT into `?token=` (Jellyfin-style — Media3 `DefaultHttpDataSource` can't attach Authorization headers per HLS segment).
+- Screens: `LiveTvScreen`, `LiveTvPlayerScreen` (phone), `TvLiveTvScreen` (TV).
+- Components: `LivePulseDot`, `LiveTvChannelCard`, `LiveTvEpgTimeline`, `LiveTvMiniPlayer` (now takes a fully-formed `streamUrl: String`, not a `baseUrl`).
+- Bottom tab bar gains a Live TV tab with the pulsing dot.
+- `HomeViewModel` injects `LiveTvRepository` and collects `getLiveTvRecentChannels(20).firstOrNull()`; both `HomeScreen` and `TvHomeScreen` render the recent-channels carousel and navigate to `livetv_player/{channelId}`.
+
+#### NAS download pipeline + Android TV baseline (`dbe76cf`)
+
+**Backend**
+- `internal/service/download.go`: atomic Cloud-to-NAS downloader via `DownloadService` with task deduplication and error propagation (no more silent partials).
+- `internal/handler/download.go`: `POST /api/media/{id}/download` and `POST /api/series/{id}/download` brought into the strict `respondJSON` contract.
+- `OphimScanner` API now surfaces upstream errors instead of swallowing them.
+
+**Android**
+- `TvMainActivity` (LEANBACK_LAUNCHER) + `presentation/tv/` (TvAppNavigation, `TvNavigationDrawer` with auth-state injection, `TvHomeScreen`, `TvMediaDetailScreen`, `TvSeriesDetailScreen`).
+- Universal APK keeps phone + TV in one binary (`uses-feature leanback/touchscreen required="false"`).
+- Plans: `plans/.../ophim-provider/`, `plans/.../android-tv/`.
+
+**Webapp fixes** (rolled into `dbe76cf`)
+- Premature toast rendering on `MediaDetailPage` and `EpisodeCard` resolved.
+- "Download to NAS" series-level button visibility now matches the per-episode rule on `SeriesDetailPage`.
+- Duplicate API data loads removed from several Compose `LaunchedEffect` hooks on TV screens.
+
+#### Delete-from-NAS + Episode hydration (`de43089`)
+
+**Backend**
+- `DELETE /api/media/{id}/download` (admin) — removes the local file and drops the matching `media_files` row. `DownloadService.DeleteDownloadedFile` is path-safe: only files under `outputDir` are touched, anything matching `cloud://` / `fshare://` is skipped.
+- `DELETE /api/series/{id}/download` (admin) — iterates episodes and deletes whichever already have a local copy.
+- `SeriesService.GetByID` now hydrates `Episode.MediaFiles` via `MediaFileRepo`, so callers can decide download vs. delete per episode.
+- `downloadM3U8` switched to `ffmpegbin.FFmpeg()` for the resolved binary path (matches the rest of the codebase, no more bare `"ffmpeg"`).
+
+**Webapp**
+- Hooks: `useRemoveDownloadFromNas` and `useRemoveSeriesDownloadFromNas` (`packages/shared/hooks/media/useMetadataOps.ts`).
+- `EpisodeCard` / `MediaDetailPage` / `SeriesDetailPage` now flip between "Download to NAS" and "Delete local download" based on `Episode.media_files` hydration. Confirm dialog + `Toast.error(message, detail)` (Toast gains an optional secondary line).
+- `ContinueWatchingCard`: when `duration === 0`, show "watched X minutes" instead of "Y minutes remaining".
+- `WatchPage`: clamp `remainingTime` to `>= 0` (defensive against drag overshoot).
+
+**Android (phone + TV)**
+- `VeloxApi`: `POST` and `DELETE` for `/api/{media,series}/{id}/download`.
+- `MediaRepository{,Impl}`: `startDownload` / `deleteDownload` (+ series variants).
+- `EpisodeDto.media_files`: lets the UI detect downloaded vs cloud-only.
+- `MediaDetailScreen`, `SeriesDetailScreen`, `TvMediaDetailScreen`, `TvSeriesDetailScreen`: Download / Delete buttons with snackbar progress. ViewModels expose `downloadMedia` / `deleteDownload` (+ per-series variants).
+
+#### Backend test coverage (`18a86e4`) — first broad pass
+- 29 new `*_test.go` files spanning every layer:
+  - **handler**: `fs`, `health`, `respond`, `settings`
+  - **model**: `series`
+  - **playback**: `playback`
+  - **repository**: `media_file`, `pretranscode`, `series`
+  - **service**: `activity`, `admin`, `browse`, `download`, `media`, `scheduler`, `settings`, `stream`
+  - **storage**: `image`
+  - **transcoder**: `encoding`, `hls`
+  - **pkg**: `fanart`, `ffmpegbin`, `ffprobe`, `nfo`, `omdb`, `opensubs`, `subprovider`, `thetvdb`, `tmdb`
+- Bundled refactor: `SettingsServiceInterface` extracted from `SettingsHandler` so handler tests can mock the settings service. Bundled here (not its own commit) because it was extracted *only* for testability.
+- `go test ./...` green.
+
+#### Documentation (`4cacbbc`)
+- `AGENTS.md` + `GEMINI.md`: shared agent collaboration guidelines for the repo.
+- `CLAUDE.md`: +66 lines of behavioral rules — *think before coding*, *simplicity first*, *surgical changes*, *goal-driven execution*.
+- `docs/DESIGN_SYSTEM_V2.md`: ink/fog/crimson token spec (the source-of-truth for the new Live TV palette).
+- `plans/260418-0847-shoko-integration/`: 5-phase plan for Shoko + AniList anime metadata integration.
+- `.brain/{brain.json,session_log.txt}`: project-memory refresh; stale `handover.md` removed.
+
+### Changed
+- App version bumped to `0.1.8` (`versionCode=108`); seeded as **non-mandatory** in `app_versions` — IPTV and NAS-delete are additive APIs and older clients keep working.
+- Backend `const version` corrected from a stale `velox v0.1.1` to `velox v0.1.8` (the constant had drifted behind release tags since v0.1.1).
+- `LiveTvMiniPlayer` API tightened — takes a fully-formed `streamUrl: String` instead of a `baseUrl`, so callers consistently route through `viewModel.streamUrl(channelId)`.
 
 ### Fixed
-- Android: Live TV ExoPlayer no longer gets 401 when hitting `/livetv/stream/{id}`. `LiveTvViewModel` + `LiveTvPlayerViewModel` inject `AuthManager` and expose `streamUrl(channelId)` that appends `?token=<urlencoded JWT>` (Jellyfin-style). Auth middleware already accepts `token` query param before the JWT header.
-- Android: Screen no longer auto-dims during Live TV playback. `PlayerView.keepScreenOn` is bound to `!isPaused` in the `update` block, matching the main VideoPlayer pattern.
-- Android: Lingering MediaSession notification during Live TV. `PlaybackManager.releasePlayer()` now explicitly `stopService(VeloxPlaybackService)`; previously the `MediaSessionService` kept running with a stale player reference after the main player released.
-- Android: `LiveTvMiniPlayer` API tightened — takes a fully-formed `streamUrl: String` instead of a `baseUrl`, so callers consistently go through `viewModel.streamUrl(channelId)`.
+- Android: Live TV ExoPlayer no longer 401s hitting `/livetv/stream/{id}` — the URL now ships `?token=<urlencoded JWT>` (auth middleware already accepted `token` as a query param before falling back to the JWT header).
+- Android: Screen no longer auto-dims during Live TV playback — `PlayerView.keepScreenOn` bound to `!isPaused` in the `update` block, matching the main `VideoPlayer` pattern.
+- Android: Lingering `MediaSession` notification when leaving Live TV — `PlaybackManager.releasePlayer()` now explicitly calls `stopService(VeloxPlaybackService)`. Previously the service kept running with a stale player reference.
+- Webapp: Premature toast rendering on `MediaDetailPage` / `EpisodeCard` (rolled in via `dbe76cf`).
+- Webapp: Duplicate "Download to NAS" series-level button now hidden when no episode is cloud-backed.
+- Webapp: Duplicate API loads in several Compose `LaunchedEffect` hooks on TV screens removed (`dbe76cf`).
+- Webapp: Tablet portrait (e.g. 1600×2560) no longer crams Vietnamese nav labels into the top bar. Bottom-tab breakpoint moved from `md` to `lg`, so anything below 1024 CSS px now uses `MobileTabBar` (matching the mobile UX) and the top bar only shows logo + bell + search + avatar. Layout's bottom-padding stays at `pb-28` at md (was `pb-16`) to leave room for the bottom nav. Defensive `whitespace-nowrap` added to top-bar links for narrow lg viewports.
 
 ### Notes
 - Confirmed single universal APK continues to serve phone + TV (`MainActivity` LAUNCHER + `TvMainActivity` LEANBACK_LAUNCHER, `uses-feature leanback/touchscreen required="false"`). No separate TV build.
+- **XMLTV parser** for exact EPG schedule data still pending — backend currently returns mock EPG until a cron task is wired up to populate `live_programs`.
+- **Optional HLS reverse-proxy** for IPTV web CORS deferred — native apps don't hit CORS, only the webapp would benefit; not worth the NAS CPU cost vs the lightweight-core vision.
+- Repo-root junk (`filter_m3u*.py`, `*.m3u`, `screenshot/`, `.scratch/`, `Velox Dashboard.html`) intentionally left unstaged — pending `.gitignore` entries in a follow-up Chore commit.
 
 ## v0.1.7 [2026-04-19]
 ### Added
