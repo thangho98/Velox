@@ -15,6 +15,30 @@ var AndroidNative = DeviceProfile{
 	SupportsHLS:              true,
 	SupportsWebM:             true,
 	SupportsHDR:              true, // ExoPlayer/Media3 handles HDR rendering natively
+	SupportsDolbyVision:      true, // Android handles Dolby Vision natively on capable devices
+}
+
+// VeloxDesktop profile for the Velox desktop client (Tauri 2 + libmpv).
+// libmpv links jellyfin-ffmpeg with the SIMD `tonemapx` filter, which carries
+// the IPT-PQ-C2 → BT.709 reshape natively. Client-side tonemap fires whenever
+// the player observes `colormatrix=dolbyvision` and bypasses macOS's missing
+// OpenGL 4.1 compute path, so DV P5 can direct-play here without server-side
+// tonemapx burning NAS CPU. DV P7/8 keep direct-playing via the remove_dovi
+// BSF (the enhancement layer is stripped before reaching the demuxer).
+var VeloxDesktop = DeviceProfile{
+	Name:                     "Velox Desktop (libmpv)",
+	SupportedVideoCodecs:     []string{CodecH264, CodecH265, CodecVP9, CodecAV1},
+	SupportedAudioCodecs:     []string{CodecAAC, CodecOpus, CodecMP3, CodecFLAC, CodecAC3, CodecEAC3, CodecDTS, CodecTrueHD},
+	SupportedContainers:      []string{ContainerMP4, ContainerMKV, ContainerWebM, ContainerHLS, ContainerMOV},
+	SupportedSubtitleFormats: []string{SubtitleVTT, SubtitleSRT, SubtitleASS},
+	MaxWidth:                 0,
+	MaxHeight:                0,
+	MaxBitrate:               0,
+	CanBurnSubtitles:         false,
+	SupportsHLS:              true,
+	SupportsWebM:             true,
+	SupportsHDR:              true,
+	SupportsDolbyVision:      true,
 }
 
 // ChromeDesktop profile for Chrome/Chromium on desktop
@@ -130,6 +154,8 @@ func GetBuiltinProfile(name string) *DeviceProfile {
 	switch name {
 	case "android_native":
 		return &AndroidNative
+	case "velox_desktop":
+		return &VeloxDesktop
 	case "chrome":
 		return &ChromeDesktop
 	case "firefox":
@@ -151,6 +177,7 @@ func GetBuiltinProfile(name string) *DeviceProfile {
 func AllBuiltinProfiles() map[string]*DeviceProfile {
 	return map[string]*DeviceProfile{
 		"android_native": &AndroidNative,
+		"velox_desktop":  &VeloxDesktop,
 		"chrome":         &ChromeDesktop,
 		"firefox":        &FirefoxDesktop,
 		"safari":         &SafariDesktop,

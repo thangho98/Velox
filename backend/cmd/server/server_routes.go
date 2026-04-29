@@ -49,7 +49,7 @@ func (app *serverApp) newHTTPHandler() http.Handler {
 	var h http.Handler = app.newMux()
 	h = sessionTracker(h)
 	h = authMiddleware(h)
-	h = middleware.CORS(app.cfg.CORSOrigin)(h)
+	h = middleware.CORS(app.cfg.CORSOrigins)(h)
 	h = middleware.Logger(h)
 	h = middleware.Recovery(h)
 

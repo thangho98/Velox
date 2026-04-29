@@ -4,7 +4,7 @@
 const STORAGE_KEY = 'velox-client-capabilities'
 // Schema version — bumped when detection logic changes in a way that invalidates cached results.
 // Stored inside the cached object; mismatched versions trigger re-detection.
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 
 export interface ClientCapabilities {
   browser: string
@@ -99,8 +99,26 @@ function testWebMSupport(): boolean {
   return video.canPlayType('video/webm') !== ''
 }
 
+import { isTauri } from '@/platform'
+
 // Main detection function
 export function detectCapabilities(): ClientCapabilities {
+  if (isTauri()) {
+    // Desktop app uses libmpv, which supports EVERYTHING natively
+    return {
+      browser: 'velox-desktop',
+      platform: detectPlatform().platform,
+      isMobile: false,
+      videoCodecs: ['h264', 'hevc', 'vp8', 'vp9', 'av1'],
+      audioCodecs: ['aac', 'opus', 'mp3', 'flac', 'ac3', 'eac3', 'dts', 'truehd'],
+      containers: ['mp4', 'webm', 'mkv', 'hls', 'mov'],
+      supportsHLS: true,
+      supportsWebM: true,
+      maxResolution: { width: 7680, height: 4320 }, // 8K support
+      detectedAt: new Date().toISOString(),
+    }
+  }
+
   const browser = detectBrowser()
   const { platform, isMobile } = detectPlatform()
   const maxResolution = detectMaxResolution()

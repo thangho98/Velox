@@ -136,7 +136,7 @@ func Decide(media MediaFileInfo, profile *DeviceProfile, prefs UserPreferences) 
 	// with IPT-PQ-C2 color space) needs server-side tone mapping for clients that
 	// can't handle DV natively. Native apps (Android/ExoPlayer) can direct play
 	// MKV with DV RPU intact, but browsers via HLS remux lose DV metadata.
-	if media.IsHDR && media.NeedsServerTonemap && profile != nil && !profile.SupportsHDR && !needsVideoTranscode {
+	if media.IsHDR && media.NeedsServerTonemap && profile != nil && !profile.SupportsDolbyVision && !needsVideoTranscode {
 		needsVideoTranscode = true
 		decision.VideoAction = VideoTranscode
 		decision.VideoCodec = selectBestVideoCodec(profile)
@@ -335,7 +335,7 @@ func ParseQuality(quality string) int {
 // estimateBitrate estimates bitrate for given resolution
 func estimateBitrate(height int) int {
 	switch {
-	case height >= 2160:
+	case height >= 1600: // Covers 4K ultrawide (e.g. 3840x1600, 3840x2076) and standard 4K (2160p)
 		return 25000 // 4K
 	case height >= 1080:
 		return 8000 // 1080p

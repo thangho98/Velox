@@ -17,6 +17,8 @@ import { useFullscreen } from '@/hooks/useFullscreen'
 import { useToast } from '@/components/Toast'
 import { useAuthStore } from '@/stores/auth'
 import { getLiveStreamUrl } from '@velox/shared/api'
+import { usePlayer, useIsDesktopPlayer } from '@/lib/player'
+import { useVeloxCmd } from '@/lib/desktop/useDesktopBridge'
 
 const IDLE_MS = 3000
 
@@ -60,6 +62,9 @@ export default function WatchLivePage() {
   const [isMuted, setIsMuted] = useState(false)
   const [showControls, setShowControls] = useState(true)
 
+  const player = usePlayer()
+  const isDesktop = useIsDesktopPlayer()
+
   const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef, videoRef, toast.info)
 
   // Auto-fullscreen on mount if navigated via the expand button
@@ -73,8 +78,9 @@ export default function WatchLivePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // HLS setup
+  // HLS setup (web only)
   useEffect(() => {
+    if (isDesktop) return
     const video = videoRef.current
     if (!video || !channel?.id) return
 
@@ -145,7 +151,37 @@ export default function WatchLivePage() {
       hlsRef.current?.destroy()
       hlsRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel?.id])
+
+  // Desktop (libmpv) setup — bypasses hls.js entirely.
+  useEffect(() => {
+    if (!isDesktop || !channel?.id) return
+    const accessToken = useAuthStore.getState().accessToken
+    const streamUrl = getLiveStreamUrl(channel.id, accessToken ?? undefined)
+
+    setIsBuffering(true)
+    void player.load({ url: streamUrl }).catch((err) => {
+      setError(`Stream failed: ${err}`)
+    })
+
+    const offReady = player.on('ready', () => setIsBuffering(false))
+    const offWaiting = player.on('waiting', () => setIsBuffering(true))
+    const offPlaying = player.on('playing', () => setIsBuffering(false))
+    const offPlay = player.on('play', () => setIsPaused(false))
+    const offPause = player.on('pause', () => setIsPaused(true))
+    const offError = player.on('error', ({ message }) => setError(message))
+
+    return () => {
+      offReady()
+      offWaiting()
+      offPlaying()
+      offPlay()
+      offPause()
+      offError()
+      void player.unload().catch(() => {})
+    }
+  }, [isDesktop, channel?.id, player])
 
   // 60-second connection/buffering timeout
   useEffect(() => {
@@ -161,6 +197,11 @@ export default function WatchLivePage() {
   }, [isBuffering, error])
 
   const togglePlay = useCallback(() => {
+    if (isDesktop) {
+      if (isPaused) void player.play().catch((e) => console.warn('Play rejected', e))
+      else player.pause()
+      return
+    }
     const v = videoRef.current
     if (!v) return
     if (v.paused) {
@@ -168,17 +209,35 @@ export default function WatchLivePage() {
     } else {
       v.pause()
     }
-  }, [])
+  }, [isDesktop, isPaused, player])
 
   const toggleMute = useCallback(() => {
+    if (isDesktop) {
+      const next = !isMuted
+      player.setMuted(next)
+      setIsMuted(next)
+      return
+    }
     const v = videoRef.current
     if (!v) return
     const next = !v.muted
     v.muted = next
     setIsMuted(next)
-  }, [])
+  }, [isDesktop, isMuted, player])
 
   const handleBack = useCallback(() => navigate('/livetv'), [navigate])
+
+  useVeloxCmd((cmd) => {
+    switch (cmd) {
+      case 'play-pause':
+        togglePlay()
+        break
+      case 'toggle-fullscreen':
+        toggleFullscreen()
+        break
+      // No timeline seek in live TV.
+    }
+  })
 
   // Idle auto-hide controls
   useEffect(() => {
@@ -265,6 +324,7 @@ export default function WatchLivePage() {
       <video
         ref={videoRef}
         className="absolute inset-0 h-full w-full bg-black object-contain"
+        style={{ display: isDesktop ? 'none' : undefined }}
         autoPlay
         playsInline
         onPlaying={() => setIsBuffering(false)}
@@ -274,6 +334,10 @@ export default function WatchLivePage() {
         onVolumeChange={() => setIsMuted(!!videoRef.current?.muted)}
         onClick={togglePlay}
       />
+      {isDesktop && (
+        // Click target for play/pause toggle on desktop (no <video> to receive clicks).
+        <div className="absolute inset-0 z-0 cursor-default" onClick={togglePlay} />
+      )}
 
       {/* Gradients — only dim tight edges, fade out with controls */}
       <div

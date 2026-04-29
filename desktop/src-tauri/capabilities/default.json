@@ -1,0 +1,27 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Allow webview to invoke libmpv player commands",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:webview:default",
+    "core:window:default",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-start-dragging",
+    "core:app:allow-version",
+    "core:app:allow-name",
+    "store:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "deep-link:default",
+    "opener:default",
+    "opener:allow-open-path",
+    "opener:allow-open-url",
+    "updater:default"
+  ]
+}

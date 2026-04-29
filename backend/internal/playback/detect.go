@@ -16,6 +16,7 @@ type ClientCapabilities struct {
 // User agent patterns for detection
 var (
 	androidNativePattern = regexp.MustCompile(`(?i)veloxandroid`)
+	veloxDesktopPattern  = regexp.MustCompile(`(?i)veloxdesktop`)
 
 	// Browser patterns
 	chromePattern  = regexp.MustCompile(`(?i)chrome|chromium|crios`)
@@ -49,6 +50,24 @@ func DetectClientFromUA(userAgent string) ClientCapabilities {
 		caps.IsMobile = true
 		caps.Browser = "velox-android"
 		caps.Profile = &AndroidNative
+		return caps
+	}
+
+	// Velox Desktop (Tauri + libmpv) sets a custom UA suffix "VeloxDesktop/<ver>".
+	// Match it BEFORE the generic browser sweep — the underlying webview UA also
+	// contains "Chrome"/"Safari" which would otherwise bind us to a profile that
+	// lacks HDR/DV support and force unnecessary server-side transcoding.
+	if veloxDesktopPattern.MatchString(ua) {
+		caps.Browser = "velox-desktop"
+		caps.Profile = &VeloxDesktop
+		switch {
+		case windowsPattern.MatchString(ua):
+			caps.Platform = "windows"
+		case macOSPattern.MatchString(ua):
+			caps.Platform = "macos"
+		case linuxPattern.MatchString(ua):
+			caps.Platform = "linux"
+		}
 		return caps
 	}
 

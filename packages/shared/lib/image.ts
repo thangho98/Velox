@@ -41,7 +41,14 @@ export function resolveImageUrl(
   size?: number | string,
 ): string | undefined {
   if (!path) return undefined
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  if (
+    path.startsWith('http://') ||
+    path.startsWith('https://') ||
+    path.startsWith('blob:') ||
+    path.startsWith('data:')
+  ) {
+    return path
+  }
 
   const base = getApiBaseUrl()
   // baseUrl ends at `/api`; strip the leading `/api` from the path before

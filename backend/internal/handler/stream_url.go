@@ -177,10 +177,11 @@ func (h *StreamURLHandler) serveLocalURL(w http.ResponseWriter, r *http.Request,
 	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
 	}
+	host := resolvePublicHost(r)
 
 	respondJSON(w, http.StatusOK, map[string]any{
-		"direct_url":        fmt.Sprintf("%s://%s/api/stream/%d?api_key=%s&%s=%s", scheme, r.Host, mediaID, apiKey, streamSessionQueryKey, streamSessionID),
-		"hls_url":           fmt.Sprintf("%s://%s/api/stream/%d/hls/master.m3u8?api_key=%s&%s=%s", scheme, r.Host, mediaID, apiKey, streamSessionQueryKey, streamSessionID),
+		"direct_url":        fmt.Sprintf("%s://%s/api/stream/%d?api_key=%s&%s=%s", scheme, host, mediaID, apiKey, streamSessionQueryKey, streamSessionID),
+		"hls_url":           fmt.Sprintf("%s://%s/api/stream/%d/hls/master.m3u8?api_key=%s&%s=%s", scheme, host, mediaID, apiKey, streamSessionQueryKey, streamSessionID),
 		"stream_session_id": streamSessionID,
 		"api_key":           apiKey,
 		"expires_in":        int(streamTTL.Seconds()),

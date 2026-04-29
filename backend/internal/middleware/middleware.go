@@ -12,10 +12,25 @@ import (
 	"time"
 )
 
-func CORS(origin string) func(http.Handler) http.Handler {
+// CORS echoes the request's Origin header back when it matches one of the
+// configured origins. We can't use "*" because clients send Authorization
+// headers and some browsers treat that as a credentialed request. Vary:
+// Origin keeps any intermediate cache from serving the wrong origin.
+func CORS(origins []string) func(http.Handler) http.Handler {
+	allowed := make(map[string]struct{}, len(origins))
+	for _, o := range origins {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			allowed[o] = struct{}{}
+		}
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
+			origin := r.Header.Get("Origin")
+			if _, ok := allowed[origin]; ok {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Add("Vary", "Origin")
+			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 

@@ -1,6 +1,7 @@
 import { Blurhash } from 'react-blurhash'
 import { useState } from 'react'
 import type { ImageResource } from '@/types/api'
+import { resolveImageUrl } from '@velox/shared/lib/image'
 
 interface Props {
   data: ImageResource | null | undefined
@@ -16,7 +17,7 @@ export function ResponsiveImage({ data, sizes, alt, className = '', loading = 'l
 
   const srcsetAttr = Object.entries(data.srcset)
     .filter(([k]) => k !== 'original')
-    .map(([width, url]) => `${url} ${width}w`)
+    .map(([width, url]) => `${resolveImageUrl(url)} ${width}w`)
     .join(', ')
 
   const aspectStyle = aspectToCss(data.aspect)
@@ -35,7 +36,7 @@ export function ResponsiveImage({ data, sizes, alt, className = '', loading = 'l
       )}
       <picture>
         <img
-          src={data.url}
+          src={resolveImageUrl(data.url)}
           srcSet={srcsetAttr}
           sizes={sizes}
           alt={alt}

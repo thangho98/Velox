@@ -1,6 +1,7 @@
 package transcoder
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -412,8 +413,17 @@ func (t *Transcoder) SegmentPath(mediaID int64, segment string) string {
 // WaitForSegment waits up to timeout for a segment file to appear on disk.
 // Returns true if the path exists, false if timed out or all relevant jobs
 // in the same media directory have finished without producing it.
+//
+// Special case for .m3u8 paths: ffmpeg writes the playlist file with just the
+// header (#EXTM3U + #EXT-X-MAP:...) BEFORE the first encoded segment lands on
+// disk. A bare existence check would let us serve a header-only playlist —
+// VLC/mpv/hls.js see no #EXTINF: lines and abort with "no streams". For
+// playlists we therefore wait for at least one #EXTINF: entry, or for an
+// #EXT-X-ENDLIST marker (VOD-complete with zero segments is degenerate but
+// shouldn't loop forever).
 func (t *Transcoder) WaitForSegment(streamSessionID, path string, timeout time.Duration) bool {
-	if _, err := os.Stat(path); err == nil {
+	isPlaylist := strings.HasSuffix(path, ".m3u8")
+	if pathReady(path, isPlaylist) {
 		return true
 	}
 
@@ -440,6 +450,7 @@ func (t *Transcoder) WaitForSegment(streamSessionID, path string, timeout time.D
 		"segment", segName,
 		"session", streamSessionID,
 		"timeout", timeout,
+		"playlist", isPlaylist,
 	)
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
@@ -448,7 +459,7 @@ func (t *Transcoder) WaitForSegment(streamSessionID, path string, timeout time.D
 	for {
 		select {
 		case <-ticker.C:
-			if _, err := os.Stat(path); err == nil {
+			if pathReady(path, isPlaylist) {
 				t.log.Debug("WaitForSegment — found",
 					"segment", segName,
 					"session", streamSessionID,
@@ -461,17 +472,14 @@ func (t *Transcoder) WaitForSegment(streamSessionID, path string, timeout time.D
 				active = t.hasActiveJobForStreamSession(streamSessionID)
 			}
 			if !active {
-				exists := false
-				if _, err := os.Stat(path); err == nil {
-					exists = true
-				}
+				ready := pathReady(path, isPlaylist)
 				t.log.Debug("WaitForSegment — job finished",
 					"segment", segName,
 					"session", streamSessionID,
-					"found", exists,
+					"found", ready,
 					"waited", time.Since(start),
 				)
-				return exists
+				return ready
 			}
 		case <-deadline:
 			t.log.Warn("WaitForSegment — timeout",
@@ -482,6 +490,23 @@ func (t *Transcoder) WaitForSegment(streamSessionID, path string, timeout time.D
 			return false
 		}
 	}
+}
+
+// pathReady decides whether the path is "ready to serve". For ordinary
+// segments, existence is enough. For .m3u8 playlists, the file must contain
+// at least one #EXTINF: entry (or be marked complete via #EXT-X-ENDLIST).
+func pathReady(path string, isPlaylist bool) bool {
+	if !isPlaylist {
+		_, err := os.Stat(path)
+		return err == nil
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	// Cheap byte scan — playlists are <few KB during early frames.
+	return bytes.Contains(content, []byte("#EXTINF:")) ||
+		bytes.Contains(content, []byte("#EXT-X-ENDLIST"))
 }
 
 func (t *Transcoder) hasActiveJobForStreamSession(streamSessionID string) bool {

@@ -504,7 +504,7 @@ func (h *PlaybackHandler) GetPlaybackInfo(w http.ResponseWriter, r *http.Request
 		h.activitySvc.Log(
 			&userID,
 			"play_start",
-			r.RemoteAddr,
+			clientIP(r),
 			&mediaID,
 			fmt.Sprintf(`{"stream_session_id":"%s","method":"%s"}`, streamSessionID, resp.Method),
 		)

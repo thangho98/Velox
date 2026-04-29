@@ -59,7 +59,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Get client info
 	deviceName := r.Header.Get("X-Device-Name")
-	ipAddress := r.RemoteAddr
+	ipAddress := clientIP(r)
 	userAgent := r.UserAgent()
 
 	user, tokens, err := h.authSvc.Login(r.Context(), req.Username, req.Password, deviceName, ipAddress, userAgent)
@@ -103,7 +103,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deviceName := r.Header.Get("X-Device-Name")
-	ipAddress := r.RemoteAddr
+	ipAddress := clientIP(r)
 	userAgent := r.UserAgent()
 
 	tokens, err := h.authSvc.Refresh(r.Context(), req.RefreshToken, deviceName, ipAddress, userAgent)

@@ -18,17 +18,25 @@ var (
 func ProbeTonemapCapabilitiesAsync() {
 	go func() {
 		// 1. Probe VAAPI Tonemap (Intel/AMD)
-		// Requires standard vaapi format upconversion (p010 -> nv12) AND device init BEFORE filters.
+		// Real-world resolution + h264_vaapi encode — many Intel iGPU drivers pass
+		// a `-f null` smoke test but fail when ffmpeg auto-inserts a scaler between
+		// tonemap_vaapi and h264_vaapi due to hw_frames_ctx mismatch (auto_scale_0
+		// "Impossible to convert between the formats supported by..."). Encoding to
+		// /dev/null catches that failure mode that the trivial 64x64+null path missed.
+		probeOut := "/dev/null"
 		cmd1 := exec.Command(ffmpegbin.FFmpeg(),
 			"-hide_banner", "-loglevel", "error",
 			"-vaapi_device", "/dev/dri/renderD128", // MUST be before -i so hwupload can initialize
-			"-f", "lavfi", "-i", "color=red:s=64x64:d=0.1",
+			"-f", "lavfi", "-i", "color=red:s=1920x1080:d=0.1",
 			"-vf", "format=p010,hwupload,tonemap_vaapi=format=nv12:matrix=bt709:primaries=bt709:transfer=bt709",
-			"-f", "null", "-",
+			"-c:v", "h264_vaapi", "-profile:v", "main", "-qp", "23",
+			"-t", "0.1", "-f", "mp4", "-y", probeOut,
 		)
 		if err := cmd1.Run(); err == nil {
 			vaapiTonemapOK.Store(true)
 			log.Println("[INFO] HW Detect: VAAPI HDR tonemapping is supported by current driver.")
+		} else {
+			log.Printf("[INFO] HW Detect: VAAPI HDR tonemapping unavailable (%v) — falling back to software tonemapx.", err)
 		}
 
 		// 2. Probe Vulkan Libplacebo (NVIDIA/AMD)

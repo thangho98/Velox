@@ -135,3 +135,146 @@ func TestFileExists(t *testing.T) {
 		assert.False(t, exists)
 	})
 }
+
+func TestClientIP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		remoteAddr    string
+		xRealIP       string
+		xForwardedFor string
+		want          string
+	}{
+		{
+			name:       "direct connection strips port from RemoteAddr",
+			remoteAddr: "1.2.3.4:54321",
+			want:       "1.2.3.4",
+		},
+		{
+			name:       "RemoteAddr without port is returned as-is",
+			remoteAddr: "1.2.3.4",
+			want:       "1.2.3.4",
+		},
+		{
+			name:       "X-Real-IP wins over RemoteAddr",
+			remoteAddr: "127.0.0.1:54321",
+			xRealIP:    "1.2.3.4",
+			want:       "1.2.3.4",
+		},
+		{
+			name:          "X-Forwarded-For leftmost wins when X-Real-IP missing",
+			remoteAddr:    "127.0.0.1:54321",
+			xForwardedFor: "1.2.3.4, 10.0.0.1, 172.17.0.2",
+			want:          "1.2.3.4",
+		},
+		{
+			name:          "X-Real-IP takes priority over X-Forwarded-For",
+			remoteAddr:    "127.0.0.1:54321",
+			xRealIP:       "1.2.3.4",
+			xForwardedFor: "9.9.9.9, 10.0.0.1",
+			want:          "1.2.3.4",
+		},
+		{
+			name:       "IPv6 RemoteAddr strips port and brackets",
+			remoteAddr: "[2001:db8::1]:54321",
+			want:       "2001:db8::1",
+		},
+		{
+			name:          "trims whitespace from X-Forwarded-For entries",
+			remoteAddr:    "127.0.0.1:54321",
+			xForwardedFor: "   1.2.3.4   , 10.0.0.1",
+			want:          "1.2.3.4",
+		},
+		{
+			name:       "trims whitespace from X-Real-IP",
+			remoteAddr: "127.0.0.1:54321",
+			xRealIP:    "  1.2.3.4  ",
+			want:       "1.2.3.4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.RemoteAddr = tt.remoteAddr
+			if tt.xRealIP != "" {
+				req.Header.Set("X-Real-IP", tt.xRealIP)
+			}
+			if tt.xForwardedFor != "" {
+				req.Header.Set("X-Forwarded-For", tt.xForwardedFor)
+			}
+			got := clientIP(req)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestResolvePublicHost(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		reqHost        string
+		xForwardedHost string
+		xForwardedPort string
+		want           string
+	}{
+		{
+			name:    "direct connection preserves host with port",
+			reqHost: "192.168.98.98:8098",
+			want:    "192.168.98.98:8098",
+		},
+		{
+			name:    "direct connection with bare host",
+			reqHost: "velox.local",
+			want:    "velox.local",
+		},
+		{
+			name:           "X-Forwarded-Host with port wins over r.Host",
+			reqHost:        "127.0.0.1:8080",
+			xForwardedHost: "192.168.98.98:8098",
+			want:           "192.168.98.98:8098",
+		},
+		{
+			name:           "X-Forwarded-Host without port composes with X-Forwarded-Port",
+			reqHost:        "127.0.0.1:8080",
+			xForwardedHost: "velox.local",
+			xForwardedPort: "8098",
+			want:           "velox.local:8098",
+		},
+		{
+			name:           "r.Host without port composes with X-Forwarded-Port",
+			reqHost:        "192.168.98.98",
+			xForwardedPort: "8098",
+			want:           "192.168.98.98:8098",
+		},
+		{
+			name:           "X-Forwarded-Port=80 is omitted (default http)",
+			reqHost:        "velox.local",
+			xForwardedPort: "80",
+			want:           "velox.local",
+		},
+		{
+			name:           "X-Forwarded-Port=443 is omitted (default https)",
+			reqHost:        "velox.local",
+			xForwardedPort: "443",
+			want:           "velox.local",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Host = tt.reqHost
+			if tt.xForwardedHost != "" {
+				req.Header.Set("X-Forwarded-Host", tt.xForwardedHost)
+			}
+			if tt.xForwardedPort != "" {
+				req.Header.Set("X-Forwarded-Port", tt.xForwardedPort)
+			}
+			got := resolvePublicHost(req)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

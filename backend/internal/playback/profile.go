@@ -16,7 +16,8 @@ type DeviceProfile struct {
 	CanBurnSubtitles         bool     `json:"can_burn_subtitles"` // Server must burn subs
 	SupportsHLS              bool     `json:"supports_hls"`
 	SupportsWebM             bool     `json:"supports_webm"`
-	SupportsHDR              bool     `json:"supports_hdr"` // Client can render HDR (PQ/BT.2020) without tone mapping
+	SupportsHDR              bool     `json:"supports_hdr"`          // Client can render HDR (PQ/BT.2020) without tone mapping
+	SupportsDolbyVision      bool     `json:"supports_dolby_vision"` // Client can natively handle Dolby Vision Profile 5 (IPT)
 }
 
 // Common codec constants

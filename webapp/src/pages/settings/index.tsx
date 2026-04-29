@@ -17,7 +17,9 @@ import {
   LuFilm,
   LuSkipForward,
   LuTv,
+  LuLaptop,
 } from 'react-icons/lu'
+import { isTauri } from '@/platform'
 import { useAuthStore } from '@/stores/auth'
 import { useTranslation } from '@/hooks/useTranslation'
 import { Select } from '@/components/ui/Select'
@@ -40,6 +42,7 @@ import { MarkersSection } from './components/MarkersSection'
 import { PretranscodeSection } from './components/PretranscodeSection'
 import { StorageSection } from './components/StorageSection'
 import { LiveTvSection } from './components/LiveTvSection'
+import { DesktopSection } from './components/DesktopSection'
 
 // ── Section Definitions ───────────────────────────────────────────────────────
 
@@ -49,9 +52,18 @@ interface Section {
   icon: React.ReactNode
   group: string
   adminOnly?: boolean
+  desktopOnly?: boolean
 }
 
 const ALL_SECTIONS: Section[] = [
+  // Desktop App (Tauri only)
+  {
+    id: 'desktop',
+    labelKey: 'Desktop App',
+    icon: <LuLaptop size={18} />,
+    group: 'Desktop App',
+    desktopOnly: true,
+  },
   // Web Settings (all users)
   {
     id: 'profile',
@@ -205,6 +217,7 @@ const SECTION_COMPONENTS: Record<string, React.FC> = {
   tasks: TasksSection,
   webhooks: WebhooksSection,
   livetv: LiveTvSection,
+  desktop: DesktopSection,
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
@@ -218,7 +231,9 @@ export default function SettingsPage() {
 
   const setSection = (id: string) => setSearchParams({ section: id })
 
-  const sections = ALL_SECTIONS.filter((s) => !s.adminOnly || isAdmin)
+  const sections = ALL_SECTIONS.filter(
+    (s) => (!s.adminOnly || isAdmin) && (!s.desktopOnly || isTauri()),
+  )
   const isAllowed = sections.some((s) => s.id === activeSection)
   const actualSection = isAllowed ? activeSection : 'profile'
 

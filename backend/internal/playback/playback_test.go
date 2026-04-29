@@ -364,6 +364,7 @@ func TestGetBuiltinProfile(t *testing.T) {
 		wantName string
 	}{
 		{name: "android_native", input: "android_native", wantName: "Android Native"},
+		{name: "velox_desktop", input: "velox_desktop", wantName: "Velox Desktop (libmpv)"},
 		{name: "chrome", input: "chrome", wantName: "Chrome Desktop"},
 		{name: "firefox", input: "firefox", wantName: "Firefox Desktop"},
 		{name: "safari", input: "safari", wantName: "Safari Desktop"},
@@ -394,6 +395,7 @@ func TestAllBuiltinProfiles(t *testing.T) {
 
 	expected := []string{
 		"android_native",
+		"velox_desktop",
 		"chrome",
 		"firefox",
 		"safari",

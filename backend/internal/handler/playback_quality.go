@@ -145,6 +145,17 @@ func applyClientCapabilityOverrides(profile *playback.DeviceProfile, clientCaps 
 	if clientCaps.MaxHeight > 0 {
 		clone.MaxHeight = clientCaps.MaxHeight
 	}
+	if clientCaps.PreferDirectPlay {
+		clone.MaxBitrate = 0
+		clone.MaxHeight = 0
+		// Only the Velox Desktop (libmpv) client sets prefer_direct_play.
+		// libmpv links jellyfin-ffmpeg with the tonemapx SIMD filter, so HDR10,
+		// HLG, and DV P5 all reshape on the client. Flip both flags defensively
+		// here in case a proxy strips the custom UA — DV P7/8 already passes
+		// through the remove_dovi BSF and direct-plays without reshape.
+		clone.SupportsHDR = true
+		clone.SupportsDolbyVision = true
+	}
 
 	return &clone
 }

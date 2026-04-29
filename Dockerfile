@@ -130,6 +130,18 @@ server {
     listen 80;
     server_name _;
 
+    # Trust X-Forwarded-For from private networks (Docker bridges, LAN, loopback)
+    # so $remote_addr reflects the original client IP, not the upstream proxy.
+    # Public-internet clients hitting the container directly cannot spoof these
+    # headers because their source IP wouldn't match these ranges.
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 192.168.0.0/16;
+    set_real_ip_from 127.0.0.1;
+    set_real_ip_from ::1;
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
+
     # Frontend SPA
     root /app/webapp;
     index index.html;
@@ -156,9 +168,13 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
+        # $http_host preserves the original Host header including port, so
+        # backend-built URLs (POST /api/stream/{id}/url) keep :8098 etc.
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Port $server_port;
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
     }
@@ -166,9 +182,11 @@ server {
     # API + streaming → backend
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Port $server_port;
         proxy_set_header X-Forwarded-Proto $scheme;
 
         # Streaming support

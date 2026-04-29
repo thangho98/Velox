@@ -1,6 +1,7 @@
 import { memo, type RefObject } from 'react'
 import { LuChevronLeft, LuChevronRight, LuInfo, LuListMusic, LuPlay } from 'react-icons/lu'
 import { ResponsiveImage } from '@/components/ResponsiveImage'
+import { resolveImageUrl } from '@velox/shared/lib/image'
 import type { Episode, MediaWithFiles, Season } from '@/types/api'
 import { DETAIL_PANEL_ANIMATION_MS, formatTime } from './watchHelpers'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -122,7 +123,7 @@ export const WatchDetailSheet = memo(function WatchDetailSheet({
                 <div className="mb-4">
                   {infoLogoUrl ? (
                     <img
-                      src={infoLogoUrl}
+                      src={resolveImageUrl(infoLogoUrl)}
                       alt={media.media.title}
                       className="mb-3 h-10 max-w-[320px] object-contain object-left brightness-110 drop-shadow-[0_8px_20px_rgba(0,0,0,0.35)] md:h-14 md:max-w-[420px]"
                     />

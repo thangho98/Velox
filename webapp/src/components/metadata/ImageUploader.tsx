@@ -9,6 +9,8 @@ interface ImageUploaderProps {
   isUploading?: boolean
 }
 
+import { resolveImageUrl } from '@velox/shared/lib/image'
+
 export function ImageUploader({
   label,
   currentUrl,
@@ -55,7 +57,11 @@ export function ImageUploader({
         onClick={() => inputRef.current?.click()}
       >
         {displayUrl ? (
-          <img src={displayUrl} alt={label} className="max-h-[200px] rounded object-contain" />
+          <img
+            src={resolveImageUrl(displayUrl)}
+            alt={label}
+            className="max-h-[200px] rounded object-contain"
+          />
         ) : (
           <div className="flex flex-col items-center gap-2 p-4 text-gray-400">
             <LuUpload size={24} />

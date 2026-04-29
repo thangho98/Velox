@@ -117,7 +117,7 @@ func (h *LibraryHandler) Scan(w http.ResponseWriter, r *http.Request) {
 	if h.activitySvc != nil {
 		userID, _, ok := auth.UserFromContext(r.Context())
 		if ok {
-			h.activitySvc.Log(&userID, "library_scan", r.RemoteAddr, nil, fmt.Sprintf(`{"library_id":%d,"force":%v}`, id, force))
+			h.activitySvc.Log(&userID, "library_scan", clientIP(r), nil, fmt.Sprintf(`{"library_id":%d,"force":%v}`, id, force))
 		}
 	}
 

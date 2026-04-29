@@ -42,6 +42,7 @@ import { usePreferences } from '@/hooks/stores/useAuth'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { getCapabilities } from '@/lib/capabilities'
+import { getPlatform } from '@velox/shared/platform'
 import { DualSubtitleOverlay } from '@/components/DualSubtitleOverlay'
 import { SubtitlePicker } from '@/components/SubtitlePicker'
 import { AudioPicker } from '@/components/AudioPicker'
@@ -49,6 +50,8 @@ import { TrickplayPreview } from '@/components/TrickplayPreview'
 import { api } from '@velox/shared/api'
 import { useToast } from '@/components/Toast'
 import { createLogger } from '@/lib/logger'
+import { usePlayer, useIsDesktopPlayer } from '@/lib/player'
+import { useVeloxCmd } from '@/lib/desktop/useDesktopBridge'
 
 const log = createLogger('WatchPage')
 import { WatchDetailSheet } from '@/components/watch/WatchDetailSheet'
@@ -99,20 +102,33 @@ export default function WatchPage() {
   const lowBandwidthToastShown = useRef(false)
   const { t } = useTranslation('watch')
 
+  // libmpv path on desktop. Web continues using <video> + hls.js.
+  const player = usePlayer()
+  const isDesktop = useIsDesktopPlayer()
+
   const [forceFullTranscode, setForceFullTranscode] = useState(false)
+
+  const resolveStreamUrl = useCallback((urlStr: string) => {
+    if (!urlStr) return ''
+    if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) return urlStr
+    const base = getPlatform().getApiBaseUrl()
+    return urlStr.startsWith('/api/')
+      ? `${base}${urlStr.slice(4)}`
+      : `${base}${urlStr.startsWith('/') ? urlStr : '/' + urlStr}`
+  }, [])
 
   const buildHlsSessionUrl = useCallback(
     (baseUrl: string, startOffset: number, forceTranscode: boolean) => {
-      const url = new URL(baseUrl, window.location.origin)
+      const absoluteBase = resolveStreamUrl(baseUrl)
+      // Pass a dummy origin just in case absoluteBase is still relative (shouldn't be, but URL requires it)
+      const url = new URL(absoluteBase, window.location.origin)
       url.searchParams.set('start', startOffset.toFixed(3))
       if (forceTranscode) {
         url.searchParams.delete('vcopy')
       }
-      return url.origin === window.location.origin
-        ? `${url.pathname}${url.search}${url.hash}`
-        : url.href
+      return url.href
     },
-    [],
+    [resolveStreamUrl],
   )
 
   const {
@@ -179,6 +195,7 @@ export default function WatchPage() {
       selected_subtitle: effectiveSubtitleLanguage ?? 'off',
       selected_subtitle_id: subtitleTrackId ?? 0,
       selected_audio_track: audioTrackId ?? 0,
+      prefer_direct_play: isDesktop,
     }),
     [
       clientCaps.videoCodecs,
@@ -216,6 +233,7 @@ export default function WatchPage() {
       max_height: qualityMaxHeight,
       selected_audio_track: audioTrackId ?? 0,
       selected_subtitle_id: burnInSubtitleId,
+      prefer_direct_play: isDesktop,
     }),
     [
       clientCaps.videoCodecs,
@@ -396,19 +414,42 @@ export default function WatchPage() {
       artwork: posterUrl ? [{ src: posterUrl, sizes: '342x513', type: 'image/jpeg' }] : [],
     })
 
-    navigator.mediaSession.setActionHandler('play', () => videoRef.current?.play())
-    navigator.mediaSession.setActionHandler('pause', () => videoRef.current?.pause())
+    navigator.mediaSession.setActionHandler('play', () => {
+      if (isDesktop) void player.play()
+      else void videoRef.current?.play()
+    })
+    navigator.mediaSession.setActionHandler('pause', () => {
+      if (isDesktop) player.pause()
+      else videoRef.current?.pause()
+    })
     navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+      const offset = details.seekOffset ?? 10
+      if (isDesktop) {
+        const next = Math.max(0, player.currentTime() - offset)
+        player.seek(next)
+        return
+      }
       const v = videoRef.current
-      if (v) v.currentTime = Math.max(0, v.currentTime - (details.seekOffset ?? 10))
+      if (v) v.currentTime = Math.max(0, v.currentTime - offset)
     })
     navigator.mediaSession.setActionHandler('seekforward', (details) => {
+      const offset = details.seekOffset ?? 10
+      if (isDesktop) {
+        const next = Math.min(player.duration() || 0, player.currentTime() + offset)
+        player.seek(next)
+        return
+      }
       const v = videoRef.current
-      if (v) v.currentTime = Math.min(v.duration || 0, v.currentTime + (details.seekOffset ?? 10))
+      if (v) v.currentTime = Math.min(v.duration || 0, v.currentTime + offset)
     })
     navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if (details.seekTime == null) return
+      if (isDesktop) {
+        player.seek(details.seekTime)
+        return
+      }
       const v = videoRef.current
-      if (v && details.seekTime != null) v.currentTime = details.seekTime
+      if (v) v.currentTime = details.seekTime
     })
 
     if (isEpisode && nextEpisodeMediaId) {
@@ -428,7 +469,7 @@ export default function WatchPage() {
       navigator.mediaSession.setActionHandler('seekto', null)
       navigator.mediaSession.setActionHandler('nexttrack', null)
     }
-  }, [media, isEpisode, nextEpisodeMediaId, navigate])
+  }, [media, isEpisode, nextEpisodeMediaId, navigate, isDesktop, player])
 
   const primaryFileId = streamUrls?.primary_file_id ?? media?.files[0]?.id
   const subtitleServeUrl = (sub: PlaybackSubtitleTrack | undefined) => {
@@ -502,6 +543,22 @@ export default function WatchPage() {
   const [currentLevel, setCurrentLevel] = useState(-1)
   const [bandwidth, setBandwidth] = useState<number | null>(null)
   const [showQualityIndicator, setShowQualityIndicator] = useState(false)
+  // Desktop native video player requires the WKWebView to be completely transparent
+  useEffect(() => {
+    if (!isDesktop) return
+    const style = document.createElement('style')
+    style.innerHTML = `
+      html, body, #root {
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+    `
+    document.head.appendChild(style)
+    return () => {
+      document.head.removeChild(style)
+    }
+  }, [isDesktop])
+
   // Image subtitles (PGS/VobSub) require server-side burn-in via HLS transcode.
   // Only available when actually using HLS transcode — not direct play or pretranscode MP4.
   const allowsImageSubtitles =
@@ -573,6 +630,7 @@ export default function WatchPage() {
   // We poll webkitAudioDecodedByteCount; if zero bytes were decoded after a few
   // seconds of playback, fall back to HLS where backend transcodes audio to AAC.
   useEffect(() => {
+    if (isDesktop) return
     // Only run while we're on a non-HLS tier (direct or pretranscode).
     // HLS tier has audio guaranteed AAC by backend transcode → no need to check.
     if (playbackSource !== 'direct' && playbackSource !== 'pretranscode') return
@@ -701,18 +759,24 @@ export default function WatchPage() {
   const toggleDetailPanel = (panel: Exclude<DetailPanel, 'none'>) => {
     const nextPanel = activeTab === panel ? 'none' : panel
     if (nextPanel !== 'none' && isPlaying) {
-      videoRef.current?.pause()
+      if (isDesktop) player.pause()
+      else videoRef.current?.pause()
       setIsPlaying(false)
     }
     setActiveTab(nextPanel)
   }
 
   const togglePlay = () => {
-    const video = videoRef.current
-    if (!video) return
     const willPlay = !isPlaying
-    if (isPlaying) video.pause()
-    else video.play().catch(() => setError('Playback failed'))
+    if (isDesktop) {
+      if (isPlaying) player.pause()
+      else player.play().catch(() => setError('Playback failed'))
+    } else {
+      const video = videoRef.current
+      if (!video) return
+      if (isPlaying) video.pause()
+      else video.play().catch(() => setError('Playback failed'))
+    }
     setIsPlaying(willPlay)
     if (willPlay) {
       setActiveTab('none')
@@ -731,7 +795,8 @@ export default function WatchPage() {
     if (!nextEpisodeMediaId) return
     if (nextEpisodeProgress?.completed) {
       if (isPlaying) {
-        videoRef.current?.pause()
+        if (isDesktop) player.pause()
+        else videoRef.current?.pause()
         setIsPlaying(false)
       }
       setShowWatchedWarning(true)
@@ -747,6 +812,8 @@ export default function WatchPage() {
     updateProgress,
     mediaId,
     currentTime,
+    isDesktop,
+    player,
   ])
 
   const showSeekFeedback = (dir: 'back' | 'fwd', n: number) => {
@@ -797,6 +864,13 @@ export default function WatchPage() {
   }
 
   const applySeek = (targetTime: number) => {
+    if (isDesktop) {
+      const clamped = clampSeekTarget(targetTime, null)
+      player.seek(clamped)
+      setCurrentTime(clamped)
+      setLastPosition(mediaId, clamped)
+      return clamped
+    }
     const video = videoRef.current
     if (!video) return 0
 
@@ -860,10 +934,14 @@ export default function WatchPage() {
   }
 
   const changeVolume = (delta: number) => {
-    const video = videoRef.current
-    if (!video) return
     const newVolume = Math.max(0, Math.min(1, volume + delta))
     setVolume(newVolume)
+    if (isDesktop) {
+      player.setVolume(newVolume)
+      return
+    }
+    const video = videoRef.current
+    if (!video) return
     video.volume = newVolume
   }
 
@@ -933,6 +1011,7 @@ export default function WatchPage() {
 
   // ── HLS init ───────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (isDesktop) return
     const video = videoRef.current
     if (!video || !streamUrls) return
 
@@ -944,8 +1023,8 @@ export default function WatchPage() {
         ? buildHlsSessionUrl(streamUrls.hls, sessionOffset, forceFullTranscode)
         : buildHlsSessionUrl(streamUrls.hls || '', 0, forceFullTranscode)
       : playbackSource === 'pretranscode'
-        ? streamUrls.pretranscode
-        : streamUrls.direct
+        ? resolveStreamUrl(streamUrls.pretranscode || '')
+        : resolveStreamUrl(streamUrls.direct || '')
     if (!rawUrl) return
 
     // Skip HLS restart if the resolved URL hasn't actually changed.
@@ -1247,6 +1326,113 @@ export default function WatchPage() {
     forceFullTranscode,
   ])
 
+  // ── Desktop (libmpv) playback ───────────────────────────────────────────────
+  // Mirrors the HLS effect's URL selection but hands off to mpv via the
+  // DesktopPlayer adapter. Subtitles still render through DualSubtitleOverlay,
+  // so mpv's own sub-renderer stays disabled (player.rs sets sub-visibility=no
+  // by default; we only call player_sub_* if we want native rendering later).
+  useEffect(() => {
+    if (!isDesktop) return
+    if (!streamUrls || !playbackSource) return
+
+    const tierUrl =
+      playbackSource === 'direct'
+        ? streamUrls.direct
+        : playbackSource === 'pretranscode'
+          ? streamUrls.pretranscode
+          : streamUrls.hls
+    if (!tierUrl) return
+    const resolvedUrl = resolveStreamUrl(tierUrl)
+
+    // Backend supports `?token=…` for stream auth (see auth middleware). We
+    // attach it inline since mpv's HTTP fetcher does not carry app headers.
+    const token = useAuthStore.getState().accessToken
+    const authedUrl = token
+      ? resolvedUrl + (resolvedUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token)
+      : resolvedUrl
+
+    const resumePos = Math.max(
+      playbackInfo?.position ?? 0,
+      usePlayerStore.getState().lastPositions[mediaId] ?? 0,
+    )
+
+    log.info(
+      `[Desktop] load — source=${playbackSource}, resume=${resumePos.toFixed(2)}s, url=${authedUrl.substring(0, 100)}`,
+    )
+    setIsBuffering(true)
+    void player
+      .load({ url: authedUrl, startTime: resumePos > 1 ? resumePos : undefined })
+      .catch((err) => {
+        log.error(`[Desktop] load failed: ${err}`)
+        if (playbackSource !== 'hls') advanceFallback(`mpv load failed (${err})`)
+        else setError(`Playback failed: ${err}`)
+      })
+
+    // Sync the user's stored volume/mute/rate to mpv on (re)load.
+    player.setVolume(volume)
+    player.setMuted(isMuted)
+    player.setRate(playbackRate)
+
+    const offTime = player.on('time-update', ({ currentTime }) => {
+      setCurrentTime(currentTime)
+      setLastPosition(mediaId, currentTime)
+      const now = Date.now()
+      const dur = Math.max(playbackInfo?.duration ?? 0, knownDurationRef.current)
+      if (now - lastProgressUpdate.current >= 10000 || (dur > 0 && currentTime >= dur * 0.95)) {
+        updateProgress({
+          mediaId,
+          data: {
+            position: currentTime,
+            completed: dur > 0 ? currentTime / dur > 0.9 : false,
+          },
+        })
+        lastProgressUpdate.current = now
+      }
+    })
+    const offReady = player.on('ready', ({ duration }) => {
+      if (duration > 0) {
+        setDuration((prev) => Math.max(prev, duration, knownDurationRef.current))
+      }
+      setIsBuffering(false)
+    })
+    const offWaiting = player.on('waiting', () => setIsBuffering(true))
+    const offPlaying = player.on('playing', () => setIsBuffering(false))
+    const offPlay = player.on('play', () => setIsPlaying(true))
+    const offPause = player.on('pause', () => setIsPlaying(false))
+    const offEnded = player.on('ended', () => {
+      setIsPlaying(false)
+      const dur = Math.max(playbackInfo?.duration ?? 0, knownDurationRef.current, duration)
+      if (dur > 0) updateProgress({ mediaId, data: { position: dur, completed: true } })
+      if (repeatMode === 'one') {
+        player.seek(0)
+        void player.play().catch(() => {})
+        return
+      }
+      if (repeatMode === 'all' && nextEpisodeMediaId) {
+        handleNextEpisode()
+      }
+    })
+    const offError = player.on('error', ({ message }) => {
+      log.error(`[Desktop player error] ${message}`)
+      if (playbackSource !== 'hls') advanceFallback(`mpv error: ${message}`)
+      else setError(message)
+    })
+
+    return () => {
+      offTime()
+      offReady()
+      offWaiting()
+      offPlaying()
+      offPlay()
+      offPause()
+      offEnded()
+      offError()
+      void player.unload().catch(() => {})
+    }
+    // accessToken intentionally excluded — token refresh must not restart playback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesktop, streamUrls, playbackSource, mediaId])
+
   // Stop backend transcode when leaving the page or switching media.
   // Uses beforeunload for hard reload / tab close.
   useEffect(() => {
@@ -1267,14 +1453,21 @@ export default function WatchPage() {
   // directly in the HLS init effect — no cross-effect refs needed.
 
   useEffect(() => {
+    if (isDesktop) {
+      player.setVolume(volume)
+      player.setMuted(isMuted)
+      player.setRate(playbackRate)
+      return
+    }
     const video = videoRef.current
     if (!video) return
     video.volume = volume
     video.muted = isMuted
     video.playbackRate = playbackRate
-  }, [volume, isMuted, playbackRate, streamUrls]) // streamUrls ensures re-sync after video remount
+  }, [volume, isMuted, playbackRate, streamUrls, isDesktop, player]) // streamUrls ensures re-sync after video remount
 
   useEffect(() => {
+    if (isDesktop) return
     const video = videoRef.current
     if (!video) return
     // Native <track> is only for iOS native fullscreen (webkitEnterFullscreen).
@@ -1315,6 +1508,13 @@ export default function WatchPage() {
   }, [effectiveSubtitleLanguage, primarySub])
 
   useEffect(() => {
+    if (isDesktop) {
+      // mpv switches audio via aid; the URL re-fetch path (audioTrackId in
+      // streamRequestKey) re-loads the source, so this is mostly a no-op.
+      // We still poke libmpv in case the user has direct-play active.
+      if (audioLanguage) player.setAudioTrackByLang(audioLanguage)
+      return
+    }
     const video = videoRef.current as HTMLVideoElement & {
       audioTracks?: { length: number; [index: number]: { language: string; enabled: boolean } }
     }
@@ -1323,7 +1523,7 @@ export default function WatchPage() {
       const track = video.audioTracks[i]
       if (audioLanguage) track.enabled = track.language === audioLanguage
     }
-  }, [audioLanguage])
+  }, [audioLanguage, isDesktop, player])
 
   // Video event listeners — streamUrls in deps ensures this re-runs when the
   // video element first appears (it's conditionally rendered after data loads).
@@ -1370,6 +1570,7 @@ export default function WatchPage() {
   })
 
   useEffect(() => {
+    if (isDesktop) return
     const video = videoRef.current
     if (!video) return
     const onTimeUpdate = () => handleVideoTimeUpdate(video)
@@ -1458,6 +1659,26 @@ export default function WatchPage() {
     setIsLocked,
     seekStep: SEEK_STEP,
     volumeStep: VOLUME_STEP,
+  })
+
+  // Desktop menu / OS-level commands. No-op on web (no events fire).
+  useVeloxCmd((cmd) => {
+    switch (cmd) {
+      case 'play-pause':
+        togglePlay()
+        break
+      case 'seek-back':
+        seek(-SEEK_STEP)
+        break
+      case 'seek-fwd':
+        seek(SEEK_STEP)
+        break
+      case 'toggle-fullscreen':
+        // The bridge already toggled the Tauri window; just sync internal state
+        // by deferring to the existing hook.
+        toggleFullscreen()
+        break
+    }
   })
 
   const qualityOptions: QualityOption[] = playbackInfo?.available_qualities ?? []
@@ -1601,9 +1822,9 @@ export default function WatchPage() {
   return (
     <div
       ref={containerRef}
-      className={`fixed inset-0 bg-[#141414] select-none touch-none overflow-hidden ${
-        !showControls && isPlaying ? 'cursor-none' : ''
-      }`}
+      className={`fixed inset-0 select-none touch-none overflow-hidden ${
+        isDesktop ? 'bg-transparent' : 'bg-[#141414]'
+      } ${!showControls && isPlaying ? 'cursor-none' : ''}`}
       onMouseMove={() => {
         if (!isLocked) resetControlsTimeout()
       }}
@@ -1621,11 +1842,15 @@ export default function WatchPage() {
         }
       }}
     >
-      {/* Video */}
+      {/* Video — hidden on desktop; libmpv renders into the native NSOpenGLView
+          installed by Rust during setup, and the WKWebView is transparent. */}
       <video
         ref={videoRef}
         className="h-full w-full"
-        style={{ objectFit: aspectRatio as 'contain' | 'cover' | 'fill' }}
+        style={{
+          objectFit: aspectRatio as 'contain' | 'cover' | 'fill',
+          display: isDesktop ? 'none' : undefined,
+        }}
         playsInline
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
@@ -1848,7 +2073,10 @@ export default function WatchPage() {
             onMuteToggle={toggleMute}
             onVolumeChange={(nextVolume) => {
               setVolume(nextVolume)
-              if (videoRef.current) {
+              if (isDesktop) {
+                player.setVolume(nextVolume)
+                player.setMuted(false)
+              } else if (videoRef.current) {
                 videoRef.current.volume = nextVolume
                 videoRef.current.muted = false
               }
@@ -2048,7 +2276,8 @@ export default function WatchPage() {
                             key={rate}
                             onClick={() => {
                               setPlaybackRate(rate)
-                              if (videoRef.current) videoRef.current.playbackRate = rate
+                              if (isDesktop) player.setRate(rate)
+                              else if (videoRef.current) videoRef.current.playbackRate = rate
                               setShowSpeedMenu(false)
                             }}
                             className={`flex w-full items-center gap-3 px-4 py-2 text-sm transition-colors ${

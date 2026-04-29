@@ -1,12 +1,18 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router'
-import { useAuthStore } from '@/stores/auth'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router'
+import { useAuthStore, useAuthHydrated } from '@/stores/auth'
 import { useTokenRefresh, useWizardStatus } from '@/hooks/stores/useAuth'
 import { Layout } from '@/components/Layout'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { isTauri } from '@/platform'
+import { isPaired } from '@/platform/desktop-adapter'
+import { useDesktopBridge } from '@/lib/desktop/useDesktopBridge'
+
+const UNAUTH_REDIRECT = isTauri() ? '/onboarding' : '/login'
 
 const HomePage = lazy(() => import('@/pages/HomePage'))
 const LoginPage = lazy(() => import('@/pages/LoginPage'))
+const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'))
 const SetupPage = lazy(() => import('@/pages/SetupPage'))
 const SetupWizardPage = lazy(() => import('@/pages/SetupWizardPage'))
 const LibraryListPage = lazy(() => import('@/pages/LibraryListPage'))
@@ -31,7 +37,7 @@ function RequireAuth() {
   const { data: wizardStatus, isLoading: wizardLoading } = useWizardStatus()
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to={UNAUTH_REDIRECT} replace />
   }
 
   // Redirect admin to wizard if not completed
@@ -52,7 +58,7 @@ function RequireAuthFullScreen() {
   useTokenRefresh()
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to={UNAUTH_REDIRECT} replace />
   }
 
   return <Outlet />
@@ -78,68 +84,86 @@ function PageLoader() {
   )
 }
 
+function HydrationGate({ children }: { children: React.ReactNode }) {
+  const hydrated = useAuthHydrated()
+  const location = useLocation()
+  // Mount Tauri OS bridges (menu, deep-link, drag-drop). No-op on web.
+  useDesktopBridge()
+  if (!hydrated) return <PageLoader />
+  // Tauri: if no server URL has been paired yet, force onboarding even if a
+  // stale auth token exists — every API call would otherwise hit `/api`
+  // (relative) and fail through Vite's proxy.
+  if (isTauri() && !isPaired() && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />
+  }
+  return <>{children}</>
+}
+
 export function RouterProvider() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/setup" element={<SetupPage />} />
+        <HydrationGate>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/onboarding" element={<OnboardingPage />} />
+              <Route path="/setup" element={<SetupPage />} />
 
-            {/* Setup wizard (authenticated, no Layout) */}
-            <Route element={<RequireAuthFullScreen />}>
-              <Route path="/setup/wizard" element={<SetupWizardPage />} />
-            </Route>
+              {/* Setup wizard (authenticated, no Layout) */}
+              <Route element={<RequireAuthFullScreen />}>
+                <Route path="/setup/wizard" element={<SetupWizardPage />} />
+              </Route>
 
-            {/* Protected routes with Layout */}
-            <Route element={<RequireAuth />}>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/movies" element={<MoviesPage />} />
-              <Route path="/movies/:id" element={<MediaDetailPage />} />
-              <Route path="/series" element={<SeriesPage />} />
-              <Route path="/series/:seriesId" element={<SeriesDetailPage />} />
-              <Route path="/favorites" element={<FavoritesPage />} />
-              <Route path="/recently-watched" element={<RecentlyWatchedPage />} />
-              <Route path="/libraries" element={<LibraryListPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/search" element={<SearchPage />} />
-              <Route path="/browse" element={<BrowsePage />} />
-              <Route path="/livetv" element={<LiveTvPage />} />
-              {/* Redirects for old/missing routes */}
-              <Route
-                path="/notifications"
-                element={<Navigate to="/settings?section=activity" replace />}
-              />
-              <Route
-                path="/profile"
-                element={<Navigate to="/settings?section=profile" replace />}
-              />
-              <Route
-                path="/admin/libraries"
-                element={<Navigate to="/settings?section=libraries" replace />}
-              />
-              <Route
-                path="/admin/users"
-                element={<Navigate to="/settings?section=users" replace />}
-              />
-              <Route
-                path="/admin/settings"
-                element={<Navigate to="/settings?section=subtitles" replace />}
-              />
-            </Route>
+              {/* Protected routes with Layout */}
+              <Route element={<RequireAuth />}>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/movies" element={<MoviesPage />} />
+                <Route path="/movies/:id" element={<MediaDetailPage />} />
+                <Route path="/series" element={<SeriesPage />} />
+                <Route path="/series/:seriesId" element={<SeriesDetailPage />} />
+                <Route path="/favorites" element={<FavoritesPage />} />
+                <Route path="/recently-watched" element={<RecentlyWatchedPage />} />
+                <Route path="/libraries" element={<LibraryListPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/browse" element={<BrowsePage />} />
+                <Route path="/livetv" element={<LiveTvPage />} />
+                {/* Redirects for old/missing routes */}
+                <Route
+                  path="/notifications"
+                  element={<Navigate to="/settings?section=activity" replace />}
+                />
+                <Route
+                  path="/profile"
+                  element={<Navigate to="/settings?section=profile" replace />}
+                />
+                <Route
+                  path="/admin/libraries"
+                  element={<Navigate to="/settings?section=libraries" replace />}
+                />
+                <Route
+                  path="/admin/users"
+                  element={<Navigate to="/settings?section=users" replace />}
+                />
+                <Route
+                  path="/admin/settings"
+                  element={<Navigate to="/settings?section=subtitles" replace />}
+                />
+              </Route>
 
-            {/* Fullscreen routes (player) */}
-            <Route element={<RequireAuthFullScreen />}>
-              <Route path="/watch/:id" element={<WatchPage />} />
-              <Route path="/livetv/watch/:channelId" element={<WatchLivePage />} />
-            </Route>
+              {/* Fullscreen routes (player) */}
+              <Route element={<RequireAuthFullScreen />}>
+                <Route path="/watch/:id" element={<WatchPage />} />
+                <Route path="/livetv/watch/:channelId" element={<WatchLivePage />} />
+              </Route>
 
-            {/* 404 */}
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </Suspense>
+              {/* 404 */}
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </Suspense>
+        </HydrationGate>
       </ErrorBoundary>
     </BrowserRouter>
   )

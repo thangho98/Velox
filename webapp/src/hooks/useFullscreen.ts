@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isTauri } from '@/platform'
 
 export function useFullscreen(
   containerRef: React.RefObject<HTMLDivElement | null>,
@@ -8,6 +9,20 @@ export function useFullscreen(
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   const toggleFullscreen = () => {
+    if (isTauri()) {
+      void (async () => {
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window')
+          const w = getCurrentWindow()
+          const fs = await w.isFullscreen()
+          await w.setFullscreen(!fs)
+          setIsFullscreen(!fs)
+        } catch (err) {
+          showToastInfo(`Fullscreen: ${(err as Error).message}`)
+        }
+      })()
+      return
+    }
     type FullscreenDoc = Document & {
       webkitFullscreenElement?: Element
       webkitExitFullscreen?: () => void

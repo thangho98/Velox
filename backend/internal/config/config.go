@@ -20,7 +20,7 @@ type Config struct {
 	SubtitleCachePath string
 	TrickplayPath     string
 	PretranscodePath  string
-	CORSOrigin        string
+	CORSOrigins       []string
 
 	// Hardware transcoding (Plan E Phase 01)
 	HWAccel         string // auto|videotoolbox|vaapi|nvenc|qsv|amf|none
@@ -100,7 +100,12 @@ func Load() *Config {
 		SubtitleCachePath: filepath.Join(dataDir, "subtitles"),
 		TrickplayPath:     filepath.Join(dataDir, "trickplay"),
 		PretranscodePath:  envOrDefault("VELOX_PRETRANSCODE_DIR", filepath.Join(dataDir, "pretranscode")),
-		CORSOrigin:        envOrDefault("VELOX_CORS_ORIGIN", "http://localhost:5173"),
+		CORSOrigins: envOrDefaultList("VELOX_CORS_ORIGIN",
+			"http://localhost:5173",  // legacy webapp dev
+			"http://localhost:8096",  // current webapp dev (also Tauri devUrl)
+			"tauri://localhost",      // Tauri prod (macOS)
+			"http://tauri.localhost", // Tauri prod (Windows/Linux)
+		),
 
 		HWAccel:           envOrDefault("VELOX_HW_ACCEL", "auto"),
 		EnableHwTonemap:   envOrDefaultBool("VELOX_HW_TONEMAP", false),
@@ -148,6 +153,24 @@ func envOrDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// envOrDefaultList reads a comma-separated env var into a slice. Empty entries
+// are dropped. If the env var is unset, the fallback list is returned as-is.
+func envOrDefaultList(key string, fallback ...string) []string {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func envOrDefaultInt(key string, fallback int) int {
